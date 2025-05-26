@@ -1,0 +1,9 @@
+# 模型配置YAML文件
+deepseek-chat:
+  base_url: https://api.deepseek.com/v1
+  api_key: vTwpJaVSl1ctTJtRGimzcPitcKUATA8DDpgxeG0TnlTltS+xTvb0M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  model_name: deepseek-chat
+deepseek-reasoner:
+  base_url: https://api.deepseek.com/v1
+  api_key: vTwpJaVSl1ctTJtRGimzcPitcKUATA8DDpgxeG0TnlTltS+xTvb0M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  model_name: deepseek-reasoner

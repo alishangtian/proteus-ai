@@ -1,0 +1,170 @@
+WorkflowGenerateNode:
+  type: "workflow_generate"
+  class: "src.nodes.workflow_generate.WorkflowGenerateNode"
+  name: "工作流生成"
+  description: "工作流生成节点 - 接收任务描述文本并生成相应的工作流，适用于需要多步骤处理的复杂任务，支持：1. 解析任务描述文本，理解用户意图 2. 自动生成适合的工作流程，包含所需的处理节点"
+  output:
+    result: "工作流生成结果"
+    workflow: "生成的工作流定义"
+  params:
+    text:
+      type: "str"
+      required: true
+      description: "任务描述文本，用于生成工作流"
+      example: "查询北京未来3天的天气并生成报告"
+
+WorkflowExecuteNode:
+  type: "workflow_execute"
+  class: "src.nodes.workflow_execute.WorkflowExecuteNode"
+  name: "工作流执行"
+  description: "工作流执行节点 - 执行已生成的工作流，支持：1. 按顺序执行工作流中的所有节点 2. 收集并整合各节点的执行结果 3. 支持错误处理和结果反馈"
+  output:
+    result: "工作流执行结果"
+  params:
+    workflow:
+      type: "dict"
+      required: true
+      description: "要执行的工作流定义，包含节点和连接信息"
+      example: "{\"nodes\": [{\"id\": \"node1\", \"type\": \"weather_forecast\", \"params\": {}}]}"
+    workflow_id:
+      type: "str"
+      required: false
+      description: "工作流ID，如不提供则自动生成"
+      example: "workflow-12345"
+
+PythonExecuteNode:
+  type: "python_execute"
+  class: "src.nodes.python_execute.PythonExecuteNode"
+  name: "Python函数执行"
+  description: "通用Python代码执行节点，code参数是函数定义，import 语句需要定义在函数内部"
+  output:
+    result: "函数执行结果"
+  params:
+    code:
+      type: "str"
+      required: true
+      description: "要执行的Python函数定义代码，仅包含方法定义，不需要执行逻辑"
+      example: "def calculate(a, b):\n    return a + b"
+    variables:
+      type: "dict"
+      required: false
+      default: {}
+      description: "函数执行的参数字典，可传入各类数据类型"
+      example: {"a": 1, "b": 2}
+
+FileWriteNode:
+  type: "file_write"
+  class: "src.nodes.file_write.FileWriteNode"
+  name: "文件写入"
+  description: "文件写入节点，支持指定文件名称、内容和格式"
+  config:
+    default_write_path: "./data/file"
+  output:
+    result: "写入结果"
+  params:
+    filename:
+      type: "str"
+      required: true
+      description: "文件名称（不需要包含格式后缀）"
+      example: "report"
+    content:
+      type: "str"
+      required: true
+      description: "要写入的文件内容"
+      example: "这是要写入文件的示例内容"
+    format:
+      type: "str"
+      required: false
+      default: "md"
+      description: "文件格式（如md、txt、csv等）"
+      example: "txt"
+    encoding:
+      type: "str"
+      required: false
+      default: "utf-8"
+      description: "文件编码"
+
+SerperSearchNode:
+  type: "serper_search"
+  class: "src.nodes.serper_search.SerperSearchNode"
+  name: "Serper搜索引擎"
+  description: "Serper搜索引擎节点，可以搜索一些时下最新的信息，如新闻、论坛、博客等，如果需要更详细的信息，请自行根据link爬取网页内容"
+  output:
+    result: "搜索结果，网页url和网页概要的拼接结果"
+  params:
+    query:
+      type: "str"
+      required: true
+      description: "搜索关键词"
+      example: "人工智能最新进展"
+    country:
+      type: "str"
+      required: false
+      default: "cn"
+      description: "搜索国家代码"
+      example: "us"
+    language:
+      type: "str"
+      required: false
+      default: "zh"
+      description: "搜索语言代码"
+      example: "en"
+    max_results:
+      type: "int"
+      required: false
+      default: 10
+      description: "最大搜索结果数量"
+      example: 5
+
+SerperWebCrawlerNode:
+  type: "web_crawler"
+  class: "src.nodes.web_crawler.SerperWebCrawlerNode"
+  name: "网络爬虫"
+  description: "接收URL并返回网页正文内容的节点"
+  output:
+    result: "提取的正文内容"
+  params:
+    url:
+      type: "str"
+      required: true
+      description: "需要抓取的网页的URL链接,一次只支持一个链接的爬取"
+      example: "https://example.com"
+    need_summary:
+      type: "bool"
+      required: true
+      description: "当为true时返回智能总结内容,false返回原始内容"
+    include_markdown:
+      type: "bool"
+      required: true
+      description: "是否需要返回markdown格式内容"
+
+UserInputNode:
+  type: "user_input"
+  class: "src.nodes.user_input.UserInputNode"
+  name: "用户输入"
+  description: "用户输入节点，在执行过程中暂停并等待用户输入信息，将用户输入作为节点执行结果"
+  output:
+    result: "用户输入的值"
+  params:
+    prompt:
+      type: "str"
+      required: true
+      description: "向用户显示的提示信息，说明需要输入什么内容，或者需要执行什么操作"
+      example: "请输入您的姓名："
+    input_type:
+      type: "str"
+      required: true
+      default: "text"
+      description: "期望的输入类型，支持：text(文本)"
+      example: "geolocation"
+    default_value:
+      type: "str"
+      required: false
+      description: "默认值，当用户未输入时使用此值"
+      example: "默认姓名"
+    validation:
+      type: "dict"
+      required: false
+      default: {}
+      description: "输入验证规则，可包含：required: 是否必填; min_length/max_length: 文本长度限制; min/max: 数值范围限制; pattern: 正则表达式匹配; enum: 枚举值列表"
+      example: {"required": true, "min_length": 3}

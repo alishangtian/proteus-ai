@@ -1,0 +1,74 @@
+name: proteus
+services:
+  agent:
+    image: proteus-agent
+    container_name: agent
+    volumes:
+      - ./volumes/agent/logs:/app/logs
+      - ./volumes/agent/data:/app/data
+      - ./volumes/agent/.env:/app/.env
+      - ./volumes/agent/conf:/app/conf
+    environment:
+      - log_file_path=/app/logs/agent.log
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - proteus-network
+
+  redis:
+    image: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    environment:
+      - TZ=Asia/Shanghai
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./volumes/redis/data:/data
+      - ./volumes/redis/conf/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - proteus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  sandbox:
+    container_name: sandbox
+    image: proteus-sandbox 
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./volumes/sandbox/.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - proteus-network
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    environment:
+      - NGINX_REDIRECT_PORT=443
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./volumes/nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro
+      - ./volumes/nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - agent
+    command: >
+      sh -c "envsubst '$${NGINX_REDIRECT_PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+      && exec nginx -g 'daemon off;'"
+    restart: unless-stopped
+    networks:
+      - proteus-network
+
+networks:
+  proteus-network:
+    name: proteus-network

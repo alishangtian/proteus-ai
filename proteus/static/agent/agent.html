@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+        <title>智能体编辑器</title>
+        <link rel="stylesheet" href="/static/agent/agent.css">
+        <script src="/static/marked.min.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <!-- 左侧面板 -->
+            <div class="left-panel">
+                <div class="agent-info">
+                    <div class="tool-header">
+                        <h3>智能体名称</h3>
+                        <button id="agentListButton" class="add-button">智能体列表</button>
+                    </div>
+                    <input type="text" id="agentName" placeholder="请输入智能体名称...">
+                    <h3>智能体描述</h3>
+                    <textarea id="agentDescription"
+                        placeholder="请输入智能体描述..."></textarea>
+                    <div class="tool-header">
+                        <h3>系统提示词</h3>
+                        <button id="generatePromptButton" class="add-button">AI生成</button>
+                    </div>
+                    <div class="prompt-container">
+                        <textarea id="systemPrompt"
+                            placeholder="请输入系统提示词..."></textarea>
+                    </div>
+                </div>
+                <div class="tools-section">
+                    <div class="tool-header">
+                        <h3>工具</h3>
+                        <button id="add-tool-button"
+                            class="add-button">添加工具</button>
+                    </div>
+                    <div class="tool-list" id="toolList"></div>
+                    <!-- 工具选择模态框 -->
+                    <div class="modal" id="toolSelectorModal">
+                        <div class="modal-content">
+                            <span class="close-modal">&times;</span>
+                            <h3>选择工具</h3>
+                            <button class="confirm-selection">确认选择</button>
+                            <div class="tool-selector-list"
+                                id="toolSelectorList"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 智能体列表模态框 -->
+                <div class="modal" id="agentSelectorModal">
+                    <div class="modal-content">
+                        <span class="close-modal">&times;</span>
+                        <h3>选择智能体</h3>
+                        <div class="agent-selector-list" id="agentSelectorList"></div>
+                        <button class="confirm-selection">确认选择</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧面板 -->
+            <div class="right-panel">
+                <div class="top-bar">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="saveButton" class="save-button">保存</button>
+                        <button id="deleteAgentButton" class="delete-button" style="display: none;">删除</button>
+                    </div>
+                </div>
+                <div id="conversation-history"></div>
+                <div class="chat-display" id="chatDisplay">
+                    <!-- 聊天消息将在这里动态添加 -->
+                </div>
+                <div class="chat-input">
+                    <textarea id="messageInput"
+                        placeholder="请输入消息..."></textarea>
+                    <button id="sendButton">➤</button>
+                </div>
+            </div>
+        </div>
+        <script src="/static/agent/agent.js"></script>
+        <script src="/static/main.js"></script>
+    </body>
+</html>

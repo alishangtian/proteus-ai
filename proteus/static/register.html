@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户注册 - Proteus</title>
+    <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .login-container {
+            width: 100%;
+            max-width: 450px;
+        }
+        
+        .login-box {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .login-box h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-weight: 600;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .form-group input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            outline: none;
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(to right, #667eea, #764ba2);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 14px rgba(0, 0, 0, 0.1);
+        }
+        
+        .login-footer {
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .login-footer a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        
+        .login-footer a:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 480px) {
+            .login-box {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <h2 class="login-title">欢迎注册Proteus</h2>
+            <form id="registerForm" onsubmit="return handleRegister(event)">
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" name="username" required minlength="3" maxlength="20" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>电子邮箱</label>
+                    <input type="email" name="email" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>密码</label>
+                    <input type="password" name="password" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>确认密码</label>
+                    <input type="password" name="confirmPassword" required minlength="6" autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn-login">立即注册</button>
+            </form>
+            <div class="login-footer">
+                已有账号？ <a href="/login">立即登录</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function handleRegister(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = {
+                username: formData.get('username'),
+                email: formData.get('email'),
+                password: formData.get('password'),
+                confirm_password: formData.get('confirmPassword')
+            };
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    // 显示成功提示并延时跳转
+                    const successMsg = document.createElement('div');
+                    successMsg.style = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:15px;background:#d4edda;color:#155724;border-radius:5px;';
+                    successMsg.innerHTML = '✅ 注册成功，3秒后自动跳转到登录页面...';
+                    document.body.appendChild(successMsg);
+                    setTimeout(() => {
+                        window.location.href = '/static/login.html';
+                    }, 3000);
+                } else {
+                    alert(result.error || '注册失败，请检查输入信息');
+                }
+            } catch (error) {
+                alert('网络错误，请稍后重试');
+            }
+        }
+    </script>
+</body>
+</html>

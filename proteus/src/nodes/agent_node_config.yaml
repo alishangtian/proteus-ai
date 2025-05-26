@@ -1,0 +1,437 @@
+PythonExecuteNode:
+  type: "python_execute"
+  class: "src.nodes.python_execute.PythonExecuteNode"
+  name: "Python函数执行"
+  description: "通用Python代码执行节点，code参数是要执行的代码，最终结果需要print出来，否则拿不到结果，当执行code导入的依赖不是系统自带的话，需要先使用代码安装必要的依赖"
+  output:
+    result: "函数执行结果"
+  params:
+    code:
+      type: "str"
+      required: true
+      description: "要执行的Python代码，最终结果需要print打印出来"
+      example: "def calculate(a, b):\n    print(a + b) \n calculate(a,b)"
+    variables:
+      type: "dict"
+      required: false
+      default: {}
+      description: "执行python代码需要的参数，可传入各类数据类型"
+      example: {"a": 1, "b": 2}
+
+FileReadNode:
+  type: "file_read"
+  class: "src.nodes.file_read.FileReadNode"
+  name: "文件读取"
+  description: "文件读取节点"
+  output:
+    result: "文件内容"
+  params:
+    path:
+      type: "str"
+      required: true
+      description: "文件路径"
+      example: "./data/example.txt"
+    encoding:
+      type: "str"
+      required: false
+      default: "utf-8"
+      description: "文件编码"
+      example: "gbk"
+
+FileWriteNode:
+  type: "file_write"
+  class: "src.nodes.file_write.FileWriteNode"
+  name: "文件写入"
+  description: "文件写入节点，支持指定文件名称、内容和格式"
+  config:
+    default_write_path: "./data/file"
+  output:
+    result: "写入结果"
+  params:
+    filename:
+      type: "str"
+      required: true
+      description: "文件名称（不需要包含格式后缀）"
+      example: "report"
+    content:
+      type: "str"
+      required: true
+      description: "要写入的文件内容"
+      example: "这是要写入文件的示例内容"
+    format:
+      type: "str"
+      required: false
+      default: "md"
+      description: "文件格式（如md、txt、csv等）"
+      example: "txt"
+    encoding:
+      type: "str"
+      required: false
+      default: "utf-8"
+      description: "文件编码"
+
+DbQueryNode:
+  type: "db_query"
+  class: "src.nodes.db_query.DbQueryNode"
+  name: "数据库查询"
+  description: "MySQL数据库查询节点"
+  output:
+    result: "查询结果集"
+  params:
+    host:
+      type: "str"
+      required: true
+      description: "数据库主机地址"
+      example: "localhost"
+    port:
+      type: "int"
+      required: false
+      default: 3306
+      description: "数据库端口"
+      example: 5432
+    user:
+      type: "str"
+      required: true
+      description: "数据库用户名"
+      example: "admin"
+    password:
+      type: "str"
+      required: true
+      description: "数据库密码"
+      example: "password123"
+    database:
+      type: "str"
+      required: true
+      description: "数据库名称"
+      example: "mydb"
+    query:
+      type: "str"
+      required: true
+      description: "SQL查询语句"
+      example: "SELECT * FROM users WHERE id = ?"
+    parameters:
+      type: "tuple"
+      required: false
+      default: ()
+      description: "查询参数(元组格式)"
+      example: (1, "test")
+
+DbExecuteNode:
+  type: "db_execute"
+  class: "src.nodes.db_execute.DbExecuteNode"
+  name: "数据库执行"
+  description: "MySQL数据库执行节点"
+  output:
+    result: "sql执行结果"
+  params:
+    host:
+      type: "str"
+      required: true
+      description: "数据库主机地址"
+    port:
+      type: "int"
+      required: false
+      default: 3306
+      description: "数据库端口"
+    user:
+      type: "str"
+      required: true
+      description: "数据库用户名"
+    password:
+      type: "str"
+      required: true
+      description: "数据库密码"
+    database:
+      type: "str"
+      required: true
+      description: "数据库名称"
+    statement:
+      type: "str"
+      required: true
+      description: "SQL执行语句"
+    parameters:
+      type: "tuple"
+      required: false
+      default: ()
+      description: "执行参数(元组格式)"
+      example: ("value1", 123)
+    auto_commit:
+      type: "bool"
+      required: false
+      default: true
+      description: "是否自动提交"
+      example: false
+
+TerminalNode:
+  type: "terminal"
+  class: "src.nodes.terminal.TerminalNode"
+  name: "终端命令"
+  description: "执行终端命令节点"
+  output:
+    result: "命令标准输出"
+  params:
+    command:
+      type: "str"
+      required: true
+      description: "要执行的shell命令"
+      example: "ls -la"
+    shell:
+      type: "bool"
+      required: false
+      default: true
+      description: "是否使用shell执行命令"
+      example: false
+
+SerperSearchNode:
+  type: "serper_search"
+  class: "src.nodes.serper_search.SerperSearchNode"
+  name: "Serper搜索引擎"
+  description: "Serper搜索引擎节点，可以搜索一些时下最新的信息，如新闻、论坛、博客等，如果需要更详细的信息，请自行根据link爬取网页内容"
+  output:
+    result: "搜索结果，网页url和网页概要的拼接结果"
+  params:
+    query:
+      type: "str"
+      required: true
+      description: "搜索关键词"
+      example: "人工智能最新进展"
+    country:
+      type: "str"
+      required: false
+      default: "cn"
+      description: "搜索国家代码"
+      example: "us"
+    language:
+      type: "str"
+      required: false
+      default: "zh"
+      description: "搜索语言代码"
+      example: "en"
+    max_results:
+      type: "int"
+      required: false
+      default: 10
+      description: "最大搜索结果数量"
+      example: 5
+
+ArxivSearchNode:
+  type: "arxiv_search"
+  class: "src.nodes.arxiv_search.ArxivSearchNode"
+  name: "Arxiv论文搜索"
+  description: "搜索Arxiv论文库，返回最相关的5篇论文信息，包括标题、作者、摘要、发布日期、PDF链接等"
+  output:
+    result: "论文搜索结果，论文标题和正文的拼接结果"
+  params:
+    query:
+      type: "str"
+      required: true
+      description: "搜索关键词，只支持英文关键词，支持Title、Author、Abstract等字段的搜索"
+      example: "deep learning"
+
+SerperWebCrawlerNode:
+  type: "web_crawler"
+  class: "src.nodes.web_crawler.SerperWebCrawlerNode"
+  name: "网络爬虫"
+  description: "接收URL并返回网页正文内容的节点"
+  output:
+    result: "提取的正文内容"
+  params:
+    url:
+      type: "str"
+      required: true
+      description: "需要抓取的网页的URL链接,一次只支持一个链接的爬取"
+      example: "https://example.com"
+    # need_summary:
+    #   type: "bool"
+    #   required: true
+    #   description: "当为true时返回智能总结内容,false返回原始内容"
+    # include_markdown:
+    #   type: "bool"
+    #   required: true
+    #   description: "是否需要返回markdown格式内容"
+
+WeatherForecastNode:
+  type: "weather_forecast"
+  class: "src.nodes.weather_forecast.WeatherForecastNode"
+  name: "天气预报"
+  description: "通过经纬度获取天气信息"
+  output:
+    success: "执行状态"
+    error: "错误信息"
+    data: "天气数据，包含当前天气、未来3天天气和天气总结等信息"
+  params:
+    latitude:
+      type: "float"
+      required: false
+      description: "纬度，与longitude配合使用"
+    longitude:
+      type: "float"
+      required: false
+      description: "经度，与latitude配合使用"
+
+ApiCallNode:
+  type: "api_call"
+  class: "src.nodes.api_call.ApiCallNode"
+  name: "API调用"
+  description: "通用API调用节点，支持Bearer Token认证，可用于调用各类REST API接口"
+  output:
+    result: "响应数据"
+  params:
+    url:
+      type: "str"
+      required: true
+      description: "API接口地址"
+      example: "https://api.example.com/v1/users"
+    method:
+      type: "str"
+      required: true
+      description: "HTTP请求方法(GET, POST, PUT, DELETE等)"
+      example: "GET"
+    headers:
+      type: "dict"
+      required: false
+      default: {}
+      description: "请求头，键值对格式"
+      example: {"Content-Type": "application/json"}
+    body:
+      type: "dict"
+      required: false
+      default: {}
+      description: "请求体数据，JSON格式"
+      example: {"key": "value"}
+    bearer_token:
+      type: "str"
+      required: false
+      description: "Bearer Token认证令牌"
+      example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+
+# WorkflowNode:
+#   type: "workflow_node"
+#   name: "工作流执行"
+#   description: "工作流节点 - 基于自然语言任务描述自动生成并执行工作流，适用于需要多步骤处理的复杂任务，支持：1. 解析任务描述文本，理解用户意图 2. 自动生成适合的工作流程，包含所需的处理节点 3. 按顺序执行工作流中的所有节点 4. 收集并整合各节点的执行结果 5. 支持动态工作流生成和错误处理"
+#   output:
+#     result: "工作流执行结果"
+#   params:
+#     text:
+#       type: "str"
+#       required: true
+#       description: "任务描述文本，用于生成和执行工作流"
+#       example: "查询北京未来3天的天气并生成报告"
+
+BrowserAgentNode:
+  type: "browser_agent"
+  class: "src.nodes.browser_agent.BrowserAgentNode"
+  name: "浏览器自动化"
+  description: "基于现代浏览器内核的自动化解决方案，支持：1. 多维度网页数据捕获（文本/截图/网络请求）2. 拟人化交互行为模拟（点击/滚动/表单）3. 智能反检测机制（指纹伪装/流量伪装）4. 多场景应用支持（电商/政务/社交平台）"
+  output:
+    result: "浏览器自动化执行结果"
+  params:
+    task:
+      type: "str"
+      required: true
+      description: "要执行的浏览器自动化任务描述"
+      example: "打开百度并搜索'人工智能'"
+
+UserInputNode:
+  type: "user_input"
+  class: "src.nodes.user_input.UserInputNode"
+  name: "用户输入"
+  description: "用户输入节点，在执行过程中暂停并等待用户输入信息，将用户输入作为节点执行结果，或者自动获取当前经纬度"
+  output:
+    result: "用户输入的值"
+  params:
+    prompt:
+      type: "str"
+      required: true
+      description: "向用户显示的提示信息，说明需要输入什么内容，或者需要执行什么操作"
+      example: "请输入您的姓名："
+    input_type:
+      type: "str"
+      required: true
+      default: "text"
+      description: "期望的输入类型，支持：text(文本)、geolocation(仅限自动获取当前位置经纬度时使用)、local_browser(通过当前客户端本地浏览器执行自动化工作) 、password(密码，仅限需要使用用户密码的场景，切记不要试图回显密码）"
+      example: "text"
+    default_value:
+      type: "str"
+      required: false
+      description: "默认值，当用户未输入时使用此值"
+      example: "默认姓名"
+    validation:
+      type: "dict"
+      required: false
+      default: {}
+      description: "输入验证规则，可包含：required: 是否必填; min_length/max_length: 文本长度限制; min/max: 数值范围限制; pattern: 正则表达式匹配; enum: 枚举值列表"
+      example: {"required": true, "min_length": 3}
+
+MCPClientNode:
+ type: "mcp_client"
+ class: "src.nodes.mcp_client.MCPClientNode"
+ name: "MCP客户端"
+ description: "MCP（Model Context Protocol）客户端节点，用于执行mcp工具，和MCP服务器交互，支持工具调用和资源访问"
+ output:
+   success: "执行状态"
+   error: "错误信息(如果有)"
+   result: "响应结果"
+   status_code: "HTTP状态码"
+ params:
+   operation:
+     type: "str"
+     required: true
+     description: "操作类型，可选值：
+       - use_tool: 使用工具
+       - access_resource: 访问资源
+       - list_tools: 列出可用工具
+       - list_resources: 列出可用资源
+       - list_prompts: 列出可用提示词模板
+       - get_prompt: 查询可用提示词模板"
+     example: "use_tool"
+   tool_name:
+     type: "str"
+     required: false
+     description: "工具名称（当operation为'use_tool'时必须）"
+     example: "get_forecast"
+   arguments:
+     type: "dict"
+     required: false
+     default: {}
+     description: "工具参数（当operation为'use_tool'时必须）"
+     example: {"city": "beijing", "days": 3}
+   resource_uri:
+     type: "str"
+     required: false
+     description: "资源URI（当operation为'access_resource'时必须）"
+     example: "weather://beijing/current"
+   server_name:
+     type: "str"
+     required: true
+     description: "MCP服务器名称"
+     example: "weather-server"
+
+HandoffNode:
+  type: "handoff"
+  class: "src.nodes.handoff.HandoffNode"
+  name: "任务交接"
+  description: "接收并处理handoff事件，支持任务转交到不同处理方（planner/researcher/coder/reporter）"
+  output:
+    result: "事件处理结果"
+  params:
+    task:
+      type: "str"
+      required: true
+      description: "需要转交的任务描述"
+      example: "完成市场分析报告"
+    context:
+      type: "dict"
+      required: false
+      default: {}
+      description: "任务上下文信息"
+    target_role:
+      type: "str"
+      required: true
+      description: "接收方角色"
+      example: "researcher"
+    description:
+      type: "str"
+      required: false
+      description: "任务详细说明"
+      example: "需要包含竞品分析和SWOT分析"

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>询问任何问题</title>
+        <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+        <link rel="stylesheet" href="/static/styles.css">
+        <link rel="stylesheet" href="/static/card-styles.css">
+        <script src="/static/marked.min.js"></script>
+        <script src="/static/main.js" type="module"></script>
+        <script src="/static/card-view.js"></script>
+    </head>
+
+    <body>
+        <!-- 左侧边栏 -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="/static/icon/proteus.png" class="logo-icon"
+                        alt="Proteus Logo">
+                    <div class="logo-text">Proteus</div>
+                </div>
+                <div class="user-info">
+                    {% if logged_in %}
+                    <span class="username">{{ username }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="sidebar-menu">
+                <div class="menu-item model-option active home-page"
+                    data-model="home">
+                    <div class="menu-item-icon">
+                        🏠
+                    </div>
+                    <div class="menu-item-text">首页</div>
+                </div>
+                <div class="menu-item model-option" data-model="super-agent">
+                    <div class="menu-item-icon">
+                        🤖
+                    </div>
+                    <div class="menu-item-text">超级智能体</div>
+                </div>
+                <div class="menu-item model-option" data-model="workflow">
+                    <div class="menu-item-icon">
+                        ⚙️
+                    </div>
+                    <div class="menu-item-text">自动工作流</div>
+                </div>
+                <div class="menu-item model-option" data-model="mcp-agent">
+                    <div class="menu-item-icon">
+                        🖥️
+                    </div>
+                    <div class="menu-item-text">MCP智能体</div>
+                </div>
+                <div class="menu-item model-option" data-model="browser-agent">
+                    <div class="menu-item-icon">
+                        💻
+                    </div>
+                    <div class="menu-item-text">Browser智能体</div>
+                </div>
+                <div class="menu-item model-option" data-model="deep-research">
+                    <div class="menu-item-icon">
+                        📚
+                    </div>
+                    <div class="menu-item-text">深度研究</div>
+                </div>
+                <div class="menu-item model-option" data-model="create-agent">
+                    <div class="menu-item-icon">
+                        <svg viewBox="0 0 24 24" width="20" height="20"
+                            stroke="currentColor" fill="none" stroke-width="2">
+                            <circle cx="12" cy="7" r="4" />
+                            <path
+                                d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+                            <line x1="12" y1="11" x2="12" y2="17" />
+                            <line x1="9" y1="14" x2="15" y2="14" />
+                        </svg>
+                    </div>
+                    <div class="menu-item-text">创建智能体</div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <svg class="toggle-sidebar" id="toggleSidebar"
+                    viewBox="0 0 24 24" width="20" height="20">
+                    <g fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+                        <path d="M9 4v16"></path>
+                    </g>
+                </svg>
+            </div>
+        </div>
+
+        <div class="main-container">
+            <!-- 弹幕容器 -->
+            <!-- <div class="danmaku-container" id="danmaku-container"></div> -->
+            <!-- 弹幕控制按钮 -->
+            <!-- <div class="danmaku-controls">
+            <button id="toggle-danmaku" class="danmaku-btn" draggable="true">
+                <span class="danmaku-icon">🦭</span>
+                <span class="danmaku-text">弹幕</span>
+            </button>
+        </div> -->
+            <!-- 工具展示区域 -->
+            <div class="tools-container">
+                <div class="tools-header">
+                    <h3>工具调用</h3>
+                    <span class="tools-count">0</span>
+                </div>
+                <div class="tools-list"></div>
+            </div>
+
+            <!-- 工具详情区域 -->
+            <div class="tool-details-container">
+                <div class="tool-details-header">
+                    <h3>工具详情</h3>
+                    <button class="close-details">×</button>
+                </div>
+                <div class="tool-details-content"></div>
+            </div>
+
+            <div id="conversation-history"></div>
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <textarea id="user-input"
+                        placeholder="询问任何问题，创造任何事物"></textarea>
+                    <div class="input-controls">
+                        <div id="itecount-container">
+                            <!-- <i class="icon-iteration"></i> -->
+                            <span class="itecount-label">迭代轮次</span>
+                            <input type="number" id="itecount" min="1"
+                                value="10" placeholder="轮次">
+                        </div>
+                        <button id="send-button" type="button">发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+
+</html>

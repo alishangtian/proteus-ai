@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+    <title>Proteus</title>
+    <link rel="stylesheet" href="/static/superagent/styles.css">
+    <script src="/static/marked.min.js"></script>
+  </head>
+  <body>
+    <!-- 左侧边栏 -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <img src="/static/icon/proteus.png" class="logo-icon" alt="Proteus Logo">
+          <div class="logo-text">Proteus</div>
+        </div>
+      </div>
+      <div class="sidebar-menu">
+        <div class="menu-item active">
+          <div class="menu-item-icon">🏠</div>
+          <div class="menu-item-text">首页</div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-icon">🤖</div>
+          <div class="menu-item-text">超级智能体</div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-icon">🖼️</div>
+          <div class="menu-item-text">图片工作室</div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-icon">🎬</div>
+          <div class="menu-item-text">视频生成</div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-icon">🔍</div>
+          <div class="menu-item-text">深度研究</div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-icon">👤</div>
+          <div class="menu-item-text">所有智能体</div>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <!-- <div class="toggle-sidebar" id="toggleSidebar">○</div>
+        <div class="menu-item-text">我</div> -->
+      </div>
+    </div>
+
+    <!-- 主内容区域 -->
+    <div class="main-content">
+      <div class="header">
+        <div class="header-left">
+          <div class="back-button">←</div>
+          <div class="menu-button">≡</div>
+          <div class="chat-title">今天有什么重要新闻吗？</div>
+        </div>
+        <div class="header-right">
+          <div class="header-button">✏️</div>
+          <div class="header-button">+</div>
+          <div class="header-button">📤</div>
+        </div>
+      </div>
+      <div class="chat-container" id="chatContainer">
+        <div class="message user-message">
+          <div class="message-content">今天有什么重要新闻吗？</div>
+        </div>
+        <div class="message assistant-message">
+          <div class="message-content">我来帮您查找今天的重要新闻。让我搜索一下最新的重要新闻事件。</div>
+        </div>
+        <div class="tool-use">
+          <div class="tool-label">
+            <span class="tool-icon">🔍</span>
+            使用工具
+          </div>
+          <input type="text" class="tool-search" value="搜索 今日重要新闻">
+          <div class="tool-action">查看</div>
+        </div>
+        <div class="message assistant-message">
+          <div class="message-content">根据搜索结果，我看到有几条重要新闻，让我获取更详细的信息：</div>
+        </div>
+        <div class="tool-use">
+          <div class="tool-label">
+            <span class="tool-icon">🔍</span>
+            使用工具
+          </div>
+          <input type="text" class="tool-search"
+            value="并行搜索 特朗普关税最新消息 中国经济最新消息 缅甸地震最新情况 伊朗和美国">
+          <div class="tool-action">查看</div>
+        </div>
+        <div class="message assistant-message">
+          <div class="message-content">让我获取更多关于缅甸地震的详细信息：</div>
+        </div>
+        <div class="tool-use">
+          <div class="tool-label">
+            <span class="tool-icon">📄</span>
+            使用工具
+          </div>
+          <input type="text" class="tool-search"
+            value="读取 https://news.un.org/zh/story/2025/04/1137181">
+          <div class="tool-action">查看</div>
+        </div>
+        <div class="tool-use">
+          <div class="tool-label">
+            <span class="tool-icon">📄</span>
+            使用工具
+          </div>
+          <input type="text" class="tool-search"
+            value="读取 https://cn.nytimes.com/business/20250408/trump-china-tariffs-threat/">
+          <div class="tool-action">查看</div>
+        </div>
+      </div>
+      <div class="input-container">
+        <div class="input-area">
+          <textarea class="input-field" placeholder="询问任何问题，创造任何事物"></textarea>
+          <div class="input-actions">
+            <div class="voice-button">🎤</div>
+            <div class="send-button">→</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script src="/static/superagent/script.js"></script>
+  </body>
+</html>
