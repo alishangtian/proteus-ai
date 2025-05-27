@@ -243,7 +243,7 @@ async def call_llm_api(
     messages_length = calculate_messages_length(messages)
     if messages_length > 100000:
         if lang_context_model is None:
-            lang_context_model = "lang-context-model:"
+            lang_context_model = "lang-context-model"
         model_name = lang_context_model
     logger.info(
         f"[{request_id}] 请求参数: model={model_name}, "
