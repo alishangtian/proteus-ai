@@ -11,8 +11,10 @@ from .base import BaseNode
 from .web_crawler_local import SeleniumWebCrawlerNode
 from ..api.config import API_CONFIG
 from ..api.llm_api import call_llm_api
+from ..utils.redis_cache import RedisCache
 
 logger = logging.getLogger(__name__)
+
 
 class RateLimiter:
     """全局请求限速器，使用漏斗桶算法实现"""
@@ -108,15 +110,15 @@ class SerperWebCrawlerNode(BaseNode):
 """,
     }
 
-    # 全局缓存，存储URL到(内容, 过期时间)的映射
-    _cache: Dict[str, Tuple[str, float]] = {}
-    _cache_lock = Lock()
-    _cache_ttl = API_CONFIG.get("web_crawler_cache_ttl", 3600)  # 默认1小时
+    # Redis缓存实例
+    _cache: RedisCache
+    _cache_ttl = int(os.getenv("WEB_CRAWLER_CACHE_TTL", "3600"))  # 默认1小时
 
     def __init__(self):
         super().__init__()
         self.api_key = API_CONFIG["serper_api_key"]
         self.api_url = "https://scrape.serper.dev"
+        self._cache = RedisCache()
 
     def _is_pdf_url(self, url: str) -> bool:
         """检查URL是否指向PDF文件"""
@@ -277,20 +279,11 @@ class SerperWebCrawlerNode(BaseNode):
         return {"result": execution_result.get("content", "爬取失败，请忽略这个链接")}
 
     def _get_from_cache(self, url: str) -> Optional[str]:
-        """从缓存中获取URL对应的内容，如果不存在或已过期则返回None"""
-        with self._cache_lock:
-            if url not in self._cache:
-                return None
-
-            content, expire_time = self._cache[url]
-            if time.time() > expire_time:
-                del self._cache[url]  # 清理过期缓存
-                return None
-
-            return content
+        """从Redis缓存获取URL对应的内容"""
+        cache_key = f"crawler:cache:{url}"
+        return self._cache.get(cache_key)
 
     def _add_to_cache(self, url: str, content: str) -> None:
-        """将URL和内容添加到缓存"""
-        with self._cache_lock:
-            expire_time = time.time() + self._cache_ttl
-            self._cache[url] = (content, expire_time)
+        """将URL和内容添加到Redis缓存"""
+        cache_key = f"crawler:cache:{url}"
+        self._cache.set(cache_key, content, self._cache_ttl)
