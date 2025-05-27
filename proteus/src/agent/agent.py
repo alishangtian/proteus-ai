@@ -508,6 +508,7 @@ class Agent:
             observation = None
             final_answer = None
             handoff_flag = False  # 新增handoff标志
+            terminition_flag = False
 
             while not handoff_flag:
                 # 检查终止条件
@@ -528,6 +529,7 @@ class Agent:
                         logger.info(
                             f"Termination condition met at step {iteration_count}"
                         )
+                        terminition_flag = True
                         break
                 except Exception as e:
                     termination_ctx["error_occurred"] = True
@@ -724,6 +726,7 @@ class Agent:
                 not handoff_flag
                 and not final_answer
                 and iteration_count >= self.max_iterations
+                and not terminition_flag
             ):
                 error_msg = (
                     f"Failed to get final answer after {self.max_iterations} iterations"
@@ -734,8 +737,12 @@ class Agent:
             if not handoff_flag and stream:
                 event = await create_agent_complete_event(final_answer)
                 await self.stream_manager.send_message(chat_id, event)
+            elif terminition_flag and stream:
+                event = await create_agent_complete_event(observation)
+                await self.stream_manager.send_message(chat_id, event)
 
             # handoff情况返回None，其他情况返回final_answer
+            final_answer = final_answer if final_answer else observation
             return final_answer if not handoff_flag else None
         except Exception as e:
             error_msg = str(e)
