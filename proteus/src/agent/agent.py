@@ -742,7 +742,7 @@ class Agent:
                 await self.stream_manager.send_message(chat_id, event)
 
             # handoff情况返回None，其他情况返回final_answer
-            final_answer = final_answer if final_answer else observation
+            final_answer = observation if terminition_flag else final_answer
             return final_answer if not handoff_flag else None
         except Exception as e:
             error_msg = str(e)
