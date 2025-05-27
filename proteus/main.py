@@ -570,7 +570,7 @@ async def process_agent(
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="final_answer")
                     ],
-                    model_name="volceapi-deepseek-v3-128k",
+                    model_name="360-deepseek-chat-v3",
                     max_iterations=itecount,
                 ),
                 TeamRole.RESEARCHER: AgentConfiguration(
@@ -614,7 +614,7 @@ async def process_agent(
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="file_write")
                     ],
-                    model_name="gemini-2.5-pro-preview-1088k",
+                    model_name="lang_context_model",
                     max_iterations=itecount,
                     llm_timeout=int(os.getenv("LONG_LLM_TIMEOUT", 120)),
                 ),

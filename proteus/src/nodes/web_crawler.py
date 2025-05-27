@@ -101,7 +101,7 @@ class SerperWebCrawlerNode(BaseNode):
    - 不要添加原文未出现的内容
    - 如遇复杂结构，保持信息完整性优于格式简洁
    - 请只返回总结，不要包含任何额外的说明或提示
-   - 保持原文严谨度，字数缩减至20%以内，避免主观阐释""",
+   - 保持原文严谨度，字数缩减至50%以内，避免主观阐释""",
         "user": """请处理以下文档：\n
 {text}\n
 文档原始链接：{url}
@@ -221,7 +221,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="gemini-2.5-pro-preview-1088k",
+                        model_name="lang-context-model",
                     )
                 else:
                     text = await call_llm_api(
@@ -239,7 +239,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="gemini-2.5-pro-preview-1088k",
+                        model_name="lang-context-model",
                     )
 
             end_time = time.time()
