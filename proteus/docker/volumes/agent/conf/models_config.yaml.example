@@ -1,25 +1,17 @@
 # 模型配置YAML文件
+base-model:
+  base_url: https://api.deepseek.com/v1
+  api_key: vTwpJaVSl1ctTJtRGimzcPitcKU******PdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  model_name: deepseek-chat
+lang_context_model:
+  base_url: https://api.deepseek.com/v1
+  api_key: vTwpJaVSl1ctTJtRGimzcPitcK********OLZ8lZXNvOHbXlPcw/l/tFQ==
+  model_name: deepseek-chat
 deepseek-chat:
   base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitcKUATA8DDpgxeG0TnlTltS+xTvb0M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  api_key: vTwpJaVSl1ctTJtRGimzcPitc*********PdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
   model_name: deepseek-chat
 deepseek-reasoner:
   base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitcKUATA8DDpgxeG0TnlTltS+xTvb0M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  api_key: vTwpJaVSl1ctTJtRGimzcPitcKU*******M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
   model_name: deepseek-reasoner
-gemini-2.5-pro-preview-1088k:
-  base_url: https://api.360.cn/v1
-  api_key: "xGV/I2eNVsmxLcPHhKbSwXVAvff/QdVvooRR0kFJ+5/E7HvBulmLnRdYQ4CXDPodikg8xEfG/VsUmdqfMZvnG8epjLxmfve5jpEEodfhCNw="
-  model_name: google/gemini-2.5-pro-preview
-volceapi-deepseek-v3-128k:
-  base_url: https://api.360.cn/v1
-  api_key: "xGV/I2eNVsmxLcPHhKbSwXVAvff/QdVvooRR0kFJ+5/E7HvBulmLnRdYQ4CXDPodikg8xEfG/VsUmdqfMZvnG8epjLxmfve5jpEEodfhCNw="
-  model_name: 360/volceapi-deepseek-v3
-360-deepseek-chat-v3:
-  base_url: https://api.360.cn/v1
-  api_key: "xGV/I2eNVsmxLcPHhKbSwXVAvff/QdVvooRR0kFJ+5/E7HvBulmLnRdYQ4CXDPodikg8xEfG/VsUmdqfMZvnG8epjLxmfve5jpEEodfhCNw="
-  model_name: deepseek-chat-v3
-360-deepseek-r1:
-  base_url: https://api.360.cn/v1
-  api_key: "xGV/I2eNVsmxLcPHhKbSwXVAvff/QdVvooRR0kFJ+5/E7HvBulmLnRdYQ4CXDPodikg8xEfG/VsUmdqfMZvnG8epjLxmfve5jpEEodfhCNw="
-  model_name: deepseek-chat-v3

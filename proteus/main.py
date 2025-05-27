@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.cot_prompt import COT_PROMPT_TEMPLATES
+from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
 from src.agent.agent import Agent, AgentConfiguration
@@ -576,7 +577,7 @@ async def process_agent(
                     tools=["web_crawler", "serper_search"],
                     prompt_template=RESEARCHER_PROMPT_TEMPLATES,
                     agent_description="你是一位专业的深度研究员。参考已获取信息，以解决需求，如果你认为参考信息不全面，请使用工具自行获取，你的职责是researcher",
-                    role_description="研究员，可以借助搜索引擎搜索最新信息并简要的处理",
+                    role_description="研究员，可以借助搜索引擎和网络爬虫搜集最新信息并简要的处理",
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="final_answer")
                     ],
@@ -597,7 +598,7 @@ async def process_agent(
                 TeamRole.PAPER_SEARCH_EXPERT: AgentConfiguration(
                     tools=["arxiv_search"],
                     prompt_template=RESEARCHER_PROMPT_TEMPLATES,
-                    agent_description="论文搜索专家，擅长根据主题搜索论文，切记：你不负责其他非论文搜索任务\n你的职责是paper_search_expert",
+                    agent_description="论文搜索专家，擅长根据主题搜索论文，切记：你只负责论文搜索任务\n你的职责是paper_search_expert",
                     role_description="论文搜索专家",
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="final_answer")
@@ -630,6 +631,13 @@ async def process_agent(
         else:
             # 获取基础工具集合 - 延迟初始化node_manager
             all_tools = NodeConfigManager.get_instance().get_tools()
+            prompt_template = COT_PROMPT_TEMPLATES
+            if agentmodel == "workflow":
+                prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
+                all_tools = NodeConfigManager.get_instance().get_tools(
+                    tool_type="workflow"
+                )
+            # 获取基础工具集合 - 延迟初始化node_manager
             agent = Agent(
                 tools=all_tools,
                 instruction="",
@@ -638,7 +646,7 @@ async def process_agent(
                 history_service=get_history_service(),
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
                 model_name="360-deepseek-chat-v3",
-                prompt_template=COT_PROMPT_TEMPLATES,
+                prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
             )
 

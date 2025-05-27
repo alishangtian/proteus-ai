@@ -223,6 +223,7 @@ async def call_llm_api(
     temperature: float = 0.1,
     output_json: bool = False,
     model_name: str = None,
+    lang_context_model: str = None,
 ) -> str:
     """
     调用llm API服务，支持自动重试
@@ -237,9 +238,13 @@ async def call_llm_api(
         返回完整响应字符串
     """
     logger.info(f"[{request_id}] 开始调用llm API")
+    if model_name is None:
+        model_name = "base-model"
     messages_length = calculate_messages_length(messages)
     if messages_length > 100000:
-        model_name = "gemini-2.5-pro-preview-1088k"
+        if lang_context_model is None:
+            lang_context_model = "lang-context-model:"
+        model_name = lang_context_model
     logger.info(
         f"[{request_id}] 请求参数: model={model_name}, "
         f"temperature={temperature}, "

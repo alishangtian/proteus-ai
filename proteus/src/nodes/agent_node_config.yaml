@@ -435,3 +435,37 @@ HandoffNode:
       required: false
       description: "任务详细说明"
       example: "需要包含竞品分析和SWOT分析"
+
+WorkflowGenerateNode:
+  type: "workflow_generate"
+  class: "src.nodes.workflow_generate.WorkflowGenerateNode"
+  name: "工作流生成"
+  description: "工作流生成节点 - 接收任务描述文本并生成相应的工作流，适用于需要多步骤处理的复杂任务，支持：1. 解析任务描述文本，理解用户意图 2. 自动生成适合的工作流程，包含所需的处理节点"
+  output:
+    result: "工作流生成结果"
+    workflow: "生成的工作流定义"
+  params:
+    text:
+      type: "str"
+      required: true
+      description: "任务描述文本，用于生成工作流"
+      example: "查询北京未来3天的天气并生成报告"
+
+WorkflowExecuteNode:
+  type: "workflow_execute"
+  class: "src.nodes.workflow_execute.WorkflowExecuteNode"
+  name: "工作流执行"
+  description: "工作流执行节点 - 执行上一步骤生成的工作流"
+  output:
+    result: "工作流执行结果"
+  params:
+    workflow:
+      type: "dict"
+      required: true
+      description: "要执行的工作流定义，包含节点和连接信息"
+      example: "{\"nodes\": [{\"id\": \"node1\", \"type\": \"weather_forecast\", \"params\": {}}]}"
+    workflow_id:
+      type: "str"
+      required: false
+      description: "工作流ID，如不提供则自动生成"
+      example: "workflow-12345"

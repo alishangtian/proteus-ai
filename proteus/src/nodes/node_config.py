@@ -301,6 +301,7 @@ class NodeConfigManager:
             nodes = self.get_all_agent_nodes()
         elif tool_type == "workflow":
             nodes = self.get_all_workflow_nodes()
+            logger.info(f"获取w工作流节点 {nodes}")
 
         tools = []
         for node_info in nodes:
