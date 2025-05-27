@@ -45,6 +45,7 @@ services:
       - ./volumes/sandbox/.env:/app/.env
     environment:
       - PYTHONUNBUFFERED=1
+      - TZ=Asia/Shanghai
     networks:
       - proteus-network
 

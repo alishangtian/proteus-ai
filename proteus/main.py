@@ -614,7 +614,7 @@ async def process_agent(
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="file_write")
                     ],
-                    model_name="lang_context_model",
+                    model_name="lang-context-model",
                     max_iterations=itecount,
                     llm_timeout=int(os.getenv("LONG_LLM_TIMEOUT", 120)),
                 ),
