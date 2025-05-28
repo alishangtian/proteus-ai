@@ -4,7 +4,7 @@ from typing import Dict, Any, Optional
 import aiohttp
 from .base import BaseNode
 from ..api.config import API_CONFIG
-import os, time
+import os, time, json
 import logging
 from threading import Lock
 from ..utils.redis_cache import RedisCache
@@ -139,7 +139,7 @@ class SerperSearchNode(BaseNode):
 
                         # 缓存有效结果
                         if results:
-                            self._add_to_cache(cache_key, result_data)
+                            self._add_to_cache(cache_key, results)
                             logger.info(
                                 f"缓存搜索结果 key={cache_key} ttl={self._cache_ttl}"
                             )
@@ -180,8 +180,19 @@ class SerperSearchNode(BaseNode):
 
     def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
         """从Redis缓存获取搜索结果"""
-        return self._cache.get(key)
+        cached_value = self._cache.get(key)
+        if cached_value:
+            try:
+                return json.loads(cached_value)
+            except json.JSONDecodeError:
+                logger.error(f"缓存值解析失败: {cached_value}")
+                return None
+        return None
 
     def _add_to_cache(self, key: str, value: Dict[str, Any]) -> None:
         """将搜索结果添加到Redis缓存"""
-        self._cache.set(key, value, self._cache_ttl)
+        try:
+            cached_value = json.dumps(value)
+            self._cache.set(key, cached_value, self._cache_ttl)
+        except (TypeError, json.JSONEncodeError) as e:
+            logger.error(f"缓存值序列化失败: {e}")
