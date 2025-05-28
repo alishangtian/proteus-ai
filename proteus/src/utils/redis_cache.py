@@ -79,3 +79,49 @@ class RedisCache:
         except redis.RedisError as e:
             logger.error(f"删除缓存失败: {e}")
             return False
+            
+    def lpush(self, key: str, value: str) -> bool:
+        """从左侧向列表添加元素"""
+        try:
+            client = self._get_client()
+            client.lpush(key, value)
+            return True
+        except redis.RedisError as e:
+            logger.error(f"列表添加元素失败: {e}")
+            return False
+            
+    def lrange(self, key: str, start: int = 0, end: int = -1) -> list:
+        """获取列表指定范围的元素"""
+        try:
+            client = self._get_client()
+            return client.lrange(key, start, end)
+        except redis.RedisError as e:
+            logger.error(f"获取列表元素失败: {e}")
+            return []
+            
+    def hset(self, name: str, key: str, value: str) -> bool:
+        """设置哈希表字段值"""
+        try:
+            client = self._get_client()
+            return client.hset(name, key, value)
+        except redis.RedisError as e:
+            logger.error(f"设置哈希值失败: {e}")
+            return False
+            
+    def hget(self, name: str, key: str) -> str:
+        """获取哈希表字段值"""
+        try:
+            client = self._get_client()
+            return client.hget(name, key)
+        except redis.RedisError as e:
+            logger.error(f"获取哈希值失败: {e}")
+            return None
+            
+    def hgetall(self, name: str) -> dict:
+        """获取哈希表所有字段值"""
+        try:
+            client = self._get_client()
+            return client.hgetall(name)
+        except redis.RedisError as e:
+            logger.error(f"获取哈希表失败: {e}")
+            return {}

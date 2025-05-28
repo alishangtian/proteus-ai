@@ -322,7 +322,7 @@ async def create_chat(
         dict: 包含chat_id的响应
     """
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    stream_manager.create_stream(chat_id)
+    stream_manager.create_stream(chat_id, text)
 
     # 创建并保存历史记录
     from src.api.history_service import ChatHistory
@@ -399,6 +399,31 @@ async def stream_request(chat_id: str):
     Returns:
         EventSourceResponse: SSE响应
     """
+
+    async def event_generator():
+        try:
+            async for message in stream_manager.get_messages(chat_id):
+                yield message
+        except ValueError as e:
+            from src.api.events import create_error_event
+
+            yield await create_error_event(f"Stream not found: {str(e)}")
+
+    return EventSourceResponse(event_generator())
+
+
+@app.get("/replay/stream/{chat_id}")
+async def replay_stream_request(chat_id: str):
+    """建立SSE连接获取响应流
+
+    Args:
+        chat_id: 聊天会话ID
+
+    Returns:
+        EventSourceResponse: SSE响应
+    """
+
+    asyncio.create_task(stream_manager.replay_chat(chat_id))
 
     async def event_generator():
         try:
