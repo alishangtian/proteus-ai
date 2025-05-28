@@ -550,7 +550,7 @@ async def process_agent(
                 TeamRole.COORDINATOR: AgentConfiguration(
                     tools=["handoff"],
                     prompt_template=COORDINATOR_PROMPT_TEMPLATES,
-                    agent_description="你是Proteus，一个友好的AI助手。你专长于处理问候和闲聊，同时将其他复杂任务交给专业的planner进行处理。你职责是coordinator",
+                    agent_description="你是Proteus，一个友好的AI助手。你专长于处理问候和闲聊，同时将其他复杂任务交给planner进行处理。你职责是coordinator",
                     role_description="协调者",
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="final_answer")
@@ -606,7 +606,7 @@ async def process_agent(
                     tools=["file_write"],
                     prompt_template=REPORTER_PROMPT_TEMPLATES,
                     agent_description="你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告、稿件、传记、研究等。",
-                    role_description="报告、传记、稿件、论文、研究综述等生成专家，但是前提是你需要提供充足的参考信息，我才能生成相应的内容",
+                    role_description="资料审阅和生成专家",
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="file_write")
                     ],
