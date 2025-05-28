@@ -373,20 +373,15 @@ async def stop_chat(model: str, chat_id: str):
         "browser-agent",
         "deep-research",
     ]
-    if model == "workflow":
-        workflow_engine = get_workflow_engine()
-        await workflow_engine.cancel_workflow(chat_id)
-    elif model == "deep-research":
+    if model == "deep-research":
         multi_agent_manager = get_multi_agent_manager()
         await multi_agent_manager.stop_event_loop()
+        for agent in Agent.get_agents(chat_id):
+            await agent.stop()
         await stream_manager.send_message(chat_id, await create_complete_event())
     elif model in agent_model_list:
-        # 延迟导入AgentEngine
-        from src.agent.agent_engine import AgentEngine
-
-        # 启动智能体异步任务处理用户请求
-        if AgentEngine.get_instance(chat_id):
-            await AgentEngine.get_instance(chat_id).stop()
+        await Agent.get_agents(chat_id)[0].stop()
+        await stream_manager.send_message(chat_id, await create_complete_event())
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
     module_logger.info(f"[{chat_id}] 已经停止")
@@ -609,8 +604,8 @@ async def process_agent(
                 TeamRole.REPORTER: AgentConfiguration(
                     tools=["file_write"],
                     prompt_template=REPORTER_PROMPT_TEMPLATES,
-                    agent_description="你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告。",
-                    role_description="报告生成专家",
+                    agent_description="你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告、稿件、传记、研究等。",
+                    role_description="报告、传记、稿件、论文、研究综述等生成专家",
                     termination_conditions=[
                         ToolTerminationCondition(tool_names="file_write")
                     ],
@@ -650,8 +645,6 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
             )
 
-            agent_dict[chat_id] = agent
-
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
             from src.api.events import create_complete_event, create_error_event
@@ -682,7 +675,7 @@ async def handle_user_input(
         dict: 操作结果
     """
     try:
-        await agent_dict[chat_id].set_user_input(node_id, value)
+        await Agent.get_agents(chat_id)[0].set_user_input(node_id, value)
         return {"success": True, "message": "User input processed successfully"}
     except ValueError as ve:
         # 处理输入验证错误

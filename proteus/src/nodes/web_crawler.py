@@ -62,7 +62,7 @@ class SerperWebCrawlerNode(BaseNode):
     """
 
     # 全局限速器，限制每分钟10个请求
-    rate_limiter = RateLimiter(max_requests_per_minute=3)
+    rate_limiter = RateLimiter(max_requests_per_minute=5)
 
     # 提示词模板
     MARKDOWN_SUMMARY_PROMPT = {

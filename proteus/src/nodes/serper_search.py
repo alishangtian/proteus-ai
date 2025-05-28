@@ -1,12 +1,13 @@
 """Serper搜索节点 - 返回搜索结果"""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import aiohttp
 from .base import BaseNode
 from ..api.config import API_CONFIG
 import os, time
 import logging
 from threading import Lock
+from ..utils.redis_cache import RedisCache
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +50,16 @@ class RateLimiter:
 class SerperSearchNode(BaseNode):
     """Serper搜索节点 - 返回搜索结果"""
 
+    # Redis缓存实例
+    _cache: RedisCache
+    _cache_ttl = int(os.getenv("WEB_CRAWLER_CACHE_TTL", "3600"))  # 默认1小时
+
     # 全局限速器，限制每分钟3个请求
-    rate_limiter = RateLimiter(max_requests_per_minute=2)
+    rate_limiter = RateLimiter(max_requests_per_minute=5)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cache = RedisCache()  # 根据实际情况初始化缓存
 
     async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         # 限速器
@@ -69,6 +78,19 @@ class SerperSearchNode(BaseNode):
         country = str(params.get("country", "cn"))
         language = str(params.get("language", "zh"))
         maxResults = int(params.get("max_results", 5))
+
+        cache_key = f"{query.lower()}{country.lower()}{language.lower()}{maxResults}"
+
+        if self._get_from_cache(cache_key):
+            logger.info(f"从缓存中获取搜索结果 key={cache_key}")
+            cache_result = self._get_from_cache(cache_key)
+            result_data = {
+                "success": True,
+                "error": None,
+                "results": cache_result,
+                "count": len(cache_result),
+            }
+            return result_data
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -108,12 +130,21 @@ class SerperSearchNode(BaseNode):
                                 }
                             )
 
-                        return {
+                        result_data = {
                             "success": True,
                             "error": None,
                             "results": results,
                             "count": len(results),
                         }
+
+                        # 缓存有效结果
+                        if results:
+                            self._add_to_cache(cache_key, result_data)
+                            logger.info(
+                                f"缓存搜索结果 key={cache_key} ttl={self._cache_ttl}"
+                            )
+
+                        return result_data
                     else:
                         error_text = await response.text()
                         return {
@@ -139,9 +170,18 @@ class SerperSearchNode(BaseNode):
         """
         try:
             execute_result = await self.execute(params)
+            result_text = ""
             if not execute_result["success"]:
-                result_text += f"Error: {execute_result['error']}"
+                result_text = f"搜索失败。错误信息：{execute_result['error']}"
                 return {"result": result_text, **execute_result}
             return {"result": execute_result["results"]}
         except Exception as e:
             return {"result": f"Error: {str(e)}", "error": str(e)}
+
+    def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
+        """从Redis缓存获取搜索结果"""
+        return self._cache.get(key)
+
+    def _add_to_cache(self, key: str, value: Dict[str, Any]) -> None:
+        """将搜索结果添加到Redis缓存"""
+        self._cache.set(key, value, self._cache_ttl)

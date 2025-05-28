@@ -7,6 +7,7 @@ import contextlib
 import logging
 import time
 import uuid
+import threading
 from string import Template
 from functools import wraps, lru_cache
 from ..exception.action_bad import ActionBadException
@@ -115,6 +116,27 @@ def log_execution_time(func):
 
 
 class Agent:
+    _agent_cache: Dict[str, List["Agent"]] = {}
+    _cache_lock = threading.Lock()
+
+    @classmethod
+    def get_agents(cls, chat_id: str) -> List["Agent"]:
+        """获取指定chat_id下的agent列表副本"""
+        with cls._cache_lock:
+            return [agent for agent in cls._agent_cache.get(chat_id, [])]  # 返回副本避免直接修改缓存
+
+    @classmethod
+    def set_agents(cls, chat_id: str, agents: List["Agent"]) -> None:
+        """设置指定chat_id下的agent列表"""
+        with cls._cache_lock:
+            cls._agent_cache[chat_id] = agents
+
+    @classmethod
+    def clear_agents(cls, chat_id: str) -> None:
+        """清除指定chat_id的agent缓存"""
+        with cls._cache_lock:
+            if chat_id in cls._agent_cache:
+                del cls._agent_cache[chat_id]
 
     def __init__(
         self,
@@ -381,6 +403,12 @@ class Agent:
             raise
 
     async def _handle_event(self, event: AgentEvent) -> None:
+        # 注册当前agent到缓存
+        with Agent._cache_lock:
+            if event.chat_id not in Agent._agent_cache:
+                Agent._agent_cache[event.chat_id] = []
+            if not any(a.agentcard.agentid == self.agentcard.agentid for a in Agent._agent_cache[event.chat_id]):
+                Agent._agent_cache[event.chat_id].append(self)
         """处理接收到的事件"""
         if not hasattr(event, "role_type") or not hasattr(event, "payload"):
             logger.warning(f"Invalid event format: {event}")
@@ -469,6 +497,12 @@ class Agent:
         is_result: bool = False,
         context: str = None,
     ) -> str:
+        # 注册当前agent到缓存
+        with Agent._cache_lock:
+            if chat_id not in Agent._agent_cache:
+                Agent._agent_cache[chat_id] = []
+            if not any(a.agentcard.agentid == self.agentcard.agentid for a in Agent._agent_cache[chat_id]):
+                Agent._agent_cache[chat_id].append(self)
         if stream:
             self.stream_manager = StreamManager.get_instance()
         """执行Agent的主要逻辑
