@@ -13,9 +13,11 @@ PLANNER_REACT_LOOP_PROMPT = """
 
 ```xml
 <action>
+  <!--思考过程标签-->
   <thinking>
     <![CDATA[这里是转交任务的理由和说明]]>
   </thinking>
+  <!--工具调用标签，其中tool_name是具体的工具名称-->
   <tool_name>
     <![CDATA[这里是转交任务的详细信息]]>
   </tool_name>
@@ -26,9 +28,11 @@ PLANNER_REACT_LOOP_PROMPT = """
 
 ```xml
 <action>
+  <!--思考过程标签-->
   <thinking>
     <![CDATA[思考过程]]>
   </thinking>
+  <!--工具调用标签，其中handoff是转交工具-->
   <handoff>
     <task>研究下地球为什么是圆的</task>
     <context>{
@@ -41,6 +45,23 @@ PLANNER_REACT_LOOP_PROMPT = """
     <target_role>researcher</target_role>
     <description>收集相关的数据</description>
   </handoff>
+</action>
+```
+
+## 工作完成判断逻辑
+
+当你认为 **context** 中的内容已经可以回答用户问题或者满足用户需求，请返回完成标识，给出最终答案，结构如下所示
+
+```xml
+<action>
+  <!--思考过程标签-->
+  <thinking>
+    <![CDATA[已经生成响应的答案，任务已经完成]]>
+  </thinking>
+  <!--最终答案标签，其中final_answer表示最终答案-->
+  <final_answer>
+    <![CDATA[这里是最终答案]]>
+  </final_answer>
 </action>
 ```
 

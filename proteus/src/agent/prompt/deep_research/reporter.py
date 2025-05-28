@@ -27,9 +27,11 @@ ${tools}
 请返回如下形式的xml内容
 ```xml
 <action>
+  <!--思考过程标签-->
   <thinking>
     <![CDATA[简单的任务说明]]>
   </thinking>
+  <!--工具调用标签，其中file_write为文件写入工具-->
   <file_write>
    <filename>report</filename>
    <content><![CDATA[文件内容]]></content>

@@ -17,9 +17,11 @@ REACT_LOOP_PROMPT = """
 工具调用方式为直接返回如下格式的xml（不带"```xml"），然后会有专人执行工具，并将工具执行结果以context的形式返回给你，然后你再根据工具执行结果决定下一步的行动
 ```xml
 <action>
+  <!--思考过程标签-->
   <thinking>
     <![CDATA[当前步骤说明，不要掺杂其他无用信息]]>
   </thinking>
+  <!--工具调用标签，其中tool_name是具体的工具名称-->
   <tool_name>
     <param1>
       <![CDATA[value1]]>
@@ -37,9 +39,11 @@ REACT_LOOP_PROMPT = """
 
 ```xml
 <action>
+  <!--思考过程标签-->
   <thinking>
     <![CDATA[已经生成响应的答案，任务已经完成]]>
   </thinking>
+  <!--最终答案标签，其中final_answer表示最终答案-->
   <final_answer>
     <![CDATA[这里是最终答案]]>
   </final_answer>
