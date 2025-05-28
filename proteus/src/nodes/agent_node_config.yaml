@@ -469,3 +469,29 @@ WorkflowExecuteNode:
       required: false
       description: "工作流ID，如不提供则自动生成"
       example: "workflow-12345"
+
+# DuckDuckGoSearchNode:
+#   type: "duckduckgo_search"
+#   class: "src.nodes.duckduckgo_search.DuckDuckGoSearchNode"
+#   name: "duckduckgo搜索引擎"
+#   description: "duckduckgo搜索引擎节点，可以搜索一些时下最新的信息，如新闻、论坛、博客等，如果需要更详细的信息，请自行根据link爬取网页内容"
+#   output:
+#     result: "搜索结果，网页url和网页概要的拼接结果"
+#   params:
+#     query:
+#       type: "str"
+#       required: true
+#       description: "搜索关键词"
+#       example: "人工智能最新进展"
+#     region:
+#       type: "str"
+#       required: false
+#       default: "cn-zh"
+#       description: "搜索国家代码"
+#       example: "cn-zh"
+#     maxResultes:
+#       type: "int"
+#       required: false
+#       default: 10
+#       description: "最大搜索结果数量"
+#       example: 5
