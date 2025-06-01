@@ -4,6 +4,7 @@ import os
 import logging
 import json
 import asyncio
+import yaml
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, Any, Optional, Union
@@ -309,6 +310,7 @@ async def create_chat(
     model: str = Body(..., embed=True),
     itecount: int = Body(5, embed=True),
     agentid: str = Body(None, embed=True),
+    team_name: str = Body(None, embed=True),
 ):
     """创建新的聊天会话
 
@@ -354,7 +356,7 @@ async def create_chat(
     if model in agent_model_list:
         # 启动智能体异步任务处理用户请求
         asyncio.create_task(
-            process_agent(chat_id, text, itecount, agentid, agentmodel=model)
+            process_agent(chat_id, text, itecount, agentid, agentmodel=model, team_name=team_name)
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
@@ -551,7 +553,7 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
 
 
 async def process_agent(
-    chat_id: str, text: str, itecount: int, agentid: str = None, agentmodel: str = None
+    chat_id: str, text: str, itecount: int, agentid: str = None, agentmodel: str = None, team_name: str = None
 ):
     """处理Agent请求的异步函数
 
@@ -569,81 +571,62 @@ async def process_agent(
     agent = None
     try:
         if agentmodel == "deep-research":
-            # 实例化PagenticTeam并配置各角色工具
-            logger.info(f"[{chat_id}] 实例化PagenticTeam")
-            tools_config = {
-                TeamRole.COORDINATOR: AgentConfiguration(
-                    tools=["handoff"],
-                    prompt_template=COORDINATOR_PROMPT_TEMPLATES,
-                    agent_description="你是Proteus，一个友好的AI助手。你专长于处理问候和闲聊，同时将其他复杂任务交给planner进行处理。你职责是coordinator",
-                    role_description="协调者",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="final_answer")
-                    ],
-                    model_name="360-deepseek-chat-v3",
-                    max_iterations=itecount,
-                ),
-                TeamRole.PLANNER: AgentConfiguration(
-                    tools=["handoff"],
-                    prompt_template=PLANNER_PROMPT_TEMPLATES,
-                    agent_description="你是一位专业的任务规划者。研究并规划信息收集任务，使用专业代理团队收集全面数据。你的职责是planner",
-                    role_description="任务规划和信息收集",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="final_answer")
-                    ],
-                    model_name="360-deepseek-chat-v3",
-                    max_iterations=itecount,
-                ),
-                TeamRole.RESEARCHER: AgentConfiguration(
-                    tools=["web_crawler", "serper_search"],
-                    prompt_template=RESEARCHER_PROMPT_TEMPLATES,
-                    agent_description="你是一位专业的深度研究员。参考已获取信息，以解决需求，如果你认为参考信息不全面，请使用工具自行获取，你的职责是researcher",
-                    role_description="研究员，可以借助搜索引擎和网络爬虫搜集最新信息并简要的处理",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="final_answer")
-                    ],
-                    model_name="360-deepseek-chat-v3",
-                    max_iterations=itecount,
-                ),
-                TeamRole.CODER: AgentConfiguration(
-                    tools=["python_execute"],
-                    prompt_template=CODER_PROMPT_TEMPLATES,
-                    agent_description="你是一位精通Python脚本编写的专业软件专家。你的任务是分析需求，使用Python实现高效解决方案，并清晰地记录你的方法和结果。你的职责是coder",
-                    role_description="数据处理专家，借助python代码进行数据处理",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="final_answer")
-                    ],
-                    model_name="360-deepseek-chat-v3",
-                    max_iterations=itecount,
-                ),
-                TeamRole.PAPER_SEARCH_EXPERT: AgentConfiguration(
-                    tools=["arxiv_search"],
-                    prompt_template=RESEARCHER_PROMPT_TEMPLATES,
-                    agent_description="论文搜索专家，擅长根据主题搜索论文，切记：你只负责论文搜索任务\n你的职责是paper_search_expert",
-                    role_description="论文搜索专家",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="final_answer")
-                    ],
-                    model_name="360-deepseek-chat-v3",
-                    max_iterations=itecount,
-                ),
-                TeamRole.REPORTER: AgentConfiguration(
-                    tools=["file_write"],
-                    prompt_template=REPORTER_PROMPT_TEMPLATES,
-                    agent_description="你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告、稿件、传记、研究等。",
-                    role_description="资料审阅和生成专家",
-                    termination_conditions=[
-                        ToolTerminationCondition(tool_names="file_write")
-                    ],
-                    model_name="lang-context-model",
-                    max_iterations=itecount,
-                    llm_timeout=int(os.getenv("LONG_LLM_TIMEOUT", 120)),
-                ),
+            # 递归查找配置文件
+            def find_config_dir(filename):
+                """递归查找配置文件目录"""
+                current_dir = os.path.dirname(os.path.abspath(__file__))
+                while True:
+                    conf_path = os.path.join(current_dir, "conf", filename)
+                    if os.path.exists(conf_path):
+                        return conf_path
+                    parent_dir = os.path.dirname(current_dir)
+                    if parent_dir == current_dir:  # 到达根目录
+                        break
+                    current_dir = parent_dir
+                return None
+            
+            # 查找配置文件
+            # 确定团队名称，如果未提供则使用默认值
+            final_team_name = team_name or "deep_research"
+            config_file = f"{final_team_name}_team.yaml"
+            config_path = find_config_dir(config_file)
+            if not config_path:
+                raise FileNotFoundError(f"找不到配置文件: {config_file}")
+            
+            logger.info(f"[{chat_id}] 团队: {final_team_name}, 找到配置文件: {config_path}")
+            
+            # 加载YAML配置
+            with open(config_path, "r", encoding="utf-8") as f:
+                team_config = yaml.safe_load(f)
+            
+            # 构建tools_config字典
+            tools_config = {}
+            termination_map = {
+                'ToolTerminationCondition': ToolTerminationCondition
             }
+            
+            for role_name, config in team_config["roles"].items():
+                termination_conditions = []
+                for tc in config["termination_conditions"]:
+                    tc_class = termination_map[tc["type"]]
+                    termination_conditions.append(tc_class(**{k: v for k, v in tc.items() if k != "type"}))
+                
+                tools_config[getattr(TeamRole, role_name)] = AgentConfiguration(
+                    tools=config["tools"],
+                    prompt_template=globals()[config["prompt_template"]],
+                    agent_description=config["agent_description"],
+                    role_description=config["role_description"],
+                    termination_conditions=termination_conditions,
+                    model_name=config["model_name"],
+                    max_iterations=itecount,
+                    llm_timeout=config.get("llm_timeout", None)
+                )
+            
+            # 创建团队实例
             team = PagenticTeam(
-                team_rules="你们是一个出色的研究团队，你们致力于合作完成艰巨的工作",
+                team_rules=team_config["team_rules"],
                 tools_config=tools_config,
-                start_role=TeamRole.COORDINATOR,
+                start_role=getattr(TeamRole, team_config["start_role"])
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents()

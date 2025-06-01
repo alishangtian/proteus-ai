@@ -10,7 +10,11 @@ Proteus（普罗透斯）源自希腊神话中的海神，他以能够随意改�
 - 灵活性：如同海神能够掌控海洋的变化，本引擎能够灵活处理各种任务场景和数据流
 
 ## 实际效果
-详见  **examples** 文件夹
+详见  **examples** 文件夹中的研究报告示例：
+- `中美人工智能发展报告.md`
+- `印巴空战5.7研究报告.md`
+- `细胞膜结构与功能研究进展.md`
+- `美俄军力报告.md`
 
 ## 项目介绍
 
@@ -18,11 +22,12 @@ Proteus 是一个基于 Python 和 FastAPI 构建的现代化工作流引擎，�
 
 - 🚀 基于 FastAPI 的高性能 API 服务
 - 🤖 内置智能 Agent 系统（支持Chain-of-Thought推理）
-- 🔌 丰富的节点类型支持（20+种内置节点）
+- 🔌 丰富的节点类型支持（20+种内置节点，包括新增的handoff交接节点）
 - 📊 实时执行状态监控（基于SSE的实时通信）
 - 🌐 Web 可视化界面（多种模式：工作流、智能体、多智能体等）
 - 🐳 Docker 支持（包含完整的容器化部署方案）
 - 🔄 MCP（Model Context Protocol）支持，可扩展外部工具和资源
+- 🛡️ 安全沙箱环境（用于安全执行代码节点）
 
 ## 快速开始
 
@@ -36,20 +41,20 @@ Proteus 是一个基于 Python 和 FastAPI 构建的现代化工作流引擎，�
 
 1. 克隆项目
 ```bash
-git clone https://github.com/yourusername/proteus.git
-cd proteus
+git clone https://github.com/yourusername/proteus-ai.git
+cd proteus-ai
 ```
 
 2. 创建并激活虚拟环境
 ```bash
-conda create -n proteus python=3.12 # Python 3.12+
-# 或
-conda activate proteus
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+venv\Scripts\activate     # Windows
 ```
 
 3. 安装依赖
 ```bash
-pip install -r requirements.txt
+pip install -r proteus/requirements.txt
 ```
 
 4. 配置环境变量
@@ -68,22 +73,22 @@ playwright install
 #### 本地开发环境
 ```bash
 # 确保已安装所有依赖
-pip install -r requirements.txt
+pip install -r proteus/requirements.txt
 
 # 如果需要浏览器自动化功能，安装playwright
 playwright install
 
 # 启动服务
-python main.py
+python proteus/main.py
 ```
 
 #### 使用 Docker
 ```bash
-# 构建Docker镜像
-docker build -t proteus-agent .
+# 构建Docker镜像（在项目根目录执行）
+docker build -t proteus -f proteus/Dockerfile .
 
 # 使用Docker Compose启动所有服务
-docker-compose -f docker/docker-compose.yml up -d
+docker-compose -f proteus/docker/docker-compose.yml up -d
 ```
 
 服务启动后，访问 http://localhost:8000 即可打开 Web 界面。
@@ -96,7 +101,7 @@ docker-compose -f docker/docker-compose.yml up -d
 - `MODEL_NAME`: 使用的模型名称（默认为deepseek-chat）
 - `REASONER_MODEL_NAME`: 推理模型名称（可选）
 - `SERPER_API_KEY`: 用于Web搜索的Serper API密钥（可选）
-- `MCP_CONFIG_PATH`: MCP配置文件路径（默认为./proteus_mcp_config.json）
+- `MCP_CONFIG_PATH`: MCP配置文件路径（默认为./proteus/proteus_mcp_config.json）
 
 ## 功能特点
 
@@ -114,6 +119,7 @@ docker-compose -f docker/docker-compose.yml up -d
 - 聊天节点 (chat): 与LLM进行对话
 - 浏览器代理节点 (browser_agent): 自动化浏览器操作
 - MCP客户端节点 (mcp_client): 与MCP服务器交互
+- 交接节点 (handoff): 任务交接给其他Agent
 
 ### 2. 智能 Agent 系统
 - 基于 Chain-of-Thought 的推理能力，支持复杂任务分解
@@ -277,6 +283,69 @@ proteus/
 - 与远程MCP服务器集成（支持SSE通信）
 - 扩展智能体能力，提供更丰富的交互方式
 - 标准化的工具描述格式，便于模型理解和使用
+
+## 使用示例
+
+### 示例1: 创建简单研究工作流
+
+以下是一个简单的研究工作流示例，用于收集和分析主题信息：
+
+```yaml
+name: 简单研究流程
+description: 一个简单的研究工作流示例
+nodes:
+  - type: user_input
+    id: input
+    params:
+      question: "请输入研究主题"
+  - type: duckduckgo_search
+    id: search
+    params:
+      query: "{{input.output}}"
+      max_results: 5
+  - type: web_crawler
+    id: crawler
+    params:
+      urls: "{{search.output}}"
+  - type: chat
+    id: analysis
+    params:
+      prompt: |
+        请基于以下内容进行分析总结：
+        {{crawler.output}}
+  - type: file_write
+    id: output
+    params:
+      path: "./research_output.md"
+      content: "{{analysis.output}}"
+```
+
+### 示例2: 使用MCP工具查询天气
+
+```yaml
+name: 天气查询
+description: 使用MCP工具查询天气
+nodes:
+  - type: user_input
+    id: input
+    params:
+      question: "请输入城市名称"
+  - type: mcp_client
+    id: weather
+    params:
+      server_name: "amap-maps"
+      tool_name: "maps_weather"
+      arguments: |
+        {
+          "city": "{{input.output}}"
+        }
+  - type: chat
+    id: format
+    params:
+      prompt: |
+        将天气数据格式化为友好回复：
+        {{weather.output}}
+```
 
 ## 开发指南
 

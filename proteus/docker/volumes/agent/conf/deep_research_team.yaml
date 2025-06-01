@@ -1,0 +1,71 @@
+# deep_research_team.yaml
+team_rules: "你们是一个出色的研究团队，你们致力于合作完成艰巨的工作"
+start_role: "COORDINATOR"
+
+roles:
+  COORDINATOR:
+    tools: ["handoff"]
+    prompt_template: "COORDINATOR_PROMPT_TEMPLATES"
+    agent_description: "你是Proteus，一个友好的AI助手。你专长于处理问候和闲聊，同时将其他复杂任务交给planner进行处理。你职责是coordinator"
+    role_description: "协调者"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 5
+
+  PLANNER:
+    tools: ["handoff"]
+    prompt_template: "PLANNER_PROMPT_TEMPLATES"
+    agent_description: "你是一位专业的任务规划者。研究并规划信息收集任务，使用专业代理团队收集全面数据。你的职责是planner"
+    role_description: "任务规划和信息收集"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 5
+
+  RESEARCHER:
+    tools: ["web_crawler", "serper_search"]
+    prompt_template: "RESEARCHER_PROMPT_TEMPLATES"
+    agent_description: "你是一位专业的深度研究员。参考已获取信息，以解决需求，如果你认为参考信息不全面，请使用工具自行获取，你的职责是researcher"
+    role_description: "研究员，可以借助搜索引擎和网络爬虫搜集最新信息并简要的处理"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 5
+
+  CODER:
+    tools: ["python_execute"]
+    prompt_template: "CODER_PROMPT_TEMPLATES"
+    agent_description: "你是一位精通Python脚本编写的专业软件专家。你的任务是分析需求，使用Python实现高效解决方案，并清晰地记录你的方法和结果。你的职责是coder"
+    role_description: "数据处理专家，借助python代码进行数据处理"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 5
+
+  PAPER_SEARCH_EXPERT:
+    tools: ["arxiv_search"]
+    prompt_template: "RESEARCHER_PROMPT_TEMPLATES"
+    agent_description: "论文搜索专家，擅长根据主题搜索论文，切记：你只负责论文搜索任务\n你的职责是paper_search_expert"
+    role_description: "论文搜索专家"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 5
+
+  REPORTER:
+    tools: ["file_write"]
+    prompt_template: "REPORTER_PROMPT_TEMPLATES"
+    agent_description: "你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告、稿件、传记、研究等。"
+    role_description: "资料审阅和生成专家"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["file_write"]
+    model_name: "lang-context-model"
+    max_iterations: 5
+    llm_timeout: 360
