@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.cot_prompt import COT_PROMPT_TEMPLATES
+from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
@@ -356,7 +357,9 @@ async def create_chat(
     if model in agent_model_list:
         # 启动智能体异步任务处理用户请求
         asyncio.create_task(
-            process_agent(chat_id, text, itecount, agentid, agentmodel=model, team_name=team_name)
+            process_agent(
+                chat_id, text, itecount, agentid, agentmodel=model, team_name=team_name
+            )
         )
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
@@ -553,7 +556,12 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
 
 
 async def process_agent(
-    chat_id: str, text: str, itecount: int, agentid: str = None, agentmodel: str = None, team_name: str = None
+    chat_id: str,
+    text: str,
+    itecount: int,
+    agentid: str = None,
+    agentmodel: str = None,
+    team_name: str = None,
 ):
     """处理Agent请求的异步函数
 
@@ -584,7 +592,7 @@ async def process_agent(
                         break
                     current_dir = parent_dir
                 return None
-            
+
             # 查找配置文件
             # 确定团队名称，如果未提供则使用默认值
             final_team_name = team_name or "deep_research"
@@ -592,25 +600,27 @@ async def process_agent(
             config_path = find_config_dir(config_file)
             if not config_path:
                 raise FileNotFoundError(f"找不到配置文件: {config_file}")
-            
-            logger.info(f"[{chat_id}] 团队: {final_team_name}, 找到配置文件: {config_path}")
-            
+
+            logger.info(
+                f"[{chat_id}] 团队: {final_team_name}, 找到配置文件: {config_path}"
+            )
+
             # 加载YAML配置
             with open(config_path, "r", encoding="utf-8") as f:
                 team_config = yaml.safe_load(f)
-            
+
             # 构建tools_config字典
             tools_config = {}
-            termination_map = {
-                'ToolTerminationCondition': ToolTerminationCondition
-            }
-            
+            termination_map = {"ToolTerminationCondition": ToolTerminationCondition}
+
             for role_name, config in team_config["roles"].items():
                 termination_conditions = []
                 for tc in config["termination_conditions"]:
                     tc_class = termination_map[tc["type"]]
-                    termination_conditions.append(tc_class(**{k: v for k, v in tc.items() if k != "type"}))
-                
+                    termination_conditions.append(
+                        tc_class(**{k: v for k, v in tc.items() if k != "type"})
+                    )
+
                 tools_config[getattr(TeamRole, role_name)] = AgentConfiguration(
                     tools=config["tools"],
                     prompt_template=globals()[config["prompt_template"]],
@@ -619,19 +629,40 @@ async def process_agent(
                     termination_conditions=termination_conditions,
                     model_name=config["model_name"],
                     max_iterations=itecount,
-                    llm_timeout=config.get("llm_timeout", None)
+                    llm_timeout=config.get("llm_timeout", None),
                 )
-            
+
             # 创建团队实例
             team = PagenticTeam(
                 team_rules=team_config["team_rules"],
                 tools_config=tools_config,
-                start_role=getattr(TeamRole, team_config["start_role"])
+                start_role=getattr(TeamRole, team_config["start_role"]),
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents()
             logger.info(f"[{chat_id}] PagenticTeam开始运行")
             await team.run(text, chat_id)
+        elif agentmodel == "super-agent":
+            # 超级智能体，智能组建team并完成任务
+            logger.info(f"[{chat_id}] 开始超级智能体请求")
+            prompt_template = COT_TEAM_PROMPT_TEMPLATES
+            agent = Agent(
+                tools=["team_generator", "team_runner"],
+                instruction="",
+                stream_manager=stream_manager,
+                max_iterations=itecount,
+                history_service=get_history_service(),
+                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
+                model_name="base_model",
+                prompt_template=prompt_template,
+                role_type=TeamRole.GENERAL_AGENT,
+            )
+
+            # 调用Agent的run方法，启用stream功能
+            await agent.run(text, chat_id)
+            from src.api.events import create_complete_event, create_error_event
+
+            await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             # 获取基础工具集合 - 延迟初始化node_manager
             all_tools = NodeConfigManager.get_instance().get_tools()

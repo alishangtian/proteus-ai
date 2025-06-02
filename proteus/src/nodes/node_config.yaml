@@ -376,3 +376,57 @@ ApiCallNode:
       type: "str"
       required: false
       description: "Bearer Token认证令牌"
+
+TeamGeneratorNode:
+  type: "team_generator"
+  class: "src.nodes.team_generator.TeamGeneratorNode"
+  name: "团队生成器"
+  description: "根据用户输入生成团队配置的节点，可以调用team_manager中的方法进行生成"
+  output:
+    success: "执行状态"
+    error: "错误信息"
+    team_config: "生成的团队配置"
+    file_path: "配置文件保存路径(如果有)"
+  params:
+    user_input:
+      type: "str"
+      required: true
+      description: "用户输入的团队需求描述，用于生成团队配置"
+    save_to_file:
+      type: "bool"
+      required: false
+      default: false
+      description: "是否将生成的配置保存到文件"
+    file_name:
+      type: "str"
+      required: false
+      description: "保存的文件名，如果save_to_file为True则必须提供"
+
+TeamRunnerNode:
+ type: "team_runner"
+ class: "src.nodes.team_runner.TeamRunnerNode"
+ name: "团队运行器"
+ description: "接收配置文件地址，装配team并运行，支持deep-research模式的团队协作"
+ output:
+   success: "执行状态"
+   error: "错误信息"
+   chat_id: "会话ID"
+   execution_time: "执行时间(秒)"
+ params:
+   config_path:
+     type: "str"
+     required: true
+     description: "团队配置文件路径，相对于conf目录"
+   query:
+     type: "str"
+     required: true
+     description: "用户输入的任务描述，将传递给团队执行"
+   chat_id:
+     type: "str"
+     required: false
+     description: "会话ID，如果不提供则自动生成"
+   max_iterations:
+     type: "int"
+     required: false
+     default: 5
+     description: "最大迭代次数，控制每个Agent的最大运行次数"

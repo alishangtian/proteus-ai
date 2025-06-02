@@ -223,7 +223,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="lang-context-model",
+                        model_name="base-model",
                     )
                 else:
                     text = await call_llm_api(
@@ -241,7 +241,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="lang-context-model",
+                        model_name="base-model",
                     )
 
             end_time = time.time()
