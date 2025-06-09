@@ -653,7 +653,7 @@ async def process_agent(
                 max_iterations=itecount,
                 history_service=get_history_service(),
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name="base_model",
+                model_name="base-model",
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
             )
