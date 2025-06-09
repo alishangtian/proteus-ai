@@ -1,0 +1,100 @@
+team_rules: 研究当前中美热点话题，包括政治外交、经济贸易、科技竞争、军事安全和区域文化社会视角
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    - workflow_generate
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队成员，分配研究任务，整合各领域研究成果
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  INTERNATIONAL_RELATIONS_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 分析中美政治外交动态，包括高层互动、政策变化和国际组织中的立场
+    role_description: 国际关系专家
+    termination_conditions:
+    - type: MaxIterationTerminationCondition
+      max_iteration: 10
+    model_name: deepseek-chat
+    max_iterations: 10
+  ECONOMIST:
+    tools:
+    - serper_search
+    - db_query
+    - api_call
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 研究中美贸易和投资趋势，包括关税政策、供应链变化和市场准入
+    role_description: 经济学家
+    termination_conditions:
+    - type: MaxIterationTerminationCondition
+      max_iteration: 10
+    model_name: deepseek-chat
+    max_iterations: 10
+  TECH_EXPERT:
+    tools:
+    - serper_search
+    - arxiv_search
+    - browser_agent
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 评估中美在半导体、人工智能、5G等关键技术领域的竞争态势
+    role_description: 科技专家
+    termination_conditions:
+    - type: MaxIterationTerminationCondition
+      max_iteration: 10
+    model_name: deepseek-chat
+    max_iterations: 10
+  MILITARY_ANALYST:
+    tools:
+    - serper_search
+    - web_crawler
+    - api_call
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 关注中美军事安全议题，包括南海局势、台海问题和军事技术发展
+    role_description: 军事分析师
+    termination_conditions:
+    - type: MaxIterationTerminationCondition
+      max_iteration: 10
+    model_name: deepseek-chat
+    max_iterations: 10
+  REGIONAL_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - user_input
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 提供中美文化和社会视角，分析民间交流、舆论走向和价值观差异
+    role_description: 区域研究专家
+    termination_conditions:
+    - type: MaxIterationTerminationCondition
+      max_iteration: 10
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORTER:
+    tools:
+    - file_read
+    - file_write
+    - workflow_execute
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 汇总各领域研究成果，生成综合报告
+    role_description: 报告撰写者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5

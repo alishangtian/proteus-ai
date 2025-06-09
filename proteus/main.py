@@ -312,6 +312,7 @@ async def create_chat(
     itecount: int = Body(5, embed=True),
     agentid: str = Body(None, embed=True),
     team_name: str = Body(None, embed=True),
+    conversation_id: str = Body(None, embed=True),
 ):
     """创建新的聊天会话
 
@@ -358,7 +359,13 @@ async def create_chat(
         # 启动智能体异步任务处理用户请求
         asyncio.create_task(
             process_agent(
-                chat_id, text, itecount, agentid, agentmodel=model, team_name=team_name
+                chat_id,
+                text,
+                itecount,
+                agentid,
+                agentmodel=model,
+                team_name=team_name,
+                conversation_id=conversation_id,
             )
         )
     else:
@@ -562,6 +569,7 @@ async def process_agent(
     agentid: str = None,
     agentmodel: str = None,
     team_name: str = None,
+    conversation_id: str = None,
 ):
     """处理Agent请求的异步函数
 
@@ -647,7 +655,7 @@ async def process_agent(
             logger.info(f"[{chat_id}] 开始超级智能体请求")
             prompt_template = COT_TEAM_PROMPT_TEMPLATES
             agent = Agent(
-                tools=["team_generator", "team_runner"],
+                tools=["team_generator", "team_runner", "user_input"],
                 instruction="",
                 stream_manager=stream_manager,
                 max_iterations=itecount,
@@ -656,6 +664,7 @@ async def process_agent(
                 model_name="base-model",
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -683,6 +692,7 @@ async def process_agent(
                 model_name="360-deepseek-chat-v3",
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
             )
 
             # 调用Agent的run方法，启用stream功能

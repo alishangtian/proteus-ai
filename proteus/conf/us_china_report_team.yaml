@@ -1,0 +1,71 @@
+team_rules: 制作高质量的中美热点事件报告，包括政治动态分析、贸易数据解读、信息整合和数据可视化
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队成员工作，确保报告按时完成
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  INTERNATIONAL_RELATIONS_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 分析中美政治动态，提供专业见解
+    role_description: 国际关系专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  ECONOMIC_ANALYST:
+    tools:
+    - serper_search
+    - db_query
+    - python_execute
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 解读中美贸易数据，提供经济分析
+    role_description: 经济分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  NEWS_EDITOR:
+    tools:
+    - file_read
+    - file_write
+    - workflow_generate
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 整合各类信息，撰写报告内容
+    role_description: 新闻编辑
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  DATA_VISUALIZATION_EXPERT:
+    tools:
+    - python_execute
+    - file_write
+    - workflow_execute
+    prompt_template: CODER_PROMPT_TEMPLATES
+    agent_description: 制作数据图表，可视化分析结果
+    role_description: 数据可视化专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5

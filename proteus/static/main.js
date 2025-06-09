@@ -1,11 +1,18 @@
 import Icons from './icons.js';
 
+// 生成对话ID的函数
+function generateConversationId() {
+    return Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
 // 临时存储历史对话数据 {model: htmlContent}
 const historyStorage = {};
 // 临时存储工具调用数据 {model: toolExecutions}
 const toolExecutionsStorage = {};
 // 工具执行数据存储
 const toolExecutions = {};
+// 存储每个模型的conversation_id {model: conversationId}
+const conversationIdStorage = {};
 // 菜单栏收起/展开功能
 document.addEventListener('DOMContentLoaded', function () {
     // 添加菜单项点击事件
@@ -35,6 +42,7 @@ document.addEventListener('DOMContentLoaded', function () {
 let currentChatId = null;
 let isProcessing = false;
 let currentModel = null; // 当前选择的菜单模式
+let currentConversationId = null; // 当前会话的conversation_id
 const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research"];
 // 提交用户输入的全局函数
 async function submitUserInput(nodeId, inputType, prompt) {
@@ -346,6 +354,9 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             updateIterationDisplay(item);
             currentModel = item.getAttribute('data-model');
+            // 为初始模型生成conversation_id
+            currentConversationId = generateConversationId();
+            conversationIdStorage[currentModel] = currentConversationId;
         }
     });
 
@@ -378,22 +389,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 toolExecutionsStorage[currentModel] = toolsListHTML;
             }
 
-            // 3. 清空当前对话历史
+            // 3. 存储当前模型的conversation_id
+            if (currentModel && currentConversationId) {
+                conversationIdStorage[currentModel] = currentConversationId;
+            }
+
+            // 4. 清空当前对话历史
             conversationHistory.innerHTML = '';
 
-            // 4. 清空当前工具调用信息
+            // 5. 清空当前工具调用信息
             toolsListElement.innerHTML = '';
 
             // 重置工具数量
             const toolsCountSpan = document.querySelector('.tools-count');
             toolsCountSpan.textContent = 0;
 
-            // 5. 恢复新模型的对话历史(如果存在)
+            // 6. 恢复新模型的对话历史(如果存在)
             if (historyStorage[newModel]) {
                 conversationHistory.innerHTML = historyStorage[newModel];
             }
 
-            // 6. 恢复新模型的工具调用信息(如果存在)
+            // 7. 恢复新模型的工具调用信息(如果存在)
             if (toolExecutionsStorage[newModel]) {
                 const toolsContent = toolExecutionsStorage[newModel];
                 toolsListElement.innerHTML = toolsContent;
@@ -471,6 +487,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     });
                 });
+            }
+
+            // 8. 恢复或生成新模型的conversation_id
+            if (conversationIdStorage[newModel]) {
+                currentConversationId = conversationIdStorage[newModel];
+            } else {
+                // 为新模型生成新的conversation_id
+                currentConversationId = generateConversationId();
+                conversationIdStorage[newModel] = currentConversationId;
             }
 
             // 更新UI状态
@@ -820,6 +845,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     body: JSON.stringify({
                         query: text,
+                        conversation_id: currentConversationId,
                         max_iterations: parseInt(document.getElementById('itecount').value) || 10,
                         stream: true
                     })
@@ -834,6 +860,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({
                         text,
                         model: selectedModel,
+                        conversation_id: currentConversationId,
                         itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined
                     })
                 });
@@ -1101,9 +1128,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const inputDiv = document.createElement('div');
                     inputDiv.className = 'user-input-container';
 
-                    // 创建输入表单
+                    // 创建输入表单，使用markdown渲染prompt
                     let inputHtml = `
-                        <div class="input-prompt">${data.prompt}</div>
+                        <div class="input-prompt">${marked.parse(data.prompt)}</div>
                         <div class="input-form">
                     `;
                     // 根据输入类型创建不同的输入控件

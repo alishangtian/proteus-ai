@@ -14,6 +14,47 @@ from src.agent.terminition import ToolTerminationCondition
 logger = logging.getLogger(__name__)
 
 
+def get_or_create_team_role(role_name: str) -> TeamRole:
+    """获取或创建团队角色
+    
+    Args:
+        role_name (str): 角色名称
+        
+    Returns:
+        TeamRole: 团队角色枚举实例
+    """
+    try:
+        # 首先尝试获取预定义的角色
+        return getattr(TeamRole, role_name)
+    except AttributeError:
+        # 如果角色不存在，动态创建
+        logger.warning(f"角色 {role_name} 不在预定义的TeamRole中，动态创建新角色")
+        role_value = role_name.lower()
+        
+        # 检查值是否已存在，避免重复创建
+        for existing_role in TeamRole:
+            if existing_role.value == role_value:
+                logger.info(f"角色值 {role_value} 已存在，使用现有角色: {existing_role.name}")
+                return existing_role
+        
+        # 使用正确的方式创建新的枚举成员
+        new_role = object.__new__(TeamRole)
+        new_role._name_ = role_name
+        new_role._value_ = role_value
+        
+        # 将新角色添加到TeamRole枚举中
+        setattr(TeamRole, role_name, new_role)
+        # 更新TeamRole内部映射
+        TeamRole._member_map_[role_name] = new_role
+        TeamRole._value2member_map_[role_value] = new_role
+        # 更新_member_names_列表
+        if hasattr(TeamRole, '_member_names_'):
+            TeamRole._member_names_.append(role_name)
+        
+        logger.info(f"成功创建新角色: {role_name} = {role_value}")
+        return new_role
+
+
 class TeamRunnerNode(BaseNode):
     """团队运行节点 - 接收配置文件地址，装配team并运行
     
@@ -22,6 +63,7 @@ class TeamRunnerNode(BaseNode):
         query (str): 用户输入的任务描述
         chat_id (str, optional): 会话ID，如果不提供则自动生成
         max_iterations (int, optional): 最大迭代次数，默认为5
+        conversation_id (str, optional): 会话ID，用于获取历史迭代信息
     
     返回:
         dict: 包含执行状态、错误信息和执行结果
@@ -50,6 +92,7 @@ class TeamRunnerNode(BaseNode):
         query = str(params.get("query", "")).strip()
         chat_id = params.get("chat_id", f"chat-{int(time.time())}")
         max_iterations = int(params.get("max_iterations", 5))
+        conversation_id = params.get("conversation_id")  # 新增会话ID参数
         
         if not config_path:
             raise ValueError("config_path参数不能为空")
@@ -104,7 +147,9 @@ class TeamRunnerNode(BaseNode):
                 if not prompt_template:
                     raise ValueError(f"未找到prompt模板: {config['prompt_template']}")
                 
-                tools_config[getattr(TeamRole, role_name)] = AgentConfiguration(
+                # 获取或创建角色枚举
+                role_enum = get_or_create_team_role(role_name)
+                tools_config[role_enum] = AgentConfiguration(
                     tools=config["tools"],
                     prompt_template=prompt_template,
                     agent_description=config["agent_description"],
@@ -116,10 +161,15 @@ class TeamRunnerNode(BaseNode):
                 )
             
             # 创建团队实例
+            # 获取或创建起始角色
+            start_role_name = team_config["start_role"]
+            start_role_enum = get_or_create_team_role(start_role_name)
+            
             self.team = PagenticTeam(
                 team_rules=team_config["team_rules"],
                 tools_config=tools_config,
-                start_role=getattr(TeamRole, team_config["start_role"])
+                start_role=start_role_enum,
+                conversation_id=conversation_id  # 传递会话ID
             )
             
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")

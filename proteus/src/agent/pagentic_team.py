@@ -17,6 +17,7 @@ class PagenticTeam:
         tools_config: Dict[str, Any] = None,
         team_rules: str = None,
         start_role: TeamRole = TeamRole.TEAM_LEADER,
+        conversation_id: str = None,
     ):
         """
         初始化五个角色的agent
@@ -34,9 +35,12 @@ class PagenticTeam:
                     ...
                 }
             team_rules: 团队行为规范
+            start_role: 启动角色
+            conversation_id: 会话ID，用于获取历史迭代信息
         """
         self.agents: Dict[TeamRole, Agent] = {}
         self.team_rules = team_rules or "默认团队规范"
+        self.conversation_id = conversation_id
         self._initialize_agents(tools_config or {})
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
@@ -67,6 +71,7 @@ class PagenticTeam:
                 description=config.agent_description,
                 max_iterations=config.max_iterations,
                 llm_timeout=config.llm_timeout,
+                conversation_id=self.conversation_id,  # 传递会话ID
             )
 
     async def register_agents(self):

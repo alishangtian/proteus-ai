@@ -1,0 +1,89 @@
+team_rules: 分析中美人工智能发展对比，包括技术评估、政策比较、产业研究和数据处理
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队成员，分配任务并整合最终报告
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  TECH_EXPERT:
+    tools:
+    - arxiv_search
+    - serper_search
+    - web_crawler
+    - python_execute
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 评估中美AI核心技术发展水平，包括算法、算力和数据
+    role_description: AI技术专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 8
+  POLICY_ANALYST:
+    tools:
+    - serper_search
+    - web_crawler
+    - file_read
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 比较中美AI政策法规、发展战略和政府支持措施
+    role_description: 政策分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 8
+  INDUSTRY_ANALYST:
+    tools:
+    - serper_search
+    - db_query
+    - python_execute
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 研究中美AI应用场景、市场规模和产业发展趋势
+    role_description: 产业分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 8
+  DATA_SCIENTIST:
+    tools:
+    - python_execute
+    - db_query
+    - db_execute
+    - file_read
+    - file_write
+    prompt_template: CODER_PROMPT_TEMPLATES
+    agent_description: 处理和分析中美AI相关的统计数据
+    role_description: 数据科学家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORTER:
+    tools:
+    - file_read
+    - file_write
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 整合各专家分析结果，生成最终对比报告
+    role_description: 报告撰写者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5

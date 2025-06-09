@@ -1,0 +1,72 @@
+team_rules: 撰写一份全面准确的中国楼市报告，包含市场数据、宏观经济分析、政策研究和最终报告整合
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队工作，分配任务给各个专业角色
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  RESEARCHER:
+    tools:
+    - serper_search
+    - web_crawler
+    - db_query
+    - file_read
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责收集中国楼市的市场数据，包括房价、成交量、库存等指标
+    role_description: 市场数据收集员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  GENERAL_AGENT:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_read
+    prompt_template: GENERAL_AGENT_PROMPT_TEMPLATES
+    agent_description: 负责分析中国宏观经济形势及其对楼市的影响
+    role_description: 经济分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  PAPER_SEARCH_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - file_read
+    prompt_template: PAPER_SEARCH_EXPERT_PROMPT_TEMPLATES
+    agent_description: 负责研究中国房地产相关政策法规及其影响
+    role_description: 政策研究员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORTER:
+    tools:
+    - file_write
+    - file_read
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 负责整合市场数据、经济分析和政策研究，撰写最终报告
+    role_description: 报告整合专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5

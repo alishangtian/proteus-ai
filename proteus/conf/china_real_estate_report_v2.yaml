@@ -1,0 +1,89 @@
+team_rules: 专业团队协作完成中国楼市研究报告，确保数据准确、分析深入、报告专业
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队成员工作，分配任务并监督进度
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  REAL_ESTATE_DATA_ANALYST:
+    tools:
+    - python_execute
+    - db_query
+    - serper_search
+    - web_crawler
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责收集和分析房地产市场数据，包括房价、成交量、库存等指标
+    role_description: 房地产数据分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  MACRO_ECONOMIC_ANALYST:
+    tools:
+    - python_execute
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 研究影响楼市的经济因素，包括GDP、利率、通胀等宏观经济指标
+    role_description: 宏观经济分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  POLICY_RESEARCHER:
+    tools:
+    - serper_search
+    - web_crawler
+    - file_read
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 分析政府调控政策，包括限购、限贷、税收等政策对楼市的影响
+    role_description: 政策研究员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REGIONAL_EXPERT:
+    tools:
+    - python_execute
+    - db_query
+    - serper_search
+    - web_crawler
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 研究不同城市楼市的差异，包括一线、二线、三四线城市的市场特点
+    role_description: 区域专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORT_WRITER:
+    tools:
+    - file_read
+    - file_write
+    - python_execute
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 整合各专家分析结果，撰写专业、结构化的最终报告
+    role_description: 报告撰写者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 15

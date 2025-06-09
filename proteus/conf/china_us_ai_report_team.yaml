@@ -1,0 +1,90 @@
+team_rules: 撰写中美人工智能发展比较报告，包括政策分析、技术比较、产业分析和数据统计
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    - workflow_generate
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队成员工作，分配任务并整合最终报告
+    role_description: 协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  POLICY_ANALYST:
+    tools:
+    - serper_search
+    - web_crawler
+    - file_write
+    - arxiv_search
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责收集和分析中美两国AI政策文件，识别政策差异和趋势
+    role_description: 政策分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 8
+  TECH_EXPERT:
+    tools:
+    - arxiv_search
+    - serper_search
+    - web_crawler
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 分析中美在AI核心技术领域的研发差异和优劣势
+    role_description: 技术专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 8
+  INDUSTRY_ANALYST:
+    tools:
+    - serper_search
+    - db_query
+    - file_write
+    - web_crawler
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 比较中美AI应用场景和市场发展情况
+    role_description: 产业分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 8
+  DATA_SCIENTIST:
+    tools:
+    - python_execute
+    - db_query
+    - file_read
+    - file_write
+    prompt_template: CODER_PROMPT_TEMPLATES
+    agent_description: 处理和分析相关统计数据，生成可视化图表
+    role_description: 数据科学家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORT_WRITER:
+    tools:
+    - file_read
+    - file_write
+    - workflow_execute
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 整合所有分析结果，撰写最终报告
+    role_description: 报告撰写人
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 6

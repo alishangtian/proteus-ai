@@ -1,0 +1,116 @@
+team_rules: 进行中美人工智能比较研究，包括政策分析、技术比较、产业研究和数据量化分析
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    - team_runner
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调中美AI比较研究团队的工作流程和任务分配
+    role_description: 项目协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  PLANNER:
+    tools:
+    - workflow_generate
+    - serper_search
+    prompt_template: PLANNER_PROMPT_TEMPLATES
+    agent_description: 负责分解研究任务，制定详细工作计划和研究框架
+    role_description: 研究规划师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - workflow_generate
+    model_name: deepseek-chat
+    max_iterations: 8
+  POLICY_RESEARCHER:
+    tools:
+    - serper_search
+    - arxiv_search
+    - web_crawler
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 专门负责中美AI政策比较研究，收集分析相关政策文件
+    role_description: 政策研究员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 15
+  TECH_RESEARCHER:
+    tools:
+    - arxiv_search
+    - serper_search
+    - browser_agent
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责中美AI技术比较研究，分析技术路线和专利
+    role_description: 技术研究员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 15
+  INDUSTRY_ANALYST:
+    tools:
+    - serper_search
+    - db_query
+    - api_call
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责中美AI产业发展比较研究，分析市场规模和企业布局
+    role_description: 产业分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 15
+  DATA_ANALYST:
+    tools:
+    - python_execute
+    - db_query
+    - file_read
+    - file_write
+    prompt_template: CODER_PROMPT_TEMPLATES
+    agent_description: 负责数据量化分析，处理研究数据并生成可视化结果
+    role_description: 数据分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 20
+  REPORTER:
+    tools:
+    - file_read
+    - file_write
+    - workflow_execute
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 负责整合各模块研究成果，撰写最终研究报告
+    role_description: 报告撰写员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 10
+  TRANSLATOR:
+    tools:
+    - file_read
+    - file_write
+    prompt_template: TRANSLATOR_PROMPT_TEMPLATES
+    agent_description: 负责中英文资料互译，确保研究资料语言统一
+    role_description: 翻译员
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - file_write
+    model_name: deepseek-chat
+    max_iterations: 15

@@ -1,0 +1,37 @@
+# test_custom_roles.yaml - 测试自定义角色配置
+team_rules: "这是一个测试团队，包含自定义角色"
+start_role: "CUSTOM_COORDINATOR"
+
+roles:
+  CUSTOM_COORDINATOR:
+    tools: ["handoff"]
+    prompt_template: "COORDINATOR_PROMPT_TEMPLATES"
+    agent_description: "你是一个自定义的协调者角色"
+    role_description: "自定义协调者"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 3
+
+  CUSTOM_ANALYST:
+    tools: ["handoff"]
+    prompt_template: "RESEARCHER_PROMPT_TEMPLATES"
+    agent_description: "你是一个自定义的分析师角色"
+    role_description: "自定义分析师"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 3
+
+  RESEARCHER:
+    tools: ["web_crawler", "serper_search"]
+    prompt_template: "RESEARCHER_PROMPT_TEMPLATES"
+    agent_description: "你是一位专业的深度研究员"
+    role_description: "研究员"
+    termination_conditions:
+      - type: "ToolTerminationCondition"
+        tool_names: ["final_answer"]
+    model_name: "deepseek-chat"
+    max_iterations: 3
