@@ -135,7 +135,9 @@ class Agent:
     def get_agents(cls, chat_id: str) -> List["Agent"]:
         """获取指定chat_id下的agent列表副本"""
         with cls._cache_lock:
-            return [agent for agent in cls._agent_cache.get(chat_id, [])]  # 返回副本避免直接修改缓存
+            return [
+                agent for agent in cls._agent_cache.get(chat_id, [])
+            ]  # 返回副本避免直接修改缓存
 
     @classmethod
     def set_agents(cls, chat_id: str, agents: List["Agent"]) -> None:
@@ -197,13 +199,13 @@ class Agent:
         self._response_cache = Cache[str](maxsize=cache_size, ttl=cache_ttl)
         self.metrics = Metrics()
         self.conversation_id = conversation_id
-        
+
         # 初始化scratchpad_items，包含历史信息
         self.scratchpad_items = scratchpad_items if scratchpad_items else []
         if conversation_id:
             historical_items = self._load_historical_scratchpad_items(conversation_id)
             self.scratchpad_items.extend(historical_items)
-        
+
         self.stream_manager = stream_manager
         self.stopped = False
         self.history_service = history_service
@@ -280,22 +282,49 @@ class Agent:
 
         self.tools = normalized_tools
 
-    def _load_historical_scratchpad_items(self, conversation_id: str) -> List[ScratchpadItem]:
-        """从Redis中加载最近5轮的历史scratchpad_items
-        
+    def _load_historical_scratchpad_items(
+        self, conversation_id: str, size: int = 5, expire_hours: int = 12
+    ) -> List[ScratchpadItem]:
+        """从Redis中加载指定时间内最近size条的历史scratchpad_items
+
         Args:
             conversation_id: 会话ID，作为Redis中的唯一标识
-            
+            size: 要获取的记录数量，默认5条
+            expire_hours: 过期时间（小时），默认12小时
+
         Returns:
-            List[ScratchpadItem]: 最近5轮的历史迭代信息
+            List[ScratchpadItem]: 指定时间内最近size条的历史迭代信息，按时间戳升序排列（先发生的在前）
         """
         try:
             redis_cache = RedisCache()
             redis_key = f"conversation_history:{conversation_id}"
-            
-            # 从Redis列表中获取最近5轮的历史记录
-            history_data = redis_cache.lrange(redis_key, 0, 4)  # 获取最新的5条记录
-            
+
+            # 计算过期时间戳
+            expire_timestamp = time.time() - (expire_hours * 60 * 60)
+
+            # 删除过期数据
+            redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
+
+            # 获取总数量
+            total_count = redis_cache.zcard(redis_key)
+            if total_count == 0:
+                logger.info(
+                    f"未找到12小时内的历史迭代信息 (conversation_id: {conversation_id})"
+                )
+                return []
+
+            # 计算起始位置：获取最新的size条记录，但要按时间升序返回
+            # 如果总数小于等于size，则获取全部；否则获取最新的size条
+            if total_count <= size:
+                start_index = 0
+                end_index = total_count - 1
+            else:
+                start_index = total_count - size
+                end_index = total_count - 1
+
+            # 从Redis有序集合中获取指定范围的记录（按时间戳升序）
+            history_data = redis_cache.zrange(redis_key, start_index, end_index)
+
             historical_items = []
             for item_json in history_data:
                 try:
@@ -304,43 +333,63 @@ class Agent:
                         thought=item_dict.get("thought", ""),
                         action=item_dict.get("action", ""),
                         observation=item_dict.get("observation", ""),
-                        is_origin_query=item_dict.get("is_origin_query", False)
+                        is_origin_query=item_dict.get("is_origin_query", False),
                     )
                     historical_items.append(scratchpad_item)
                 except (json.JSONDecodeError, Exception) as e:
                     logger.warning(f"解析历史scratchpad_item失败: {e}")
                     continue
-            
+
             if historical_items:
-                logger.info(f"成功加载 {len(historical_items)} 条历史迭代信息 (conversation_id: {conversation_id})")
+                logger.info(
+                    f"成功加载 {len(historical_items)} 条历史迭代信息 (conversation_id: {conversation_id}, {expire_hours}小时内, 按时间升序)"
+                )
             else:
-                logger.info(f"未找到历史迭代信息 (conversation_id: {conversation_id})")
-                
+                logger.info(
+                    f"未找到{expire_hours}小时内的历史迭代信息 (conversation_id: {conversation_id})"
+                )
+
             return historical_items
-            
+
         except Exception as e:
             logger.error(f"从Redis加载历史信息失败: {e}")
             return []
 
-    def _save_scratchpad_item_to_redis(self, conversation_id: str, item: ScratchpadItem):
-        """将scratchpad_item保存到Redis
-        
+    def _save_scratchpad_item_to_redis(
+        self, conversation_id: str, item: ScratchpadItem, expire_hours: int = 12
+    ):
+        """将scratchpad_item保存到Redis有序集合中，使用时间戳作为score
+
         Args:
             conversation_id: 会话ID
             item: 要保存的scratchpad项
+            expire_hours: 过期时间（小时），默认12小时
         """
         try:
             redis_cache = RedisCache()
             redis_key = f"conversation_history:{conversation_id}"
-            
+
             # 将ScratchpadItem转换为JSON字符串
             item_json = json.dumps(item.to_dict(), ensure_ascii=False)
-            
-            # 添加到Redis列表的开头
-            redis_cache.lpush(redis_key, item_json)
-            
-            logger.debug(f"成功保存scratchpad_item到Redis (conversation_id: {conversation_id})")
-            
+
+            # 使用当前时间戳作为score，添加到Redis有序集合
+            current_timestamp = time.time()
+            redis_cache.zadd(redis_key, {item_json: current_timestamp})
+
+            # 清理过期数据：删除指定小时前的记录
+            expire_timestamp = current_timestamp - (expire_hours * 60 * 60)
+            redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
+
+            # 限制总数量，只保留最新的100条记录（防止无限增长）
+            total_count = redis_cache.zcard(redis_key)
+            if total_count > 100:
+                # 删除最旧的记录，保留最新的100条
+                redis_cache.zremrangebyrank(redis_key, 0, total_count - 101)
+
+            logger.debug(
+                f"成功保存scratchpad_item到Redis有序集合 (conversation_id: {conversation_id}, timestamp: {current_timestamp}, expire_hours: {expire_hours})"
+            )
+
         except Exception as e:
             logger.error(f"保存scratchpad_item到Redis失败: {e}")
 
@@ -365,11 +414,14 @@ class Agent:
         # 使用实例字段中的scratchpad_items，排除is_origin_query的item
         agent_scratchpad = ""
         # 过滤掉is_origin_query=True的项目，只处理实际的执行步骤
-        execution_items = [item for item in self.scratchpad_items if not item.is_origin_query]
+        execution_items = [
+            item for item in self.scratchpad_items if not item.is_origin_query
+        ]
         for i, item in enumerate(execution_items, 1):
             agent_scratchpad += item.to_string(index=i)
         if context is not None:
-            agent_scratchpad += context
+            agent_scratchpad += f"\n {context}"
+
         # 统一提示模板构造
         # query赋值优化：只有当query为None时，才从scratchpad_items中查找is_origin_query为true的item，否则直接使用query
         query_value = query
@@ -378,7 +430,7 @@ class Agent:
                 if item.is_origin_query:
                     query_value = item.thought
                     break
-        
+
         values = {
             "CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "REACT_LOOP_PROMPT": REACT_LOOP_PROMPT,
@@ -499,7 +551,10 @@ class Agent:
         with Agent._cache_lock:
             if event.chat_id not in Agent._agent_cache:
                 Agent._agent_cache[event.chat_id] = []
-            if not any(a.agentcard.agentid == self.agentcard.agentid for a in Agent._agent_cache[event.chat_id]):
+            if not any(
+                a.agentcard.agentid == self.agentcard.agentid
+                for a in Agent._agent_cache[event.chat_id]
+            ):
                 Agent._agent_cache[event.chat_id].append(self)
         """处理接收到的事件"""
         if not hasattr(event, "role_type") or not hasattr(event, "payload"):
@@ -593,7 +648,10 @@ class Agent:
         with Agent._cache_lock:
             if chat_id not in Agent._agent_cache:
                 Agent._agent_cache[chat_id] = []
-            if not any(a.agentcard.agentid == self.agentcard.agentid for a in Agent._agent_cache[chat_id]):
+            if not any(
+                a.agentcard.agentid == self.agentcard.agentid
+                for a in Agent._agent_cache[chat_id]
+            ):
                 Agent._agent_cache[chat_id].append(self)
         if stream:
             self.stream_manager = StreamManager.get_instance()
@@ -621,10 +679,12 @@ class Agent:
                     thought=query,
                 )
                 self.scratchpad_items.append(origin_query_item)
-                
+
                 # 如果有conversation_id，将初始查询也保存到Redis
                 if self.conversation_id:
-                    self._save_scratchpad_item_to_redis(self.conversation_id, origin_query_item)
+                    self._save_scratchpad_item_to_redis(
+                        self.conversation_id, origin_query_item
+                    )
             if stream:
                 event = await create_agent_start_event(query)
                 await self.stream_manager.send_message(chat_id, event)
@@ -675,7 +735,7 @@ class Agent:
                     return
                 iteration_count += 1
                 try:
-                    prompt = self._construct_prompt(context=context)
+                    prompt = self._construct_prompt(context=context, query=query)
                     logger.info(f"Prompt for iteration {iteration_count}: \n{prompt}")
                     model_response = None
                     if self.reasoner_model_name:
@@ -766,8 +826,12 @@ class Agent:
                                 if action_input.get("target_role") == "reporter":
                                     agent_scratchpad = ""
                                     # 过滤掉is_origin_query=True的项目和handoff动作
-                                    execution_items = [item for item in self.scratchpad_items
-                                                     if not item.is_origin_query and item.action != "handoff"]
+                                    execution_items = [
+                                        item
+                                        for item in self.scratchpad_items
+                                        if not item.is_origin_query
+                                        and item.action != "handoff"
+                                    ]
                                     for item in execution_items:
                                         agent_scratchpad += item.observation
                                     action_input["context"] = agent_scratchpad
@@ -789,6 +853,10 @@ class Agent:
                             if action == "handoff":
                                 handoff_flag = True  # 设置退出标志
                                 final_answer = None  # 清空最终答案
+                                
+                            if action == "user_input":
+                                prompt = action_input["prompt"]
+                                thought = f"{thought}\n{prompt}"
 
                             if action == "chat" and need_history:
                                 del action_input["history_action_result"]
@@ -826,11 +894,13 @@ class Agent:
                         thought=thought, action=action, observation=observation
                     )
                     self.scratchpad_items.append(scratchpad_item)
-                    
+
                     # 如果有conversation_id，将当前迭代信息保存到Redis
                     if self.conversation_id:
-                        self._save_scratchpad_item_to_redis(self.conversation_id, scratchpad_item)
-                    
+                        self._save_scratchpad_item_to_redis(
+                            self.conversation_id, scratchpad_item
+                        )
+
                     observations.append(observation)
                 except ActionBadException as e:
                     logger.error(f"[{chat_id}] {e.message}")
@@ -851,10 +921,12 @@ class Agent:
                         thought=error_msg, action="", observation=error_msg
                     )
                     self.scratchpad_items.append(error_item)
-                    
+
                     # 如果有conversation_id，将错误信息也保存到Redis
                     if self.conversation_id:
-                        self._save_scratchpad_item_to_redis(self.conversation_id, error_item)
+                        self._save_scratchpad_item_to_redis(
+                            self.conversation_id, error_item
+                        )
                     await asyncio.sleep(self.iteration_retry_delay)
                     continue
 

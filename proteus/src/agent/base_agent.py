@@ -168,6 +168,7 @@ class ScratchpadItem:
             "thought": self.thought,
             "action": self.action,
             "observation": self.observation,
+            "is_origin_query": self.is_origin_query,
         }
 
     def to_string(self, index: int = None) -> str:
@@ -178,7 +179,7 @@ class ScratchpadItem:
             return f"\n{index}. **子任务定义**: {self.thought}\n   **工具调用**: {self.action}\n   **结果**: {formatted_observation}"
         else:
             return f"**子任务描述**: {self.thought}\n**工具调用**: {self.action}\n**结果**: {formatted_observation}\n"
-        
+
     def to_string2(self, index: int = None) -> str:
         """将对象转换为字符串表示，以紧凑的Markdown格式"""
         formatted_observation = self._format_markdown_observation(self.observation)
