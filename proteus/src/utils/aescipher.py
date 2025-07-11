@@ -145,16 +145,16 @@ class AESCipher:
 
 
 # 使用示例
-# if __name__ == "__main__":
-    # # 生成并保存密钥
-    # base64_key = AESCipher.generate_key(32)
-    # print("生成的Base64密钥:", base64_key)
+if __name__ == "__main__":
+    # 生成并保存密钥
+    base64_key = AESCipher.generate_key(32)
+    print("生成的Base64密钥:", base64_key)
 
-    # # 使用密钥加密示例
-    # encrypted = AESCipher.encrypt_string("机密信息", key=base64_key)
-    # print("密钥加密结果:", encrypted)
-    # decrypted = AESCipher.decrypt_string(encrypted, key=base64_key)
-    # print("密钥解密结果:", decrypted)
+    # 使用密钥加密示例
+    encrypted = AESCipher.encrypt_string("sk-c742e2adad6847a2a797bd7ba4be12eb", key=base64_key)
+    print("密钥加密结果:", encrypted)
+    decrypted = AESCipher.decrypt_string(encrypted, key=base64_key)
+    print("密钥解密结果:", decrypted)
 
     # # 密码加密示例
     # encrypted = AESCipher.encrypt_string("敏感信息", password="strong_password")
