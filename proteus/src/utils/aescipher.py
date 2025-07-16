@@ -144,20 +144,37 @@ class AESCipher:
         return data.decode("utf-8")
 
 
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='AES加密解密工具')
+    parser.add_argument('-m', '--message', required=True, help='待加密的明文')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-k', '--key', help='Base64编码的AES密钥')
+    group.add_argument('-p', '--password', help='加密密码')
+    return parser.parse_args()
+
 # 使用示例
 if __name__ == "__main__":
-    # 生成并保存密钥
-    base64_key = AESCipher.generate_key(32)
-    print("生成的Base64密钥:", base64_key)
-
-    # 使用密钥加密示例
-    encrypted = AESCipher.encrypt_string("sk-c742e2adad6847a2a797bd7ba4be12eb", key=base64_key)
-    print("密钥加密结果:", encrypted)
-    decrypted = AESCipher.decrypt_string(encrypted, key=base64_key)
-    print("密钥解密结果:", decrypted)
-
-    # # 密码加密示例
-    # encrypted = AESCipher.encrypt_string("敏感信息", password="strong_password")
-    # print("密码加密结果:", encrypted)
-    # decrypted = AESCipher.decrypt_string(encrypted, password="strong_password")
-    # print("密码解密结果:", decrypted)
+    args = parse_args()
+    
+    if args.key:
+        # 使用密钥加密
+        encrypted = AESCipher.encrypt_string(args.message, key=args.key)
+        print("密钥加密结果:", encrypted)
+        decrypted = AESCipher.decrypt_string(encrypted, key=args.key)
+        print("密钥解密结果:", decrypted)
+    elif args.password:
+        # 使用密码加密
+        encrypted = AESCipher.encrypt_string(args.message, password=args.password)
+        print("密码加密结果:", encrypted)
+        decrypted = AESCipher.decrypt_string(encrypted, password=args.password)
+        print("密码解密结果:", decrypted)
+    else:
+        # 生成新密钥并加密示例
+        base64_key = AESCipher.generate_key(32)
+        print("生成的Base64密钥:", base64_key)
+        encrypted = AESCipher.encrypt_string(args.message, key=base64_key)
+        print("密钥加密结果:", encrypted)
+        decrypted = AESCipher.decrypt_string(encrypted, key=base64_key)
+        print("密钥解密结果:", decrypted)
