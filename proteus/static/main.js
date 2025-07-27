@@ -43,7 +43,7 @@ let currentChatId = null;
 let isProcessing = false;
 let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
-const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research"];
+const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
 // 提交用户输入的全局函数
 async function submitUserInput(nodeId, inputType, prompt) {
     const inputField = document.getElementById(`user-input-${nodeId}`);

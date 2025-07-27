@@ -349,6 +349,7 @@ async def create_chat(
         "multi-agent",
         "browser-agent",
         "deep-research",
+        "codeact-agent"
     ]
 
     # if model == "workflow":
@@ -669,8 +670,35 @@ async def process_agent(
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
-            from src.api.events import create_complete_event, create_error_event
+            from src.api.events import create_complete_event
 
+            await stream_manager.send_message(chat_id, await create_complete_event())
+        elif agentmodel == "codeact-agent":
+            # CodeAct Agent模式：只允许使用python_execute和user_input工具
+            all_tools = ["python_execute", "user_input"]
+            prompt_template = COT_PROMPT_TEMPLATES
+            
+            # 创建详细的instruction
+            instruction = (
+                "你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。"
+                "你可以使用Python代码进行任何计算、数据处理、文件操作等。如果你对用户请求有任何不确定的地方，"
+                "或者需要用户提供额外的信息，请使用user_input工具与用户进行交互。在编写代码时，请确保代码安全且只执行必要的操作。"
+            )
+            
+            agent = Agent(
+                tools=all_tools,
+                instruction=instruction,  # 使用详细的instruction
+                stream_manager=stream_manager,
+                max_iterations=itecount,
+                history_service=get_history_service(),
+                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
+                model_name="base-model",
+                prompt_template=prompt_template,
+                role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
+            )
+            from src.api.events import create_complete_event
+            await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             # 获取基础工具集合 - 延迟初始化node_manager
@@ -801,4 +829,4 @@ async def execute_workflow(request: WorkflowRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8888)

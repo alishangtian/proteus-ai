@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from abc import ABC, abstractmethod
 import re
@@ -183,6 +184,9 @@ class Agent:
         self._user_input_events = {}  # 存储用户输入事件
         if not prompt_template:
             raise AgentError("Prompt template cannot be empty")
+            
+        # 初始化当前迭代次数
+        self.current_iteration = 0
 
         self.tools = tools  # 先直接保存原始工具列表，在_validate_tools中处理
         self.timeout = timeout
@@ -351,6 +355,67 @@ class Agent:
         except Exception as e:
             logger.error(f"从Redis加载历史信息失败: {e}")
             return []
+
+    def save_checkpoint(self, checkpoint_id: str, expire_hours: int = 24) -> None:
+        """保存当前agent状态到Redis检查点
+
+        Args:
+            checkpoint_id: 检查点唯一标识
+            expire_hours: 过期时间（小时），默认24小时
+        """
+        if not self.conversation_id:
+            logger.warning("Cannot save checkpoint without conversation_id")
+            return
+
+        try:
+            redis_cache = RedisCache()
+            redis_key = f"checkpoint:{self.conversation_id}:{checkpoint_id}"
+
+            # 准备检查点数据
+            checkpoint_data = {
+                "scratchpad_items": [item.to_dict() for item in self.scratchpad_items],
+                "current_iteration": self.current_iteration,
+                "timestamp": datetime.now().isoformat()
+            }
+            data_json = json.dumps(checkpoint_data)
+
+            # 保存到Redis并设置过期时间
+            redis_cache.setex(redis_key, expire_hours * 3600, data_json)
+            logger.info(f"Checkpoint saved: {redis_key}")
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {str(e)}")
+
+    def load_checkpoint(self, checkpoint_id: str) -> bool:
+        """从Redis加载检查点状态
+
+        Args:
+            checkpoint_id: 检查点唯一标识
+
+        Returns:
+            bool: 是否成功加载
+        """
+        if not self.conversation_id:
+            logger.warning("Cannot load checkpoint without conversation_id")
+            return False
+
+        try:
+            redis_cache = RedisCache()
+            redis_key = f"checkpoint:{self.conversation_id}:{checkpoint_id}"
+            data_json = redis_cache.get(redis_key)
+            if not data_json:
+                logger.warning(f"Checkpoint not found: {redis_key}")
+                return False
+
+            checkpoint_data = json.loads(data_json)
+            self.scratchpad_items = [
+                ScratchpadItem.from_dict(item) for item in checkpoint_data["scratchpad_items"]
+            ]
+            self.current_iteration = checkpoint_data["current_iteration"]
+            logger.info(f"Checkpoint loaded: {redis_key}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {str(e)}")
+            return False
 
     def _save_scratchpad_item_to_redis(
         self, conversation_id: str, item: ScratchpadItem, expire_hours: int = 12
@@ -677,8 +742,12 @@ class Agent:
         stream: bool = True,
         is_result: bool = False,
         context: str = None,
+        resume_from_checkpoint: str = None
     ) -> str:
-        """执行Agent的主要逻辑
+        """执行Agent的主要逻辑，支持从检查点恢复
+
+        Args:
+            resume_from_checkpoint: 从指定检查点ID恢复执行
 
         Args:
             query: 用户输入的查询文本
@@ -699,9 +768,22 @@ class Agent:
                 event = await create_agent_complete_event("已停止")
                 await self.stream_manager.send_message(chat_id, event)
             return
+        
+        # 检查点恢复逻辑
+        if resume_from_checkpoint:
+            if self.load_checkpoint(resume_from_checkpoint):
+                if stream:
+                    event = await create_agent_start_event(f"从检查点恢复: {resume_from_checkpoint}")
+                    await self.stream_manager.send_message(chat_id, event)
+            else:
+                if stream:
+                    event = await create_agent_error_event(f"无法加载检查点: {resume_from_checkpoint}")
+                    await self.stream_manager.send_message(chat_id, event)
+                return
+
         try:
             # 发送agent开始事件
-            if not is_result:
+            if not is_result and (not resume_from_checkpoint or not self.scratchpad_items):
                 origin_query_item = ScratchpadItem(
                     is_origin_query=True,
                     thought=query,
@@ -713,21 +795,24 @@ class Agent:
                     self._save_scratchpad_item_to_redis(
                         self.conversation_id, origin_query_item
                     )
+                    
+            start_message = f"恢复任务: {query}" if resume_from_checkpoint else query
             if stream:
-                event = await create_agent_start_event(query)
+                event = await create_agent_start_event(start_message)
                 await self.stream_manager.send_message(chat_id, event)
 
             # 使用实例字段存储思考和执行过程
             observations: List[str] = []
-            iteration_count = 0
+            iteration_count = self.current_iteration if hasattr(self, 'current_iteration') else 0
             action = None
             thought = None
             observation = None
             final_answer = None
-            handoff_flag = False  # 新增handoff标志
+            handoff_flag = False
             terminition_flag = False
 
             while not handoff_flag:
+                self.current_iteration = iteration_count  # 更新当前迭代次数
                 termination_ctx = {
                     "current_step": iteration_count,
                     "current_action": action,
@@ -990,6 +1075,9 @@ class Agent:
             await manager.publish_event(error_event)
             raise
         finally:
+            # 清理后重置当前迭代计数
+            self.current_iteration = 0
+            
             try:
                 # 安全清理资源，仅当有内容时执行
                 with contextlib.suppress(AttributeError):

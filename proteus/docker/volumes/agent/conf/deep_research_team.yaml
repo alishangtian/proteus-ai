@@ -62,7 +62,7 @@ roles:
     tools: ["file_write"]
     prompt_template: "REPORTER_PROMPT_TEMPLATES"
     agent_description: "你是一位专业的报告撰写者，负责仅基于提供的信息 **context** 和可验证事实撰写清晰、全面的有关 **报告主题** 的报告、稿件、传记、研究等。"
-    role_description: "资料审阅和生成专家"
+    role_description: "报告生成专家"
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["file_write"]

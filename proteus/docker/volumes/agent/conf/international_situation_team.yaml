@@ -1,0 +1,89 @@
+team_rules: 研究当前国际形势，包括地缘政治格局、全球经济影响、军事动态和区域分析
+start_role: COORDINATOR
+roles:
+  COORDINATOR:
+    tools:
+    - handoff
+    - team_runner
+    prompt_template: COORDINATOR_PROMPT_TEMPLATES
+    agent_description: 负责协调团队工作，分配任务给各领域专家
+    role_description: 团队协调者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
+  INTERNATIONAL_RELATIONS_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 分析全球地缘政治格局，识别关键国际关系和潜在冲突点
+    role_description: 国际关系专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  ECONOMIST:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 评估全球经济影响，分析贸易、金融和市场趋势
+    role_description: 经济学家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  MILITARY_ANALYST:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 研究全球军事动态，包括军力部署、军事技术和战略变化
+    role_description: 军事分析师
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REGIONAL_EXPERT:
+    tools:
+    - serper_search
+    - web_crawler
+    - arxiv_search
+    - file_write
+    prompt_template: RESEARCHER_PROMPT_TEMPLATES
+    agent_description: 负责特定地区的深入分析，包括政治、经济和社会动态
+    role_description: 区域专家
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 10
+  REPORTER:
+    tools:
+    - file_read
+    - file_write
+    prompt_template: REPORTER_PROMPT_TEMPLATES
+    agent_description: 汇总各专家的分析结果，生成最终报告
+    role_description: 报告撰写者
+    termination_conditions:
+    - type: ToolTerminationCondition
+      tool_names:
+      - final_answer
+    model_name: deepseek-chat
+    max_iterations: 5
