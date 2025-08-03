@@ -23,24 +23,26 @@ class ModelManager:
         """初始化配置"""
         # 优先使用环境变量指定的配置路径
         if "PROTEUS_CONFIG_DIR" in os.environ:
-            self.config_path = Path(os.environ["PROTEUS_CONFIG_DIR"]) / "models_config.yaml"
+            self.config_path = (
+                Path(os.environ["PROTEUS_CONFIG_DIR"]) / "models_config.yaml"
+            )
         else:
             # 尝试从项目根目录查找conf目录
             current_path = Path(__file__).resolve()
             root_path = None
-            
+
             # 向上查找直到找到包含conf目录的路径
             for parent in current_path.parents:
                 if (parent / "conf").exists():
                     root_path = parent
                     break
-            
+
             if root_path:
                 self.config_path = root_path / "conf" / "models_config.yaml"
             else:
                 # 最后尝试固定路径（适用于docker环境）
                 self.config_path = Path("/conf/models_config.yaml")
-        
+
         self._config = self._load_config()
 
     def _load_config(self) -> Dict:
@@ -75,6 +77,7 @@ class ModelManager:
             "base_url": model_config["base_url"],
             "api_key": api_key,
             "model_name": model_config["model_name"],
+            "type": model_config["type"],
         }
 
     def list_models(self) -> List[str]:

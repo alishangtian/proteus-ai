@@ -61,6 +61,7 @@ class AgentConfiguration:
         model_name (str): 模型名称
         termination_conditions (List[TerminationCondition]): 终止条件列表
         tools (List[Any]): 工具列表
+        is_continuous (bool): 是否连续会话
     """
 
     def __init__(
@@ -106,7 +107,6 @@ class AgentConfiguration:
         self.llm_timeout = llm_timeout
         self.conversation_id = conversation_id
         self.historical_scratchpad_items = historical_scratchpad_items or []
-
 
 def log_execution_time(func):
     @wraps(func)
@@ -352,46 +352,150 @@ class Agent:
             logger.error(f"从Redis加载历史信息失败: {e}")
             return []
 
-    def _save_scratchpad_item_to_redis(
-        self, conversation_id: str, item: ScratchpadItem, expire_hours: int = 12
+    def _save_conversation_to_redis(
+        self,
+        conversation_id: str,
+        user_query: str = None,
+        assistant_answer: str = None,
+        expire_hours: int = 12,
+        max_retries: int = 3,
+        retry_delay: float = 0.1
     ):
-        """将scratchpad_item保存到Redis有序集合中，使用时间戳作为score
+        """将对话记录保存到Redis有序集合中，使用时间戳作为score
+        每次调用只保存一个字段（user或assistant），使用list存储单个键值对
 
         Args:
             conversation_id: 会话ID
-            item: 要保存的scratchpad项
+            user_query: 用户问题（与assistant_answer二选一）
+            assistant_answer: 助手回答（与user_query二选一）
             expire_hours: 过期时间（小时），默认12小时
+            max_retries: 最大重试次数，默认3次
+            retry_delay: 重试延迟时间（秒），默认0.1秒
+        """
+        retry_count = 0
+        last_exception = None
+        
+        while retry_count <= max_retries:
+            try:
+                redis_cache = RedisCache()
+                redis_key = f"conversation_history:{conversation_id}"
+                current_timestamp = time.time()
+                
+                # 使用pipeline批量操作
+                with redis_cache.pipeline() as pipe:
+                    # 构造对话记录（每次只保存一个字段）
+                    record = []
+                    if user_query:
+                        record.append({"user": user_query})
+                    elif assistant_answer:
+                        record.append({"assistant": assistant_answer})
+                    else:
+                        raise ValueError("必须提供user_query或assistant_answer")
+                    
+                    # 转换为JSON字符串
+                    record_json = json.dumps(record[0], ensure_ascii=False)
+                    
+                    # 添加新记录
+                    pipe.zadd(redis_key, {record_json: current_timestamp})
+                    
+                    # 清理过期数据
+                    expire_timestamp = current_timestamp - (expire_hours * 60 * 60)
+                    pipe.zremrangebyscore(redis_key, 0, expire_timestamp)
+                    
+                    # 限制总数量
+                    pipe.zcard(redis_key)  # 获取当前数量
+                    pipe.zremrangebyrank(redis_key, 0, -101)  # 保留最新的100条
+                    
+                    # 执行所有命令
+                    results = pipe.execute()
+                    total_count = results[2]  # zcard的结果
+                    
+                    logger.info(
+                        f"成功保存对话记录到Redis (conversation_id: {conversation_id}, "
+                        f"timestamp: {current_timestamp}, total_items: {total_count})"
+                    )
+                    return  # 成功则直接返回
+                    
+            except Exception as e:
+                last_exception = e
+                retry_count += 1
+                logger.warning(
+                    f"保存到Redis失败 (尝试 {retry_count}/{max_retries}): {str(e)}"
+                )
+                if retry_count <= max_retries:
+                    time.sleep(retry_delay)
+        
+        # 所有重试都失败
+        logger.error(
+            f"保存对话记录到Redis失败 (conversation_id: {conversation_id}): {str(last_exception)}"
+        )
+        raise last_exception
+
+    def _load_conversation_history(self, conversation_id: str, size: int = 5, expire_hours: int = 12) -> str:
+        """从Redis中加载完整的对话历史记录
+        
+        Args:
+            conversation_id: 会话ID
+            size: 要获取的对话轮次数
+            expire_hours: 过期时间(小时)
+            
+        Returns:
+            str: 格式化的对话历史记录字符串
         """
         try:
             redis_cache = RedisCache()
             redis_key = f"conversation_history:{conversation_id}"
-
-            # 将ScratchpadItem转换为JSON字符串
-            item_json = json.dumps(item.to_dict(), ensure_ascii=False)
-
-            # 使用当前时间戳作为score，添加到Redis有序集合
-            current_timestamp = time.time()
-            redis_cache.zadd(redis_key, {item_json: current_timestamp})
-
-            # 清理过期数据：删除指定小时前的记录
-            expire_timestamp = current_timestamp - (expire_hours * 60 * 60)
+            
+            # 计算过期时间戳
+            expire_timestamp = time.time() - (expire_hours * 60 * 60)
+            
+            # 删除过期数据
             redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
-
-            # 限制总数量，只保留最新的100条记录（防止无限增长）
+            
+            # 获取总数量
             total_count = redis_cache.zcard(redis_key)
-            if total_count > 100:
-                # 删除最旧的记录，保留最新的100条
-                redis_cache.zremrangebyrank(redis_key, 0, total_count - 101)
-
-            logger.debug(
-                f"成功保存scratchpad_item到Redis有序集合 (conversation_id: {conversation_id}, timestamp: {current_timestamp}, expire_hours: {expire_hours})"
-            )
-
+            if total_count == 0:
+                logger.info(f"未找到{expire_hours}小时内的对话历史 (conversation_id: {conversation_id})")
+                return ""
+                
+            # 计算起始位置：获取最新的size*2条记录(每轮对话包含用户和助手各一条)
+            if total_count <= size * 2:
+                start_index = 0
+                end_index = total_count - 1
+            else:
+                start_index = total_count - size * 2
+                end_index = total_count - 1
+                
+            # 获取历史记录
+            history_data = redis_cache.zrange(redis_key, start_index, end_index)
+            
+            # 格式化对话历史
+            conversation_history = []
+            for item_json in history_data:
+                try:
+                    item = json.loads(item_json)
+                    if "user" in item:
+                        conversation_history.append(f"User: {item['user']}")
+                    elif "assistant" in item:
+                        conversation_history.append(f"Assistant: {item['assistant']}")
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.warning(f"解析对话历史失败: {e}")
+                    continue
+                    
+            if conversation_history:
+                logger.info(f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {conversation_id})")
+                return "\n".join(conversation_history)
+            return ""
+            
         except Exception as e:
-            logger.error(f"保存scratchpad_item到Redis失败: {e}")
+            logger.error(f"加载对话历史失败: {e}")
+            return ""
 
     def _construct_prompt(self, context: str = None, query: str = None) -> str:
-        """构造提示模板，使用缓存优化工具描述生成"""
+        """构造提示模板，使用缓存优化工具描述生成
+        
+        新增conversation字段用于传递连续会话历史
+        """
 
         @lru_cache(maxsize=1)  # 只缓存最新的工具描述，因为工具列表不经常变化
         def get_tools_description() -> tuple[str, str]:
@@ -415,7 +519,7 @@ class Agent:
             item for item in self.scratchpad_items if not item.is_origin_query
         ]
         for i, item in enumerate(execution_items, 1):
-            agent_scratchpad += item.to_string(index=i)
+            agent_scratchpad += item.to_string2(index=i)
         if context is not None:
             agent_scratchpad += f"\n {context}"
 
@@ -440,6 +544,8 @@ class Agent:
             "instruction": self.instruction,
             "role_description": self.description,
             "team_description": self.team_description,
+            "conversation": self._load_conversation_history(self.conversation_id)
+                           if hasattr(self, 'conversation_id') and self.conversation_id else "",
         }
         agent_prompt = Template(self.prompt_template).safe_substitute(values)
         return agent_prompt
@@ -710,8 +816,9 @@ class Agent:
 
                 # 如果有conversation_id，将初始查询也保存到Redis
                 if self.conversation_id:
-                    self._save_scratchpad_item_to_redis(
-                        self.conversation_id, origin_query_item
+                    self._save_conversation_to_redis(
+                        self.conversation_id,
+                        user_query=query
                     )
             if stream:
                 event = await create_agent_start_event(query)
@@ -911,13 +1018,6 @@ class Agent:
                         thought=thought, action=action, observation=observation
                     )
                     self.scratchpad_items.append(scratchpad_item)
-
-                    # 如果有conversation_id，将当前迭代信息保存到Redis
-                    if self.conversation_id:
-                        self._save_scratchpad_item_to_redis(
-                            self.conversation_id, scratchpad_item
-                        )
-
                     observations.append(observation)
                 except ActionBadException as e:
                     logger.error(f"[{chat_id}] {e.message}")
@@ -938,12 +1038,6 @@ class Agent:
                         thought=error_msg, action="", observation=error_msg
                     )
                     self.scratchpad_items.append(error_item)
-
-                    # 如果有conversation_id，将错误信息也保存到Redis
-                    if self.conversation_id:
-                        self._save_scratchpad_item_to_redis(
-                            self.conversation_id, error_item
-                        )
                     await asyncio.sleep(self.iteration_retry_delay)
                     continue
 
@@ -970,6 +1064,12 @@ class Agent:
 
             # handoff情况返回None，其他情况返回final_answer
             final_answer = observation if terminition_flag else final_answer
+            # 如果有conversation_id，将当前迭代信息保存到Redis
+            if self.conversation_id:
+                self._save_conversation_to_redis(
+                    self.conversation_id,
+                    assistant_answer=final_answer
+                )
             return final_answer if not handoff_flag else None
         except Exception as e:
             error_msg = str(e)

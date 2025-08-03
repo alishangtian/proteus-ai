@@ -11,7 +11,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "deepseek-chat"
+    model_name: "gemini-2.5-flash"
     max_iterations: 5
 
   PLANNER:
@@ -22,7 +22,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "deepseek-chat"
+    model_name: "gemini-2.5-flash"
     max_iterations: 5
 
   RESEARCHER:
@@ -33,7 +33,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "deepseek-chat"
+    model_name: "gemini-2.5-flash"
     max_iterations: 5
 
   CODER:
@@ -44,7 +44,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "deepseek-chat"
+    model_name: "gemini-2.5-flash"
     max_iterations: 5
 
   PAPER_SEARCH_EXPERT:
@@ -55,7 +55,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "deepseek-chat"
+    model_name: "gemini-2.5-flash"
     max_iterations: 5
 
   REPORTER:

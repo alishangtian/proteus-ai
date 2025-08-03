@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.cot_prompt import COT_PROMPT_TEMPLATES
+from src.agent.prompt.react_agent_prompt import REACT_AGENT_PROMPT
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
@@ -31,6 +32,7 @@ from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
 from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
 from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
 from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
+from src.api.events import create_complete_event, create_error_event
 
 from src.api.events import (
     create_status_event,
@@ -670,7 +672,6 @@ async def process_agent(
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
-            from src.api.events import create_complete_event
 
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "codeact-agent":
@@ -697,13 +698,13 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
             )
-            from src.api.events import create_complete_event
+            
             await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             # 获取基础工具集合 - 延迟初始化node_manager
             all_tools = NodeConfigManager.get_instance().get_tools()
-            prompt_template = COT_PROMPT_TEMPLATES
+            prompt_template = REACT_AGENT_PROMPT
             if agentmodel == "workflow":
                 prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
                 all_tools = NodeConfigManager.get_instance().get_tools(
@@ -725,7 +726,6 @@ async def process_agent(
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
-            from src.api.events import create_complete_event, create_error_event
 
             await stream_manager.send_message(chat_id, await create_complete_event())
     except Exception as e:

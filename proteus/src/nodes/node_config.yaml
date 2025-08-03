@@ -4,42 +4,33 @@
 PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
-  name: "Python函数执行"
-  description: "通用Python代码执行节点，支持执行自定义Python函数，可用于科学计算、数据处理、算法实现等多种场景。内置支持numpy、pandas等科学计算库，可实现复杂的数学运算、统计分析等功能。"
+  name: "Python/Shell代码执行"
+  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时可以使用 shell 脚本安装，python 代码最终需要将结构 print 出来才能接收到"
   output:
-    result: "函数执行结果"
+    result: "执行结果（标准输出）"
     stdout: "标准输出内容"
-    stderr: "标准错误内容"
+    stderr: "标准错误内容（包含错误信息）"
     success: "执行是否成功"
-    function_name: "执行的函数名称"
-    error: "错误信息(如果有)"
   params:
     code:
       type: "str"
       required: true
-      description: "要执行的Python函数定义代码。
-        切记：代码的缩进和换行格式必须正确，否则会导致执行失败
-        支持以下场景：
-        1. 数学计算：可使用numpy进行矩阵运算、统计分析等
-        2. 数据处理：可使用pandas进行数据清洗、转换、分析等
-        3. 科学计算：支持scipy进行积分、优化、信号处理等
-        4. 算法实现：可实现排序、搜索、图论等算法
-        5. 文本处理：支持正则表达式、分词、编码转换等
-        6. 自定义计算：可实现任意自定义的计算逻辑"
+      description: "要执行的代码，支持Python函数定义或Shell脚本"
+    language:
+      type: "str"
+      required: false
+      default: "python"
+      description: "代码语言类型：python 或 shell"
+    enable_network:
+      type: "bool"
+      required: false
+      default: true
+      description: "是否允许代码访问网络"
     variables:
       type: "dict"
       required: false
       default: {}
-      description: "函数执行的参数字典，可传入各类数据类型：
-        1. 基础类型：数字、字符串、布尔值等
-        2. 复合类型：列表、字典、元组等
-        3. 特殊类型：日期时间、二进制数据等
-        4. 数据结构：DataFrame、ndarray等"
-    timeout:
-      type: "int"
-      required: false
-      default: 30
-      description: "执行超时时间(秒)，用于控制长时间运算的超时限制"
+      description: "传递给代码的变量字典（仅Python3有效）"
 
 ChatNode:
   type: "chat"
@@ -215,27 +206,6 @@ DbExecuteNode:
       required: false
       default: true
       description: "是否自动提交"
-
-TerminalNode:
-  type: "terminal"
-  class: "src.nodes.terminal.TerminalNode"
-  name: "终端命令"
-  description: "执行终端命令节点"
-  output:
-    stdout: "命令标准输出"
-    stderr: "命令标准错误"
-    return_code: "命令返回码"
-    success: "命令是否成功执行"
-  params:
-    command:
-      type: "str"
-      required: true
-      description: "要执行的shell命令"
-    shell:
-      type: "bool"
-      required: false
-      default: true
-      description: "是否使用shell执行命令"
 
 LoopNode:
   type: "loop_node"

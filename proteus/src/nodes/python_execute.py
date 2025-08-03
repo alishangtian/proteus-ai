@@ -29,6 +29,11 @@ class PythonExecuteNode(BaseNode):
         if not code:
             raise ValueError("code参数不能为空")
 
+        # 获取语言类型，默认为python3
+        language = str(params.get("language", "python")).lower()
+        if language not in ["python", "shell"]:
+            raise ValueError("language参数必须是python或shell")
+
         # 获取是否启用网络访问
         enable_network = params.get("enable_network", True)
 
@@ -53,13 +58,13 @@ class PythonExecuteNode(BaseNode):
             raise ValueError("variables参数必须是字典类型")
 
         try:
-            # 将变量注入代码环境
-            if variables:
+            # 将变量注入代码环境（仅对python3有效）
+            if language == "python" and variables:
                 # 生成变量定义代码
                 var_code = "\n".join([f"{k} = {repr(v)}" for k, v in variables.items()])
                 # 将变量定义添加到原始代码前面
                 code = f"{var_code}\n{code}"
-
+            
             # 调用虚拟环境API执行代码
             headers = {
                 "Content-Type": "application/json",
@@ -68,7 +73,7 @@ class PythonExecuteNode(BaseNode):
             
             payload = {
                 "code": code,
-                "language": "python3",
+                "language": language,
                 "enable_network": enable_network,
             }
 
@@ -82,13 +87,13 @@ class PythonExecuteNode(BaseNode):
 
             # 处理API返回结果
             if api_result.get("code") != 0:
-                error = api_result.get("stderr", "虚拟环境执行失败")
+                error_msg = api_result.get("stderr", "虚拟环境执行失败")
                 return {
                     "result": None,
                     "stdout": "",
-                    "stderr": stderr,
+                    "stderr": error_msg,
                     "success": False,
-                    "error": stderr,
+                    "error": error_msg,
                 }
 
             return {

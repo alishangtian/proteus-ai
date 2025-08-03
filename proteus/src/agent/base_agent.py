@@ -176,7 +176,7 @@ class ScratchpadItem:
         formatted_observation = self._format_markdown_observation(self.observation)
 
         if index is not None:
-            return f"\n{index}. **子任务定义**: {self.thought}\n   **工具调用**: {self.action}\n   **结果**: {formatted_observation}"
+            return f"\n{index}.**子任务定义**: {self.thought}\n**工具调用**: {self.action}\n**结果**: {formatted_observation}"
         else:
             return f"**子任务描述**: {self.thought}\n**工具调用**: {self.action}\n**结果**: {formatted_observation}\n"
 
@@ -185,9 +185,9 @@ class ScratchpadItem:
         formatted_observation = self._format_markdown_observation(self.observation)
 
         if index is not None:
-            return f"\n{index}. **thinking**: {self.thought}\n   **action**: {self.action}\n   **observation**: {formatted_observation}"
+            return f"{index}.思考: {self.thought}\n{index}.动作: {self.action}\n{index}.观察: {formatted_observation}\n"
         else:
-            return f"**thinking**: {self.thought}\n   **action**: {self.action}\n   **observation**: {formatted_observation}\n"
+            return f"思考: {self.thought}\n动作: {self.action}\n观察: {formatted_observation}\n"
 
     def _format_markdown_observation(self, text: str) -> str:
         """格式化markdown格式的observation内容

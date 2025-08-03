@@ -1,21 +1,36 @@
 PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
-  name: "Python函数执行"
-  description: "通用Python代码执行节点，code参数是要执行的代码，最终结果需要print出来，否则拿不到结果，当执行code导入的依赖不是系统自带的话，需要先使用代码安装必要的依赖"
+  name: "Python/Shell代码执行"
+  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时可以使用 shell 脚本安装，python 代码最终需要将结构 print 出来才能接收到"
   output:
-    result: "函数执行结果"
+    result: "执行结果（标准输出）"
+    stdout: "标准输出内容"
+    stderr: "标准错误内容（包含错误信息）"
+    success: "执行是否成功"
   params:
     code:
       type: "str"
       required: true
-      description: "要执行的Python代码，最终结果需要print打印出来"
+      description: "要执行的代码，支持Python函数定义或Shell脚本"
       example: "def calculate(a, b):\n    print(a + b) \n calculate(a,b)"
+    language:
+      type: "str"
+      required: false
+      default: "python"
+      description: "代码语言类型：python 或 shell"
+      example: "shell"
+    enable_network:
+      type: "bool"
+      required: false
+      default: true
+      description: "是否允许代码访问网络"
+      example: false
     variables:
       type: "dict"
       required: false
       default: {}
-      description: "执行python代码需要的参数，可传入各类数据类型"
+      description: "传递给代码的变量字典（仅Python3有效）"
       example: {"a": 1, "b": 2}
 
 FileReadNode:
@@ -160,26 +175,6 @@ DbExecuteNode:
       required: false
       default: true
       description: "是否自动提交"
-      example: false
-
-TerminalNode:
-  type: "terminal"
-  class: "src.nodes.terminal.TerminalNode"
-  name: "终端命令"
-  description: "执行终端命令节点"
-  output:
-    result: "命令标准输出"
-  params:
-    command:
-      type: "str"
-      required: true
-      description: "要执行的shell命令"
-      example: "ls -la"
-    shell:
-      type: "bool"
-      required: false
-      default: true
-      description: "是否使用shell执行命令"
       example: false
 
 SerperSearchNode:

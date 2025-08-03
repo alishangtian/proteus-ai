@@ -347,17 +347,6 @@ class NodeConfigManager:
             if output_descriptions:
                 full_description += "**Outputs**:\n" + "\n".join(output_descriptions) + "\n\n"
             
-            # 使用代码块格式包装Usage部分
-            full_description += "**Usage**:\n```xml\n"
-            full_description += f"<{node_type}>\n"
-            
-            for param_name, param_info in params.items():
-                if isinstance(param_info, dict):
-                    param_example = param_info.get("example")
-                    full_description += f"  <{param_name}>{param_example}</{param_name}>\n"
-            
-            full_description += f"</{node_type}>\n```\n"
-
             # 获取节点类
             node_class = self._node_types.get(node_type)
             if not node_class:

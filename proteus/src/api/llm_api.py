@@ -143,11 +143,12 @@ async def call_llm_api_stream(
     try:
         model_config = ModelManager().get_model_config(model)
         base_url = model_config["base_url"]
-        api_key = model_config["api_key"]
+        model_type = model_config.get("type", "openai")
     except Exception as e:
         logger.warning(f"[{request_id}] 使用默认API配置: {str(e)}")
         base_url = API_CONFIG["base_url"]
         api_key = API_CONFIG["api_key"]
+        model_type = "openai"
 
     # Configure larger buffer sizes for handling big response chunks
     conn = aiohttp.TCPConnector()
@@ -155,18 +156,49 @@ async def call_llm_api_stream(
     async with aiohttp.ClientSession(
         connector=conn, timeout=client_timeout, read_bufsize=2**17  # 128KB buffer size
     ) as session:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        # 根据模型类型构建不同请求
+        if model_type == "gemini":
+            # Gemini模型特殊处理
+            api_key = model_config.get("X-goog-api-key", model_config.get("api_key"))
+            headers = {
+                "Content-Type": "application/json",
+                "X-goog-api-key": api_key,
+            }
 
-        data = {"model": model, "messages": messages, "stream": True}
-        if output_json:
-            data["response_format"] = {"type": "json_object"}
+            # 构建Gemini格式的请求体
+            data = {
+                "contents": [{"parts": [{"text": msg["content"]} for msg in messages]}],
+                "generationConfig": {
+                    "temperature": 0.1,  # Gemini流式调用固定使用0.1温度
+                },
+            }
+
+            # Gemini不支持output_json参数，忽略
+            if output_json:
+                logger.warning("Gemini模型不支持output_json参数，已忽略")
+
+            url = base_url
+        else:
+            # 默认OpenAI格式
+            api_key = model_config["api_key"]
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            data = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+            }
+            if output_json:
+                data["response_format"] = {"type": "json_object"}
+
+            url = f"{base_url}/chat/completions"
 
         try:
             async with session.post(
-                f"{base_url}/chat/completions",
+                url,
                 headers=headers,
                 json=data,
                 chunked=True,
@@ -177,29 +209,58 @@ async def call_llm_api_stream(
                         logger.error(f"[{request_id}] API调用失败: {error_text}")
                     raise ValueError(f"API调用失败: {error_text}")
 
-                async for line in response.content:
-                    if line:
-                        try:
-                            line = line.decode("utf-8").strip()
-                            if line.startswith("data: ") and line != "data: [DONE]":
-                                json_str = line[6:]  # 去掉 "data: "
-                                data = json.loads(json_str)
-                                if len(data["choices"]) > 0:
-                                    delta = data["choices"][0].get("delta", {})
-                                    if "content" in delta:
-                                        yield delta["content"]
-                        except Exception as e:
-                            if "Chunk too big" in str(e):
-                                logger.warning(
-                                    f"[{request_id}] 收到大块响应，尝试继续处理"
-                                )
-                                # Try to process the chunk even if it's large
-                                continue
-                            else:
-                                logger.error(
-                                    f"[{request_id}] 处理流式响应出错: {str(e)}"
-                                )
-                                raise
+                if model_type == "gemini":
+                    # 处理Gemini流式响应
+                    buffer = b""
+                    async for chunk in response.content.iter_any():
+                        if chunk:
+                            buffer += chunk
+                            # Gemini响应以换行符分隔的JSON块
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
+                                if line:
+                                    try:
+                                        data = json.loads(line.decode("utf-8"))
+                                        if "candidates" in data and data["candidates"]:
+                                            candidate = data["candidates"][0]
+                                            if (
+                                                "content" in candidate
+                                                and "parts" in candidate["content"]
+                                            ):
+                                                for part in candidate["content"][
+                                                    "parts"
+                                                ]:
+                                                    if "text" in part:
+                                                        yield part["text"]
+                                    except Exception as e:
+                                        logger.warning(
+                                            f"[{request_id}] 解析Gemini响应出错: {str(e)}"
+                                        )
+                else:
+                    # 处理OpenAI流式响应
+                    async for line in response.content:
+                        if line:
+                            try:
+                                line = line.decode("utf-8").strip()
+                                if line.startswith("data: ") and line != "data: [DONE]":
+                                    json_str = line[6:]  # 去掉 "data: "
+                                    data = json.loads(json_str)
+                                    if len(data["choices"]) > 0:
+                                        delta = data["choices"][0].get("delta", {})
+                                        if "content" in delta:
+                                            yield delta["content"]
+                            except Exception as e:
+                                if "Chunk too big" in str(e):
+                                    logger.warning(
+                                        f"[{request_id}] 收到大块响应，尝试继续处理"
+                                    )
+                                    # Try to process the chunk even if it's large
+                                    continue
+                                else:
+                                    logger.error(
+                                        f"[{request_id}] 处理流式响应出错: {str(e)}"
+                                    )
+                                    raise
 
         except asyncio.TimeoutError:
             error_msg = "API调用超时"
@@ -256,7 +317,7 @@ async def call_llm_api(
     try:
         model_config = ModelManager().get_model_config(model_name)
         base_url = model_config["base_url"]
-        api_key = model_config["api_key"]
+        model_type = model_config.get("type", "openai")
         model_name = model_config["model_name"]
     except Exception as e:
         logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
@@ -267,29 +328,53 @@ async def call_llm_api(
     async with aiohttp.ClientSession(
         connector=conn, timeout=client_timeout, read_bufsize=2**17  # 128KB buffer size
     ) as session:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        # 根据模型类型构建不同请求
+        if model_type == "gemini":
+            # Gemini模型特殊处理
+            api_key = model_config.get("X-goog-api-key", model_config.get("api_key"))
+            headers = {
+                "Content-Type": "application/json",
+                "X-goog-api-key": api_key,
+            }
 
-        data = {
-            "model": model_name,
-            "messages": messages,
-            "stream": False,
-            "temperature": temperature,
-        }
-        if output_json:
-            data["response_format"] = {"type": "json_object"}
+            # 构建Gemini格式的请求体
+            data = {
+                "contents": [{"parts": [{"text": msg["content"]} for msg in messages]}],
+                "generationConfig": {
+                    "temperature": temperature,
+                },
+            }
+
+            url = base_url
+        else:
+            # 默认OpenAI格式
+            api_key = model_config["api_key"]
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            data = {
+                "model": model_name,
+                "messages": messages,
+                "stream": False,
+                "temperature": temperature,
+            }
+            if output_json:
+                data["response_format"] = {"type": "json_object"}
+
+            url = f"{base_url}/chat/completions"
 
         try:
             async with session.post(
-                f"{base_url}/chat/completions",
+                url,
                 headers=headers,
                 json=data,
                 chunked=True,
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
+                    logger.error(response.status)
                     if request_id:
                         logger.error(f"[{request_id}] API调用失败: {error_text}")
                     raise ValueError(f"API调用失败: {error_text}")
@@ -297,7 +382,15 @@ async def call_llm_api(
                 result = await response.json()
                 if request_id:
                     logger.info(f"[{request_id}] API调用成功")
-                return result["choices"][0]["message"]["content"]
+
+                # 根据模型类型解析不同响应格式
+                if model_type == "gemini":
+                    if "candidates" in result and result["candidates"]:
+                        return result["candidates"][0]["content"]["parts"][0]["text"]
+                    else:
+                        raise ValueError("Gemini响应格式错误，未找到有效候选")
+                else:
+                    return result["choices"][0]["message"]["content"]
 
         except asyncio.TimeoutError:
             error_msg = "API调用超时"
