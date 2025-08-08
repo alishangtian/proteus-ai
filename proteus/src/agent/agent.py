@@ -47,66 +47,10 @@ from .base_agent import (
 from ..manager.multi_agent_manager import TeamRole, AgentEvent
 from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache
+from .common.configuration import AgentConfiguration
 
 logger = logging.getLogger(__name__)
 
-
-class AgentConfiguration:
-    """Agent配置类，封装Agent的配置参数
-
-    Attributes:
-        role_type (TeamRole): Agent角色类型
-        description (str): Agent描述
-        prompt_template (str): 提示词模板
-        model_name (str): 模型名称
-        termination_conditions (List[TerminationCondition]): 终止条件列表
-        tools (List[Any]): 工具列表
-        is_continuous (bool): 是否连续会话
-    """
-
-    def __init__(
-        self,
-        role_type: TeamRole = None,
-        role_description: str = "",
-        agent_description: str = "",
-        prompt_template: str = "",
-        model_name: str = "deepseek-chat",
-        termination_conditions: List[TerminationCondition] = None,
-        tools: List[Any] = None,
-        team_description: str = None,
-        max_iterations: int = 50,
-        llm_timeout: int = 120,
-        conversation_id: str = None,
-        historical_scratchpad_items: List[ScratchpadItem] = None,
-    ):
-        """初始化Agent配置
-
-        Args:
-            role_type: Agent角色类型
-            role_description: Agent角色描述
-            agent_description: Agent实例描述
-            prompt_template: 提示词模板
-            model_name: 模型名称
-            termination_conditions: 终止条件列表，默认为空列表
-            tools: 工具列表，默认为空列表
-            team_description: 团队描述
-            max_iterations: 最大迭代次数
-            llm_timeout: LLM超时时间
-            conversation_id: 会话ID，用于获取历史信息
-            historical_scratchpad_items: 历史迭代信息，从Redis中获取
-        """
-        self.role_type = role_type
-        self.role_description = role_description
-        self.prompt_template = prompt_template
-        self.model_name = model_name
-        self.termination_conditions = termination_conditions or []
-        self.tools = tools or []
-        self.team_description = team_description
-        self.agent_description = agent_description
-        self.max_iterations = max_iterations
-        self.llm_timeout = llm_timeout
-        self.conversation_id = conversation_id
-        self.historical_scratchpad_items = historical_scratchpad_items or []
 
 def log_execution_time(func):
     @wraps(func)
@@ -199,9 +143,9 @@ class Agent:
 
         # 初始化scratchpad_items，包含历史信息
         self.scratchpad_items = scratchpad_items if scratchpad_items else []
-        if conversation_id:
-            historical_items = self._load_historical_scratchpad_items(conversation_id)
-            self.scratchpad_items.extend(historical_items)
+        # if conversation_id:
+        #     historical_items = self._load_historical_scratchpad_items(conversation_id)
+        #     self.scratchpad_items.extend(historical_items)
 
         self.stream_manager = stream_manager
         self.stopped = False
@@ -359,7 +303,7 @@ class Agent:
         assistant_answer: str = None,
         expire_hours: int = 12,
         max_retries: int = 3,
-        retry_delay: float = 0.1
+        retry_delay: float = 0.1,
     ):
         """将对话记录保存到Redis有序集合中，使用时间戳作为score
         每次调用只保存一个字段（user或assistant），使用list存储单个键值对
@@ -374,48 +318,46 @@ class Agent:
         """
         retry_count = 0
         last_exception = None
-        
+
         while retry_count <= max_retries:
             try:
                 redis_cache = RedisCache()
                 redis_key = f"conversation_history:{conversation_id}"
                 current_timestamp = time.time()
-                
-                # 使用pipeline批量操作
-                with redis_cache.pipeline() as pipe:
-                    # 构造对话记录（每次只保存一个字段）
-                    record = []
-                    if user_query:
-                        record.append({"user": user_query})
-                    elif assistant_answer:
-                        record.append({"assistant": assistant_answer})
-                    else:
-                        raise ValueError("必须提供user_query或assistant_answer")
-                    
-                    # 转换为JSON字符串
-                    record_json = json.dumps(record[0], ensure_ascii=False)
-                    
-                    # 添加新记录
-                    pipe.zadd(redis_key, {record_json: current_timestamp})
-                    
-                    # 清理过期数据
-                    expire_timestamp = current_timestamp - (expire_hours * 60 * 60)
-                    pipe.zremrangebyscore(redis_key, 0, expire_timestamp)
-                    
-                    # 限制总数量
-                    pipe.zcard(redis_key)  # 获取当前数量
-                    pipe.zremrangebyrank(redis_key, 0, -101)  # 保留最新的100条
-                    
-                    # 执行所有命令
-                    results = pipe.execute()
-                    total_count = results[2]  # zcard的结果
-                    
-                    logger.info(
-                        f"成功保存对话记录到Redis (conversation_id: {conversation_id}, "
-                        f"timestamp: {current_timestamp}, total_items: {total_count})"
-                    )
-                    return  # 成功则直接返回
-                    
+
+                # 构造对话记录（每次只保存一个字段）
+                record = {}
+                if user_query:
+                    record = {"user": user_query}
+                elif assistant_answer:
+                    record = {"assistant": assistant_answer}
+                else:
+                    raise ValueError("必须提供user_query或assistant_answer")
+
+                # 转换为JSON字符串
+                record_json = json.dumps(record, ensure_ascii=False)
+
+                # 添加新记录
+                redis_cache.zadd(redis_key, {record_json: current_timestamp})
+
+                # 清理过期数据
+                expire_timestamp = current_timestamp - (expire_hours * 60 * 60)
+                redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
+
+                # 获取当前数量
+                total_count = redis_cache.zcard(redis_key)
+
+                # 限制总数量：保留最新的100条
+                if total_count > 100:
+                    # 删除最旧的（排名从0到total_count-101）的元素
+                    redis_cache.zremrangebyrank(redis_key, 0, total_count - 101)
+
+                logger.info(
+                    f"成功保存对话记录到Redis (conversation_id: {conversation_id}, "
+                    f"timestamp: {current_timestamp}, total_items: {total_count})"
+                )
+                return  # 成功则直接返回
+
             except Exception as e:
                 last_exception = e
                 retry_count += 1
@@ -424,40 +366,44 @@ class Agent:
                 )
                 if retry_count <= max_retries:
                     time.sleep(retry_delay)
-        
+
         # 所有重试都失败
         logger.error(
             f"保存对话记录到Redis失败 (conversation_id: {conversation_id}): {str(last_exception)}"
         )
         raise last_exception
 
-    def _load_conversation_history(self, conversation_id: str, size: int = 5, expire_hours: int = 12) -> str:
+    def _load_conversation_history(
+        self, conversation_id: str, size: int = 5, expire_hours: int = 12
+    ) -> str:
         """从Redis中加载完整的对话历史记录
-        
+
         Args:
             conversation_id: 会话ID
             size: 要获取的对话轮次数
             expire_hours: 过期时间(小时)
-            
+
         Returns:
             str: 格式化的对话历史记录字符串
         """
         try:
             redis_cache = RedisCache()
             redis_key = f"conversation_history:{conversation_id}"
-            
+
             # 计算过期时间戳
             expire_timestamp = time.time() - (expire_hours * 60 * 60)
-            
+
             # 删除过期数据
             redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
-            
+
             # 获取总数量
             total_count = redis_cache.zcard(redis_key)
             if total_count == 0:
-                logger.info(f"未找到{expire_hours}小时内的对话历史 (conversation_id: {conversation_id})")
+                logger.info(
+                    f"未找到{expire_hours}小时内的对话历史 (conversation_id: {conversation_id})"
+                )
                 return ""
-                
+
             # 计算起始位置：获取最新的size*2条记录(每轮对话包含用户和助手各一条)
             if total_count <= size * 2:
                 start_index = 0
@@ -465,10 +411,10 @@ class Agent:
             else:
                 start_index = total_count - size * 2
                 end_index = total_count - 1
-                
+
             # 获取历史记录
             history_data = redis_cache.zrange(redis_key, start_index, end_index)
-            
+
             # 格式化对话历史
             conversation_history = []
             for item_json in history_data:
@@ -481,19 +427,21 @@ class Agent:
                 except (json.JSONDecodeError, Exception) as e:
                     logger.warning(f"解析对话历史失败: {e}")
                     continue
-                    
+
             if conversation_history:
-                logger.info(f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {conversation_id})")
+                logger.info(
+                    f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {conversation_id})"
+                )
                 return "\n".join(conversation_history)
             return ""
-            
+
         except Exception as e:
             logger.error(f"加载对话历史失败: {e}")
             return ""
 
     def _construct_prompt(self, context: str = None, query: str = None) -> str:
         """构造提示模板，使用缓存优化工具描述生成
-        
+
         新增conversation字段用于传递连续会话历史
         """
 
@@ -519,9 +467,9 @@ class Agent:
             item for item in self.scratchpad_items if not item.is_origin_query
         ]
         for i, item in enumerate(execution_items, 1):
-            agent_scratchpad += item.to_string2(index=i)
+            agent_scratchpad += item.to_react_context(index=i)
         if context is not None:
-            agent_scratchpad += f"\n {context}"
+            agent_scratchpad += f"{context}"
 
         # 统一提示模板构造
         # query赋值优化：只有当query为None时，才从scratchpad_items中查找is_origin_query为true的item，否则直接使用query
@@ -541,11 +489,14 @@ class Agent:
             "query": query_value,
             "context": agent_scratchpad,
             "max_step_num": self.max_iterations,
-            "instruction": self.instruction,
+            "instructions": self.instruction,
             "role_description": self.description,
             "team_description": self.team_description,
-            "conversation": self._load_conversation_history(self.conversation_id)
-                           if hasattr(self, 'conversation_id') and self.conversation_id else "",
+            "conversations": (
+                self._load_conversation_history(self.conversation_id)
+                if hasattr(self, "conversation_id") and self.conversation_id
+                else ""
+            ),
         }
         agent_prompt = Template(self.prompt_template).safe_substitute(values)
         return agent_prompt
@@ -564,15 +515,68 @@ class Agent:
     async def _parse_action(
         self, response_text: str, chat_id: str, query: str = None
     ) -> Dict[str, Any]:
-        """解析LLM响应为动作字典，支持更广泛的代码块解析和格式修复."""
+        """解析LLM响应为动作字典，支持纯文本解析（Action格式和Answer格式）."""
         try:
-            action_dict = ParseXml().parse_xml_to_dict(response_text, query)
-            logger.info(f"Action dict: {action_dict}")
-            return action_dict
-        except Exception as e:
-            error_info = (
-                f"Failed to parse action from response:\n {response_text} \n{str(e)}"
+            # 先尝试匹配Action/Action Input格式（支持中英文冒号）
+            thought_match = re.search(
+                r"Thought[:：]\s*(.*?)(?:\n|$)", response_text, re.DOTALL
             )
+            action_match = re.search(
+                r"Action[:：]\s*(.*?)(?:\n|$)", response_text, re.DOTALL
+            )
+            action_input_match = re.search(
+                r"Action Input[:：]\s*(.*?)(?:\n|$)", response_text, re.DOTALL
+            )
+
+            if thought_match and action_match and action_input_match:
+                # 尝试解析 Action Input 为 JSON
+                action_input_str = action_input_match.group(1).strip()
+                try:
+                    # 尝试解析 JSON
+                    params = json.loads(action_input_str)
+                except json.JSONDecodeError:
+                    # 解析失败，保持原字符串
+                    params = action_input_str
+
+                # 构建与XML解析结果结构一致的字典（工具调用）
+                action_dict = {
+                    "thinking": thought_match.group(1).strip(),
+                    "tool": {
+                        "name": action_match.group(1).strip(),
+                        "params": params,  # 使用解析后的对象或原字符串
+                    },
+                }
+                logger.info(f"纯文本解析成功（Action格式）: {action_dict}")
+                return action_dict
+
+            # 如果Action格式匹配失败，尝试匹配Answer格式
+            thought_match = re.search(
+                r"Thought[:：]\s*(.*?)(?:\n|$)", response_text, re.DOTALL
+            )
+            answer_match = re.search(r"Answer[:：]\s*(.*)", response_text, re.DOTALL)
+
+            if thought_match or answer_match:
+                # 构建与XML解析结果结构一致的字典（最终答案）
+                action_dict = {
+                    "thinking": (
+                        thought_match.group(1).strip() if thought_match else ""
+                    ),
+                    "tool": {
+                        "name": "final_answer",
+                        "params": (
+                            answer_match.group(1).strip() if answer_match else ""
+                        ),
+                    },
+                }
+                logger.info(f"纯文本解析成功（Answer格式）: {action_dict}")
+                return action_dict
+
+            # 两种格式都无法识别
+            error_info = f"无法解析响应文本: {response_text}"
+            logger.error(error_info)
+            return {"thinking": error_info}
+        except Exception as e:
+            error_info = f"解析响应文本失败:\n{response_text}\n错误: {str(e)}"
             logger.error(error_info)
             return {"thinking": error_info}
 
@@ -744,11 +748,15 @@ class Agent:
         with Agent._cache_lock:
             if chat_id not in Agent._agent_cache:
                 Agent._agent_cache[chat_id] = []
-            if not any(a.agentcard.agentid == self.agentcard.agentid
-                      for a in Agent._agent_cache[chat_id]):
+            if not any(
+                a.agentcard.agentid == self.agentcard.agentid
+                for a in Agent._agent_cache[chat_id]
+            ):
                 Agent._agent_cache[chat_id].append(self)
 
-    async def _prepare_execution(self, query: str, chat_id: str, is_result: bool) -> None:
+    async def _prepare_execution(
+        self, query: str, chat_id: str, is_result: bool
+    ) -> None:
         """准备执行环境"""
         if not is_result:
             origin_query_item = ScratchpadItem(
@@ -761,8 +769,9 @@ class Agent:
                     self.conversation_id, origin_query_item
                 )
 
-    async def _execute_tool(self, tool, action: str, action_input: dict,
-                         action_id: str, chat_id: str) -> str:
+    async def _execute_tool(
+        self, tool, action: str, action_input: dict, action_id: str, chat_id: str
+    ) -> str:
         """执行工具并处理结果"""
         try:
             if tool.is_async:
@@ -773,8 +782,9 @@ class Agent:
 
     async def _handle_termination(self, ctx: dict) -> bool:
         """检查终止条件"""
-        return any(tc.should_terminate(self, **ctx)
-               for tc in self.termination_conditions)
+        return any(
+            tc.should_terminate(self, **ctx) for tc in self.termination_conditions
+        )
 
     async def run(
         self,
@@ -817,8 +827,7 @@ class Agent:
                 # 如果有conversation_id，将初始查询也保存到Redis
                 if self.conversation_id:
                     self._save_conversation_to_redis(
-                        self.conversation_id,
-                        user_query=query
+                        self.conversation_id, user_query=query
                     )
             if stream:
                 event = await create_agent_start_event(query)
@@ -916,7 +925,7 @@ class Agent:
                             action, action_input, action_id
                         )
                         await self.stream_manager.send_message(chat_id, start_event)
-                        
+
                         # 发送工具进度事件
                         progress_event = await create_tool_progress_event(
                             action, "running", action_input, action_id
@@ -977,7 +986,7 @@ class Agent:
                             if action == "handoff":
                                 handoff_flag = True  # 设置退出标志
                                 final_answer = None  # 清空最终答案
-                                
+
                             if action == "user_input":
                                 prompt = action_input["prompt"]
                                 thought = f"{thought}\n{prompt}"
@@ -1067,8 +1076,7 @@ class Agent:
             # 如果有conversation_id，将当前迭代信息保存到Redis
             if self.conversation_id:
                 self._save_conversation_to_redis(
-                    self.conversation_id,
-                    assistant_answer=final_answer
+                    self.conversation_id, assistant_answer=final_answer
                 )
             return final_answer if not handoff_flag else None
         except Exception as e:
@@ -1108,16 +1116,17 @@ class Agent:
             except Exception as e:
                 logger.error(f"资源清理时发生异常: {str(e)}", exc_info=True)
                 raise
-    async def _send_tool_events(self, action: str, action_input: dict,
-                              action_id: str, chat_id: str) -> None:
+
+    async def _send_tool_events(
+        self, action: str, action_input: dict, action_id: str, chat_id: str
+    ) -> None:
         """发送工具相关事件"""
-        start_event = await create_action_start_event(
-            action, action_input, action_id
-        )
+        start_event = await create_action_start_event(action, action_input, action_id)
         await self.stream_manager.send_message(chat_id, start_event)
 
-    async def _send_tool_progress_event(self, action: str, action_input: dict,
-                                      action_id: str, chat_id: str) -> None:
+    async def _send_tool_progress_event(
+        self, action: str, action_input: dict, action_id: str, chat_id: str
+    ) -> None:
         """发送工具进度事件"""
         progress_event = await create_tool_progress_event(
             action, "running", action_input, action_id

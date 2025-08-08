@@ -1,6 +1,6 @@
-import subprocess
-import tempfile
+import io
 import os
+import contextlib
 from typing import Tuple
 
 def execute_python_code(code: str) -> Tuple[str, str]:
@@ -13,17 +13,30 @@ def execute_python_code(code: str) -> Tuple[str, str]:
     Returns:
         tuple: (stdout, stderr)
     """
-    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as tmp:
-        tmp.write(code.encode('utf-8'))
-        tmp_path = tmp.name
+    stdout = io.StringIO()
+    stderr = io.StringIO()
     
     try:
-        result = subprocess.run(
-            ['python', tmp_path],
-            capture_output=True,
-            text=True,
-            timeout=10  # 10秒超时
-        )
-        return result.stdout, result.stderr
-    finally:
-        os.unlink(tmp_path)  # 清理临时文件
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            exec(code)
+        return stdout.getvalue(), stderr.getvalue()
+    except Exception as e:
+        return "", str(e)
+
+def execute_shell_code(code: str) -> Tuple[str, str]:
+    """
+    执行Shell代码并返回结果
+    
+    Args:
+        code: 要执行的Shell命令
+        
+    Returns:
+        tuple: (stdout, stderr)
+    """
+    try:
+        # 使用os.popen更安全的方式执行shell命令
+        with os.popen(code) as stream:
+            output = stream.read()
+        return output, ""
+    except Exception as e:
+        return "", str(e)

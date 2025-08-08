@@ -189,6 +189,11 @@ class ScratchpadItem:
         else:
             return f"思考: {self.thought}\n动作: {self.action}\n观察: {formatted_observation}\n"
 
+    def to_react_context(self, index: int = None) -> str:
+        """将对象转换为字符串表示，以紧凑的Markdown格式"""
+        formatted_observation = self._format_markdown_observation(self.observation)
+        return f"Thought {index}: {self.thought}\nAction {index}: {self.action}\nObservation {index}: {formatted_observation}\n"
+
     def _format_markdown_observation(self, text: str) -> str:
         """格式化markdown格式的observation内容
 

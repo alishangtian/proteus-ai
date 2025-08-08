@@ -543,3 +543,21 @@ TeamRunnerNode:
      required: false
      default: 5
      description: "最大迭代次数，控制每个Agent的最大运行次数"
+
+PlannerNode:
+ type: "planner"
+ class: "src.nodes.planner.PlannerNode"
+ name: "任务规划"
+ description: "将用户问题分解为多个可执行的步骤"
+ output:
+   steps: "规划后的步骤列表"
+ params:
+   user_question:
+     type: "str"
+     required: true
+     description: "用户输入的问题"
+   temperature:
+     type: "float"
+     required: false
+     default: 0.3
+     description: "生成规划步骤的随机性控制，值越低越确定"

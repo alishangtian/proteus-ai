@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Dict, Optional, List, Type, Any, Callable
 import threading
+
 # 延迟导入Tool，避免循环导入
 from .base import BaseNode
 from ..core.engine import WorkflowEngine
@@ -13,15 +14,16 @@ from ..api.config import API_CONFIG
 
 logger = logging.getLogger(__name__)
 
+
 class NodeConfigManager:
     """节点配置管理类（线程安全单例模式）"""
-    
+
     _instance = None
     _lock = threading.Lock()
     _initialized = False
 
     @classmethod
-    def get_instance(cls) -> 'NodeConfigManager':
+    def get_instance(cls) -> "NodeConfigManager":
         """获取单例实例"""
         if not cls._instance:
             with cls._lock:
@@ -39,7 +41,7 @@ class NodeConfigManager:
         # 如果已经初始化过，直接返回，保证单例
         if self.__class__._initialized:
             return
-        
+
         # 初始化基础配置参数
         self.config_path = config_path
         self.agent_config_path = agent_config_path
@@ -47,10 +49,10 @@ class NodeConfigManager:
         self.engine = engine
         self._node_types: Dict[str, Type[BaseNode]] = {}
         self._tools_cache: Dict[tuple, List[Any]] = {}  # 新增工具缓存
-        
+
         # 设置默认配置文件路径
         self._set_default_paths()
-        
+
         # 直接加载所有配置
         self.node_configs = self._load_config()
         self.agent_node_configs = self._load_agent_config()
@@ -63,19 +65,19 @@ class NodeConfigManager:
     def _set_default_paths(self):
         """设置默认配置文件路径"""
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        
+
         if self.config_path is None:
             nodes_config_path = os.path.join(current_dir, "../nodes/node_config.yaml")
             if os.path.exists(nodes_config_path):
                 self.config_path = nodes_config_path
-        
+
         if self.agent_config_path is None:
             agent_nodes_config_path = os.path.join(
                 current_dir, "../nodes/agent_node_config.yaml"
             )
             if os.path.exists(agent_nodes_config_path):
                 self.agent_config_path = agent_nodes_config_path
-        
+
         if self.workflow_config_path is None:
             workflow_nodes_config_path = os.path.join(
                 current_dir, "../nodes/workflow_node_config.yaml"
@@ -90,25 +92,27 @@ class NodeConfigManager:
         import importlib
         from importlib.util import find_spec
         from pathlib import Path
-        
-        self._module_cache = {}        
+
+        self._module_cache = {}
         registered_count = 0
         failed_count = 0
-        
+
         for config_key, config in self.agent_node_configs.items():
             try:
                 node_type = config.get("type")
                 class_path = config.get("class")
-                
+
                 # 校验必要字段
                 if not node_type or not class_path:
-                    logger.warning(f"节点配置 {config_key} 缺少必要字段(type或class)，跳过注册")
-                    continue                
+                    logger.warning(
+                        f"节点配置 {config_key} 缺少必要字段(type或class)，跳过注册"
+                    )
+                    continue
                 # 解析类路径
-                module_path, _, class_name = class_path.rpartition('.')
+                module_path, _, class_name = class_path.rpartition(".")
                 if not module_path:
                     raise ImportError(f"无效的class路径格式: {class_path}")
-                
+
                 # 动态导入模块
                 if module_path not in self._module_cache:
                     try:
@@ -116,23 +120,27 @@ class NodeConfigManager:
                         self._module_cache[module_path] = module
                     except ImportError as e:
                         raise ImportError(f"无法导入模块 {module_path}: {str(e)}")
-                
+
                 # 获取节点类
                 module = self._module_cache[module_path]
                 node_class = getattr(module, class_name, None)
                 if not node_class:
-                    raise AttributeError(f"模块 {module_path} 中没有找到类 {class_name}")
-                
+                    raise AttributeError(
+                        f"模块 {module_path} 中没有找到类 {class_name}"
+                    )
+
                 # 验证节点类
                 if not issubclass(node_class, BaseNode):
                     raise TypeError(f"类 {class_name} 不是BaseNode的子类")
-                
+
                 # 注册节点类型
                 self.register_node_type(node_type, node_class)
                 registered_count += 1
-                
+
             except ImportError as ie:
-                logger.error(f"导入节点模块 {class_name} 失败: {str(ie)}", exc_info=True)
+                logger.error(
+                    f"导入节点模块 {class_name} 失败: {str(ie)}", exc_info=True
+                )
                 failed_count += 1
                 continue
             except AttributeError as ae:
@@ -144,15 +152,21 @@ class NodeConfigManager:
                 failed_count += 1
                 continue
             except Exception as e:
-                logger.error(f"注册节点类型 {class_name} 时发生意外错误: {str(e)}", exc_info=True)
+                logger.error(
+                    f"注册节点类型 {class_name} 时发生意外错误: {str(e)}", exc_info=True
+                )
                 failed_count += 1
                 continue
-        
-        logger.info(f"节点类型注册完成 - 成功: {registered_count}, 失败: {failed_count}")
+
+        logger.info(
+            f"节点类型注册完成 - 成功: {registered_count}, 失败: {failed_count}"
+        )
         if failed_count > 0:
-            logger.warning(f"有 {failed_count} 个节点类型注册失败，请检查日志获取详细信息")
+            logger.warning(
+                f"有 {failed_count} 个节点类型注册失败，请检查日志获取详细信息"
+            )
             # 节点配置变更时清空缓存
-            if hasattr(self, '_tools_cache'):
+            if hasattr(self, "_tools_cache"):
                 self._tools_cache.clear()
                 logger.info("节点配置变更，已清空工具缓存")
 
@@ -191,7 +205,9 @@ class NodeConfigManager:
                 with open(self.workflow_config_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
                     return config
-            logger.warning(f"工作流配置文件 {self.workflow_config_path} 不存在，返回空配置")
+            logger.warning(
+                f"工作流配置文件 {self.workflow_config_path} 不存在，返回空配置"
+            )
             return {}
         except Exception as e:
             logger.error(f"加载工作流节点配置失败: {str(e)}", exc_info=True)
@@ -208,7 +224,7 @@ class NodeConfigManager:
             节点配置信息，如果节点不存在则返回None
         """
         # 配置已在初始化时加载
-        
+
         # 遍历配置查找匹配的节点类型
         for config in self.node_configs.values():
             if isinstance(config, dict) and config.get("type") == node_type:
@@ -223,7 +239,7 @@ class NodeConfigManager:
             所有节点的配置信息列表
         """
         # 配置已在初始化时加载
-        
+
         nodes = []
         for class_name, config in self.node_configs.items():
             # 确保配置是字典类型
@@ -242,7 +258,7 @@ class NodeConfigManager:
             所有节点的配置信息列表
         """
         # 配置已在初始化时加载
-        
+
         nodes = []
         for class_name, config in self.agent_node_configs.items():
             # 确保配置是字典类型
@@ -261,7 +277,7 @@ class NodeConfigManager:
             所有节点的配置信息列表
         """
         # 配置已在初始化时加载
-        
+
         nodes = []
         for class_name, config in self.workflow_node_configs.items():
             # 确保配置是字典类型
@@ -287,14 +303,14 @@ class NodeConfigManager:
 
         Returns:
             List[Any]: Tool对象列表，每个Tool包含name、description、parameters、outputs和run方法
-        """        
+        """
         # 初始化工具缓存
-        if not hasattr(self, '_tools_cache'):
+        if not hasattr(self, "_tools_cache"):
             self._tools_cache = {}
-        
+
         # 延迟导入Tool类，避免循环导入
         from ..agent.base_agent import Tool
-        
+
         tools = []
         nodes = []
         if tool_type == "agent":
@@ -306,7 +322,7 @@ class NodeConfigManager:
         tools = []
         for node_info in nodes:
             node_type = node_info.get("type")
-            
+
             # 检查缓存
             cache_key = (node_type, tool_type)
             if cache_key in self._tools_cache:
@@ -339,20 +355,24 @@ class NodeConfigManager:
 
             # 组合完整描述，按照新的格式要求
             full_description = f"## {node_type}\n"
-            full_description += f"**Description**: {description}\n\n"
-            
+            full_description += f"**Description**: {description}\n"
+
             if param_descriptions:
-                full_description += "**Parameters**:\n" + "\n".join(param_descriptions) + "\n\n"
-            
+                full_description += (
+                    "**Parameters**:\n" + "\n".join(param_descriptions) + "\n\n"
+                )
+
             if output_descriptions:
-                full_description += "**Outputs**:\n" + "\n".join(output_descriptions) + "\n\n"
-            
+                full_description += (
+                    "**Outputs**:\n" + "\n".join(output_descriptions) + "\n"
+                )
+
             # 获取节点类
             node_class = self._node_types.get(node_type)
             if not node_class:
                 logger.error(f"节点类型 {node_type} 未注册，跳过")
                 continue
-            
+
             if node_type == "loop_node":
                 node_class.init_engine(node_class, self.engine)
 
@@ -387,7 +407,7 @@ class NodeConfigManager:
                 self._tools_cache[cache_key] = tool
             except Exception as e:
                 logger.error(f"创建工具 {node_type} 失败: {str(e)}", exc_info=True)
-                
+
         return tools
 
     def get_nodes_description(self) -> str:
@@ -398,7 +418,7 @@ class NodeConfigManager:
             str: 格式化的节点描述字符串
         """
         # 配置已在初始化时加载
-        
+
         try:
             node_descriptions = []
             for node in self.get_all_nodes():

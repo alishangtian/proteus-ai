@@ -19,12 +19,17 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.cot_prompt import COT_PROMPT_TEMPLATES
+from src.agent.prompt.react_agent_prompt_zh import REACT_AGENT_PROMPT_ZH
+from src.agent.prompt.planner_react_agent_prompt import PLANNER_REACT_AGENT_PROMPT
 from src.agent.prompt.react_agent_prompt import REACT_AGENT_PROMPT
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
-from src.agent.agent import Agent, AgentConfiguration
+from src.agent.agent import Agent
+from src.agent.react_agent import ReactAgent
+from src.agent.common.configuration import AgentConfiguration
+
 from src.manager.multi_agent_manager import TeamRole, get_multi_agent_manager
 
 from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
@@ -33,6 +38,7 @@ from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATE
 from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
 from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
 from src.api.events import create_complete_event, create_error_event
+from langfuse import observe, Langfuse
 
 from src.api.events import (
     create_status_event,
@@ -59,8 +65,15 @@ os.environ["MCP_CONFIG_PATH"] = os.path.join(
 log_file_path = os.getenv("log_file_path", "logs/workflow_engine.log")
 
 # 配置日志
-logger = setup_logger(log_file_path)
-module_logger = logging.getLogger(__name__)
+setup_logger(log_file_path)
+logger = logging.getLogger(__name__)
+
+langfuse = Langfuse()
+if langfuse.auth_check():
+    logger.info("Langfuse authentication successful.")
+else:
+    logger.error("Langfuse authentication failed.")
+
 
 # 创建全局流管理实例 - 必须优先初始化
 from src.api.stream_manager import StreamManager
@@ -109,7 +122,7 @@ def register_workflow_nodes(workflow_engine, node_manager):
     import importlib
 
     # 确保配置已加载
-    module_logger.info("开始注册工作流节点类型")
+    logger.info("开始注册工作流节点类型")
 
     # 获取配置（会触发懒加载机制）
     node_configs = node_manager.get_all_nodes()
@@ -120,7 +133,7 @@ def register_workflow_nodes(workflow_engine, node_manager):
         class_name = node_config.get("class_name", node_type)
 
         if not node_type:
-            module_logger.info(f"节点配置未包含type字段，跳过注册")
+            logger.info(f"节点配置未包含type字段，跳过注册")
             continue
 
         # 从type生成模块名
@@ -132,13 +145,13 @@ def register_workflow_nodes(workflow_engine, node_manager):
             node_class = getattr(module, class_name)
             # 使用配置的type注册节点类型
             workflow_engine.register_node_type(node_type, node_class)
-            module_logger.info(f"成功注册节点类型: {node_type}")
+            logger.info(f"成功注册节点类型: {node_type}")
         except Exception as e:
-            module_logger.error(f"注册节点类型 {module_name} 失败: {str(e)}")
+            logger.error(f"注册节点类型 {module_name} 失败: {str(e)}")
             # 不抛出异常，继续注册其他节点
             continue
 
-    module_logger.info("工作流节点类型注册完成")
+    logger.info("工作流节点类型注册完成")
 
 
 @asynccontextmanager
@@ -179,7 +192,7 @@ class AuthMiddleware:
         request = Request(scope, receive)
         path = request.url.path
 
-        module_logger.info(f"request path {path}")
+        logger.info(f"request path {path}")
 
         # 检查是否在排除路径中
         if any(path.startswith(p) for p in self.exclude_paths):
@@ -277,7 +290,7 @@ class NodeResultResponse(BaseModel):
 @app.get("/health", response_model=ApiResponse)
 async def health_check():
     """健康检查接口"""
-    module_logger.debug("收到健康检查请求")
+    logger.debug("收到健康检查请求")
     return ApiResponse(event="health_check", success=True, data={"status": "healthy"})
 
 
@@ -307,6 +320,7 @@ async def get_agent_page(request: Request):
     return templates.TemplateResponse("superagent/index.html", {"request": request})
 
 
+@observe(name="create_chat", capture_input=True, capture_output=True)
 @app.post("/chat")
 async def create_chat(
     text: str = Body(..., embed=True),
@@ -351,7 +365,7 @@ async def create_chat(
         "multi-agent",
         "browser-agent",
         "deep-research",
-        "codeact-agent"
+        "codeact-agent",
     ]
 
     # if model == "workflow":
@@ -400,7 +414,7 @@ async def stop_chat(model: str, chat_id: str):
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
     Agent.clear_agents(chat_id)
-    module_logger.info(f"[{chat_id}] 已经停止")
+    logger.info(f"[{chat_id}] 已经停止")
     return {"success": True, "chat_id": chat_id}
 
 
@@ -460,14 +474,14 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
         text: 用户输入的文本
         agentid: 代理ID(可选)
     """
-    module_logger.info(f"[{chat_id}] 开始处理请求: {text[:100]}...")
+    logger.info(f"[{chat_id}] 开始处理请求: {text[:100]}...")
     try:
 
         # 获取工作流服务（延迟初始化）
         workflow_service = get_workflow_service()
 
         # 开始生成工作流
-        module_logger.info(f"[{chat_id}] 开始生成工作流")
+        logger.info(f"[{chat_id}] 开始生成工作流")
         await stream_manager.send_message(
             chat_id, await create_status_event("generating", "正在生成工作流...")
         )
@@ -475,7 +489,7 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
 
         if not workflow or not workflow.get("nodes"):
             # 如果没有生成工作流，直接返回普通回答
-            module_logger.info(f"[{chat_id}] 无工作流生成，转为生成普通回答")
+            logger.info(f"[{chat_id}] 无工作流生成，转为生成普通回答")
             await stream_manager.send_message(
                 chat_id, await create_status_event("answering", "正在生成回答...")
             )
@@ -495,16 +509,14 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
                     chat_id, await create_complete_event()
                 )
             except Exception as e:
-                module_logger.error(
-                    f"[{chat_id}] 生成回答时发生错误: {str(e)}", exc_info=True
-                )
+                logger.error(f"[{chat_id}] 生成回答时发生错误: {str(e)}", exc_info=True)
                 await stream_manager.send_message(
                     chat_id, await create_error_event("生成回答失败，请稍后重试")
                 )
             return
 
         # 发送工作流定义
-        module_logger.info(
+        logger.info(
             f"[{chat_id}] 工作流生成成功，节点数: {len(workflow.get('nodes', []))}"
         )
         await stream_manager.send_message(
@@ -519,7 +531,7 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
         workflow_id = f"workflow-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
         try:
-            module_logger.info(f"[{chat_id}] 开始执行工作流: {workflow_id}")
+            logger.info(f"[{chat_id}] 开始执行工作流: {workflow_id}")
             # 使用流式执行工作流
             # 执行工作流并处理结果流
             # 使用流式执行并实时发送结果
@@ -529,7 +541,7 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
             async for node_id, result in workflow_engine.execute_workflow_stream(
                 json.dumps(workflow), chat_id, {}
             ):
-                module_logger.info(
+                logger.info(
                     f"[{chat_id}] 节点 {node_id} 执行状态: status={result.status} 执行结果：success={result.success}"
                 )
                 # 使用工具函数转换结果为可序列化的字典
@@ -541,7 +553,7 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
                 await asyncio.sleep(0.01)
 
             # 获取工作流执行结果并生成说明
-            # module_logger.info(f"[{chat_id}] 开始生成执行说明")
+            # logger.info(f"[{chat_id}] 开始生成执行说明")
             # workflow_results = engine.get_workflow_progress(workflow_id)
             # async for chunk in workflow_service.explain_workflow_result(text, workflow, workflow_results, chat_id):
             #     await stream_manager.send_message(chat_id, await create_explanation_event({
@@ -550,21 +562,22 @@ async def process_workflow(chat_id: str, text: str, agentid: str = None):
             #         "data": chunk
             #     }))
             await stream_manager.send_message(chat_id, await create_complete_event())
-            module_logger.info(f"[{chat_id}] 工作流执行完成")
+            logger.info(f"[{chat_id}] 工作流执行完成")
 
         except Exception as e:
             error_msg = f"执行工作流失败: {str(e)}"
-            module_logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+            logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
             await stream_manager.send_message(
                 chat_id, await create_error_event(error_msg)
             )
 
     except Exception as e:
         error_msg = f"处理请求失败: {str(e)}"
-        module_logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+        logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
         await stream_manager.send_message(chat_id, await create_error_event(error_msg))
 
 
+@observe(name="process_agent", capture_input=True, capture_output=True)
 async def process_agent(
     chat_id: str,
     text: str,
@@ -583,9 +596,7 @@ async def process_agent(
         agentid: 代理ID(可选)
         agentmodel: 代理模型(可选)
     """
-    module_logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {text[:100]}... (agentid={agentid})"
-    )
+    logger.info(f"[{chat_id}] 开始处理Agent请求: {text[:100]}... (agentid={agentid})")
     team = None
     agent = None
     try:
@@ -678,14 +689,14 @@ async def process_agent(
             # CodeAct Agent模式：只允许使用python_execute和user_input工具
             all_tools = ["python_execute", "user_input"]
             prompt_template = COT_PROMPT_TEMPLATES
-            
+
             # 创建详细的instruction
             instruction = (
                 "你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。"
                 "你可以使用Python代码进行任何计算、数据处理、文件操作等。如果你对用户请求有任何不确定的地方，"
                 "或者需要用户提供额外的信息，请使用user_input工具与用户进行交互。在编写代码时，请确保代码安全且只执行必要的操作。"
             )
-            
+
             agent = Agent(
                 tools=all_tools,
                 instruction=instruction,  # 使用详细的instruction
@@ -698,12 +709,22 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
             )
-            
+
             await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             # 获取基础工具集合 - 延迟初始化node_manager
-            all_tools = NodeConfigManager.get_instance().get_tools()
+            # all_tools = NodeConfigManager.get_instance().get_tools()
+            all_tools = [
+                "python_execute",
+                "user_input",
+                "file_read",
+                "file_write",
+                "serper_search",
+                "web_crawler",
+                "weather_forecast",
+                "planner",
+            ]
             prompt_template = REACT_AGENT_PROMPT
             if agentmodel == "workflow":
                 prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
@@ -711,17 +732,17 @@ async def process_agent(
                     tool_type="workflow"
                 )
             # 获取基础工具集合 - 延迟初始化node_manager
-            agent = Agent(
+            agent = ReactAgent(
                 tools=all_tools,
                 instruction="",
                 stream_manager=stream_manager,
                 max_iterations=itecount,
-                history_service=get_history_service(),
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
                 model_name="base-model",
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
+                langfuse_trace=langfuse,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -732,7 +753,7 @@ async def process_agent(
         from src.api.events import create_error_event
 
         error_msg = f"处理Agent请求失败: {str(e)}"
-        module_logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+        logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
         await stream_manager.send_message(chat_id, await create_error_event(error_msg))
         if team is not None:
             await team.stop()
@@ -753,13 +774,13 @@ async def handle_user_input(
         dict: 操作结果
     """
     try:
-        await Agent.get_agents(chat_id)[0].set_user_input(node_id, value)
+        await ReactAgent.get_agents(chat_id)[0].set_user_input(node_id, value)
         return {"success": True, "message": "User input processed successfully"}
     except ValueError as ve:
         # 处理输入验证错误
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
-        module_logger.error(f"处理用户输入失败: {str(e)}", exc_info=True)
+        logger.error(f"处理用户输入失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -777,13 +798,13 @@ async def execute_workflow(request: WorkflowRequest):
         ApiResponse: 包含工作流执行结果的统一响应
     """
     request_id = f"req-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    module_logger.info(f"[{request_id}] 收到执行工作流请求")
+    logger.info(f"[{request_id}] 收到执行工作流请求")
     try:
         workflow_id = f"workflow-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
         # 记录工作流定义
         workflow_json = json.dumps(request.workflow, indent=2)
-        module_logger.info(f"[{request_id}] 工作流定义:\n{workflow_json}")
+        logger.info(f"[{request_id}] 工作流定义:\n{workflow_json}")
 
         # 发送工作流事件
         workflow_event = await create_workflow_event(request.workflow)
@@ -811,7 +832,7 @@ async def execute_workflow(request: WorkflowRequest):
         complete_event = await create_complete_event()
         events.append(complete_event)
 
-        module_logger.info(f"[{request_id}] 工作流执行完成")
+        logger.info(f"[{request_id}] 工作流执行完成")
         return ApiResponse(
             event="workflow_execution",
             success=True,
@@ -822,7 +843,7 @@ async def execute_workflow(request: WorkflowRequest):
         )
     except Exception as e:
         error_msg = f"执行工作流失败: {str(e)}"
-        module_logger.error(f"[{request_id}] {error_msg}", exc_info=True)
+        logger.error(f"[{request_id}] {error_msg}", exc_info=True)
         return ApiResponse(event="workflow_execution", success=False, error=error_msg)
 
 
