@@ -94,6 +94,20 @@ docker-compose -f proteus/docker/docker-compose.yml up -d
 服务启动后，访问 http://localhost:8000 即可打开 Web 界面。
 也可以通过 https://localhost:9443 访问Nginx代理后的HTTPS服务。
 
+### 命令行工具 (CLI)
+
+本项目还提供了一个功能强大的命令行工具，方便开发者和用户在终端中与 Proteus AI 系统直接交互。
+
+- **快速开始**:
+  ```bash
+  # 安装CLI依赖
+  pip install -r cli/requirements_cli.txt
+  # 运行CLI工具
+  python cli/proteus-cli.py chat "你好"
+  ```
+- **获取更多信息**:
+  关于CLI工具的详细用法和高级功能，请参阅 `cli/CLI_README.md`。
+
 #### 配置说明
 主要配置项在`.env`文件中，您需要从`.env.example`复制并配置：
 
