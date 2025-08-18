@@ -155,12 +155,33 @@ class AgentCard:
 
 @dataclass
 class ScratchpadItem:
-    """表示Agent思考和执行过程的一个步骤"""
+    """表示Agent思考和执行过程的一个步骤
+
+    新增:
+        action_input: 可选的动作参数（字符串），当长度超过200时会被截断为前200字符
+        summary: 工具执行结果的摘要
+        tool_execution_id: 工具执行的唯一标识符
+    """
 
     thought: str = ""
     action: str = ""
     observation: str = ""
+    action_input: str = ""
     is_origin_query: bool = False
+    summary: str = ""
+    tool_execution_id: str = ""
+
+    def __post_init__(self):
+        # 确保 action_input 为字符串并限制长度不超过200
+        try:
+            if self.action_input is None:
+                self.action_input = ""
+            else:
+                self.action_input = str(self.action_input)
+        except Exception:
+            self.action_input = ""
+        if len(self.action_input) > 200:
+            self.action_input = self.action_input[:200]
 
     def to_dict(self) -> Dict[str, str]:
         """将对象转换为字典"""
@@ -168,31 +189,60 @@ class ScratchpadItem:
             "thought": self.thought,
             "action": self.action,
             "observation": self.observation,
+            "action_input": self.action_input,
             "is_origin_query": self.is_origin_query,
+            "summary": self.summary,
+            "tool_execution_id": self.tool_execution_id,
         }
 
     def to_string(self, index: int = None) -> str:
         """将对象转换为字符串表示，以紧凑的Markdown格式"""
         formatted_observation = self._format_markdown_observation(self.observation)
+        param_display = f"\n**参数**: {self.action_input}" if self.action_input else ""
 
         if index is not None:
-            return f"\n{index}.**子任务定义**: {self.thought}\n**工具调用**: {self.action}\n**结果**: {formatted_observation}"
+            return f"\n{index}.**子任务定义**: {self.thought}\n**工具调用**: {self.action}{param_display}\n**结果**: {formatted_observation}"
         else:
-            return f"**子任务描述**: {self.thought}\n**工具调用**: {self.action}\n**结果**: {formatted_observation}\n"
+            return f"**子任务描述**: {self.thought}\n**工具调用**: {self.action}{param_display}\n**结果**: {formatted_observation}\n"
 
     def to_string2(self, index: int = None) -> str:
         """将对象转换为字符串表示，以紧凑的Markdown格式"""
         formatted_observation = self._format_markdown_observation(self.observation)
+        param_display = f"\n参数: {self.action_input}" if self.action_input else ""
 
         if index is not None:
-            return f"{index}.思考: {self.thought}\n{index}.动作: {self.action}\n{index}.观察: {formatted_observation}\n"
+            return f"{index}.思考: {self.thought}\n{index}.动作: {self.action}{param_display}\n{index}.观察: {formatted_observation}\n"
         else:
-            return f"思考: {self.thought}\n动作: {self.action}\n观察: {formatted_observation}\n"
+            return f"思考: {self.thought}\n动作: {self.action}{param_display}\n观察: {formatted_observation}\n"
 
-    def to_react_context(self, index: int = None) -> str:
-        """将对象转换为字符串表示，以紧凑的Markdown格式"""
-        formatted_observation = self._format_markdown_observation(self.observation)
-        return f"Thought {index}: {self.thought}\nAction {index}: {self.action}\nObservation {index}: {formatted_observation}\n"
+    def to_react_context(self, index: int = None, use_summary: bool = False) -> str:
+        """将对象转换为字符串表示，以紧凑的Markdown格式
+
+        Args:
+            index: 步骤索引
+            use_summary: 是否使用摘要替代完整的observation
+        """
+        # 当使用摘要且摘要存在时，使用摘要；否则使用完整的observation
+        observation_content = (
+            self.summary if (use_summary and self.summary) else self.observation
+        )
+        formatted_observation = self._format_markdown_observation(observation_content)
+        action_input = (
+            f"Action Input : {self.action_input}" if self.action_input else ""
+        )
+
+        # 如果使用摘要且有工具执行ID，则在观察结果中添加ID信息和摘要标记
+        observation_with_metadata = formatted_observation
+        if use_summary and self.tool_execution_id and self.summary:
+            observation_with_metadata = (
+                f"[摘要] (工具执行ID: {self.tool_execution_id}) {formatted_observation}"
+            )
+        elif self.tool_execution_id:
+            observation_with_metadata = (
+                f"(工具执行ID: {self.tool_execution_id}) {formatted_observation}"
+            )
+
+        return f"Thought : {self.thought}\nAction : {self.action}\n{action_input}\nObservation : {observation_with_metadata}\n"
 
     def _format_markdown_observation(self, text: str) -> str:
         """格式化markdown格式的observation内容

@@ -5,6 +5,7 @@ from typing import Dict, Any
 from ..manager.multi_agent_manager import TeamRole, get_multi_agent_manager
 from .agent import Agent, AgentConfiguration
 import logging
+from langfuse import observe
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 class PagenticTeam:
     """包含五个角色的Agent团队"""
 
+    @observe(name="__init__", capture_input=True, capture_output=True)
     def __init__(
         self,
         tools_config: Dict[str, Any] = None,
@@ -45,6 +47,7 @@ class PagenticTeam:
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
 
+    @observe(name="_initialize_agents", capture_input=True, capture_output=True)
     def _initialize_agents(self, tools_config: Dict[TeamRole, AgentConfiguration]):
         """初始化各个角色的agent实例"""
         # 组装team_description
@@ -74,6 +77,7 @@ class PagenticTeam:
                 conversation_id=self.conversation_id,  # 传递会话ID
             )
 
+    @observe(name="register_agents", capture_input=True, capture_output=True)
     async def register_agents(self):
         """将所有agent注册到MultiAgentManager"""
         manager = get_multi_agent_manager()
@@ -85,6 +89,7 @@ class PagenticTeam:
         # 启动事件循环并保存任务引用
         self._event_loop_task = asyncio.create_task(manager.start_event_loop())
 
+    @observe(name="run", capture_input=True, capture_output=True)
     async def run(self, query: str, chat_id: str, stream: bool = True):
         """
         启动团队工作流程
@@ -100,6 +105,7 @@ class PagenticTeam:
         start_agent = self.agents[self.startRole]
         await start_agent.run(query, chat_id, stream)
 
+    @observe(name="stop", capture_input=True, capture_output=True)
     async def stop(self):
         """停止所有agent和事件循环"""
         # 先停止所有agent

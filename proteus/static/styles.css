@@ -1,4 +1,3 @@
-
 * {
     box-sizing: border-box;
     margin: 0;
@@ -74,11 +73,13 @@ body {
 .user-info {
     position: absolute;
     left: 20px;
-    bottom: 60px;  /* 下移给弹幕按钮留出空间 */
+    bottom: 60px;
+    /* 下移给弹幕按钮留出空间 */
     display: flex;
     align-items: center;
     gap: 10px;
-    z-index: 90;  /* 降低z-index确保弹幕按钮在上层 */
+    z-index: 90;
+    /* 降低z-index确保弹幕按钮在上层 */
 }
 
 .username {
@@ -89,7 +90,7 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    background-color: rgba(255,255,255,0.8);
+    background-color: rgba(255, 255, 255, 0.8);
     padding: 4px 8px;
     border-radius: 4px;
 }
@@ -131,7 +132,8 @@ body {
     justify-content: center;
     position: fixed;
     left: 20px;
-    bottom: 60px;  /* 与展开状态保持一致 */
+    bottom: 60px;
+    /* 与展开状态保持一致 */
 }
 
 .sidebar.collapsed .login-btn::after {
@@ -265,6 +267,13 @@ body {
     border-bottom: 1px solid #e0e0e0;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
     z-index: 10;
+
+    /* 限制工具栏宽度、居中显示，增加圆角以提升视觉美感 */
+    max-width: 1100px;
+    margin: 0 auto;
+    width: calc(100% - 40px);
+    border-radius: 12px;
+    overflow: hidden;
 }
 
 .tools-header {
@@ -344,7 +353,8 @@ body {
     position: fixed;
     right: 20px;
     top: 20px;
-    width: 350px;
+    /* 适当缩小详情面板宽度，避免与主区域抢宽度 */
+    width: 320px;
     background: #fff;
     border-radius: 12px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
@@ -544,7 +554,7 @@ body {
     transition: all 0.3s ease;
 }
 
-.sidebar.collapsed ~ .main-container .container {
+.sidebar.collapsed~.main-container .container {
     max-width: calc(100% - 60px);
 }
 
@@ -570,8 +580,9 @@ body {
     left: 50%;
     transform: translateX(-50%);
     width: 100%;
-    max-width: 800px;
-    padding: 20px;
+    /* 缩窄聊天框最大宽度，视觉上更协调 */
+    max-width: 720px;
+    padding: 18px;
     background: #f5f5f5;
     z-index: 100;
 }
@@ -632,19 +643,83 @@ body {
     padding: 0;
 }
 
+/* 下拉选择样式，放在聊天输入框左下角 */
+.model-select-wrapper {
+    position: absolute;
+    left: 16px;
+    /* 与 input-wrapper 内边距对齐 */
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    z-index: 110;
+}
+
+/* 将下拉样式统一为左侧菜单 active 的强调样式（蓝色边条 + 淡蓝背景） */
+.select-control {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: #e3f2fd;
+    /* 与 .menu-item.active 背景一致 */
+    font-size: 14px;
+    color: #0d47a1;
+    /* 与 .menu-item.active 文字色一致 */
+    min-width: 160px;
+    cursor: pointer;
+    box-shadow: none;
+    transition: background-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+    border-left: 3px solid #1976d2;
+    /* 与左侧菜单蓝色左边条一致 */
+}
+
+.select-control:hover {
+    background: #dbeeff;
+}
+
+.select-control:focus {
+    outline: none;
+    box-shadow: 0 8px 24px rgba(25, 118, 210, 0.12);
+    transform: translateY(-1px);
+}
+
+/* 小屏幕时把下拉放到输入框左侧内联显示，避免遮挡内容 */
+@media (max-width: 640px) {
+    .model-select-wrapper {
+        position: relative;
+        left: 0;
+        bottom: 0;
+        margin-right: 8px;
+    }
+
+    .select-control {
+        min-width: 120px;
+    }
+}
+
 /* 迭代次数容器样式保留，用于智能体模式 */
 #itecount-container {
+    /* 与 model-select 并排显示，放入同一定位容器 */
     margin-left: 8px;
     padding: 4px 8px;
     background: #f0f0f0;
     border-radius: 8px;
-    display: none; /* 默认隐藏 */
+    /* 默认可见（恢复原始行为），并与模型选择并列 */
+    display: inline-flex;
     align-items: center;
     gap: 8px;
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.18s ease, visibility 0.18s ease;
 }
 
-#itecount-container.visible {
-    display: flex; /* 智能体模式下显示 */
+/* 兼容：若需要隐藏，可以使用 .hidden 类 */
+#itecount-container.hidden {
+    visibility: hidden;
+    opacity: 0;
+    display: none;
 }
 
 .icon-iteration::before {
@@ -772,12 +847,28 @@ body {
 }
 
 #conversation-history {
+    /* 让对话列表作为垂直列并水平居中其内容 */
     flex: 1;
     padding: 20px;
     overflow-y: auto;
     height: calc(100vh - 200px);
     margin-bottom: 180px;
     scroll-behavior: smooth;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+}
+
+/* 每个 QA 容器限制宽度并居中，保持与工具调用栏宽度一致 */
+.qa-container {
+    width: 100%;
+    max-width: 1100px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .container:not(:has(#conversation-history:empty)) #welcome-title {
@@ -785,12 +876,16 @@ body {
 }
 
 .history-item {
-    margin-bottom: 28px;
+    /* 限制单条对话宽度与工具调用栏一致（保持视觉对齐），并居中显示 */
+    max-width: 1100px;
+    margin: 0 auto 28px;
     padding: 20px 24px;
-    border-radius: 20px;
+    border-radius: 16px;
     background: #fff;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
     transition: box-shadow 0.3s ease;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .history-item:hover {
@@ -832,7 +927,7 @@ body {
 }
 
 /* 确保工作流信息和其他内容在问答之外全宽显示 */
-.qa-container > :not(.question):not(.answer) {
+.qa-container> :not(.question):not(.answer) {
     width: 100%;
     align-self: stretch;
 }
@@ -1021,7 +1116,7 @@ body {
     background-color: #2563eb;
 } */
 
-.action-group > *:not(:first-child) {
+.action-group>*:not(:first-child) {
     margin-top: 12px;
     padding-left: 32px;
 }
@@ -1778,6 +1873,7 @@ body {
     position: relative;
     z-index: 1;
 }
+
 /* Action Group 样式 */
 .action-group {
     margin: 16px 0;
@@ -1906,6 +2002,7 @@ body {
 body[data-model="workflow"] .tools-container {
     display: none;
 }
+
 /* 复制按钮样式 */
 .copy-btn {
     position: absolute;
@@ -2073,8 +2170,355 @@ body[data-model="workflow"] .tools-container {
     .login-box {
         padding: 30px 20px;
     }
-    
+
     .login-title {
         font-size: 20px;
     }
 }
+
+/* ====== Chat input enhanced styles (from image reference) - overrides earlier rules ====== */
+/* 更圆、更居中、轻阴影、pills 风格的选择器，覆盖前面定义 */
+.input-wrapper {
+    position: relative;
+    background: #ffffff;
+    border-radius: 20px !important;
+    padding: 18px 20px !important;
+    margin: 0 20px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+    transition: box-shadow 0.25s ease, transform 0.12s ease;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    align-self: center;
+}
+
+/* focus 时微微抬起并加深阴影 */
+.input-wrapper:focus-within {
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.09), 0 2px 0 rgba(255, 255, 255, 0.6);
+    transform: translateY(-2px);
+}
+
+/* 文本域调整：更大行高、透明背景以与 wrapper 协同 */
+#user-input {
+    flex: 1;
+    min-height: 28px;
+    max-height: 140px;
+    padding: 6px 0;
+    border: none;
+    font-size: 15.5px;
+    background: transparent;
+    resize: none;
+    font-family: inherit;
+    box-sizing: border-box;
+    line-height: 1.65;
+    transition: all 0.15s ease;
+    color: #222;
+}
+
+/* 占位符风格更淡 */
+#user-input::placeholder {
+    color: #bdbdbd;
+    transition: color 0.15s ease;
+}
+
+#user-input:focus::placeholder {
+    color: #d8d8d8;
+}
+
+/* 输入有值时字体稍粗 */
+#user-input:not(:placeholder-shown) {
+    font-weight: 600;
+}
+
+/* 右侧控制组更紧凑 */
+.input-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+}
+
+/* 左下角模型选择 pill 样式（仿图片） */
+.model-select-wrapper {
+    position: absolute;
+    left: 18px;
+    bottom: 14px;
+    /* 作为容器放置模型选择和迭代次数，横向排列 */
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 110;
+}
+
+.select-control {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding: 6px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(16, 24, 40, 0.06);
+    background: #ffffff;
+    font-size: 13.5px;
+    color: #3b82f6;
+    min-width: 120px;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition: background-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
+}
+
+/* 迭代输入（与下拉保持一致的高度与视觉样式）*/
+.itecount-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ite-input {
+    /* 与 .select-control 保持一致的高度、边框与圆角 */
+    min-width: 120px;
+    padding: 6px 10px;
+    border-radius: 14px;
+    border: 1px solid rgba(16, 24, 40, 0.06);
+    background: #ffffff;
+    font-size: 13.5px;
+    color: #111827;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    -moz-appearance: textfield;
+}
+
+/* 去掉 number input 默认的上下箭头（在webkit内核浏览器）*/
+.ite-input::-webkit-outer-spin-button,
+.ite-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 在较小屏幕下缩小宽度保持布局 */
+@media (max-width: 640px) {
+
+    .ite-input,
+    .select-control {
+        min-width: 100px;
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+}
+
+/* hover / focus 状态：轻微蓝色光晕 */
+.select-control:hover {
+    background: #fbfdff;
+    border-color: rgba(59, 130, 246, 0.16);
+    box-shadow: 0 6px 18px rgba(59, 130, 246, 0.06);
+}
+
+.select-control:focus {
+    outline: none;
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.08);
+    transform: translateY(-1px);
+}
+
+/* send / attach 按钮风格微调：去掉外框、箭头指向改为向右、按钮使用主色并扁平化 */
+#send-button {
+    /* 紧凑圆形图标按钮，去掉外部边框与明显阴影，使用主色 */
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background-color: #3b82f6;
+    /* 主蓝色 */
+    color: #ffffff;
+    border: none;
+    /* 去掉外围边框 */
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: transform 0.12s ease, background-color 0.12s ease;
+    box-shadow: none;
+    /* 去掉外部阴影，保持简洁 */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 内部 svg 图标改为白色、并确保箭头朝向右侧（若 svg 本身可旋转） */
+#send-button .send-icon svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+    color: #ffffff;
+    opacity: 1;
+    transform: rotate(0deg);
+    /* 保持向右；若原 svg 是向上，请在 HTML 中添加 .rotate-90 类或替换图标 */
+}
+
+/* 悬停时使用稍深的蓝色高亮，不显示额外框 */
+#send-button:hover {
+    transform: translateY(-2px);
+    background-color: #2563eb;
+}
+
+/* active / 按下状态 */
+#send-button:active {
+    transform: translateY(0);
+}
+
+/* 禁用状态 */
+#send-button:disabled {
+    background: #93c5fd;
+    color: #e6f2ff;
+    cursor: not-allowed;
+}
+
+/* 停止状态（stop）使用柔和红色背景且无外围框 */
+#send-button.stop {
+    background-color: #ef4444;
+    color: #fff;
+    border: none;
+    box-shadow: none;
+}
+
+#send-button.stop .send-icon svg {
+    color: #fff;
+}
+
+#send-button.stop:hover {
+    background-color: #dc2626;
+}
+
+/* 小屏幕自适应：压缩 padding、减小圆角 */
+@media (max-width: 640px) {
+    .model-select-wrapper {
+        position: relative;
+        left: 0;
+        bottom: 0;
+        margin-right: 8px;
+        gap: 6px;
+    }
+
+    /* 小屏时迭代选择压缩为图标+短输入并与模型选择换行 */
+    #itecount-container {
+        display: inline-flex;
+        margin-left: 4px;
+        padding: 4px 6px;
+    }
+
+    .select-control {
+        min-width: 100px;
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+
+    .input-wrapper {
+        padding: 12px 12px;
+        border-radius: 14px;
+        margin: 0 12px;
+    }
+
+    #user-input {
+        font-size: 15px;
+    }
+}
+
+/* 小补丁：确保覆盖前面可能更具体的规则（提高优先级） */
+.input-wrapper,
+.input-wrapper * {
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Thought 显示控制：默认隐藏，只有 body.show-thought 时才展示 */
+.thought {
+    display: none;
+}
+
+/* 当 body 上存在 .show-thought 时，显式显示 thought 内容并与答复区样式一致 */
+body.show-thought .thought {
+    display: block;
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: #f3f4f6;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+/* ====== End of overrides ====== */
+/* ====== Hide left sidebar and expand main content (added to remove sidebar) ====== */
+#sidebar,
+.sidebar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* Make body/layout use full width after removing sidebar */
+body {
+    overflow: auto;
+    display: block;
+    height: auto;
+}
+
+/* Ensure main-container fills the viewport width */
+.main-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    position: relative;
+}
+
+/* Remove container max-width that reserved sidebar space */
+.container {
+    max-width: 100% !important;
+}
+
+/* Re-center input container horizontally for full-width layout */
+.input-container {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: 100% !important;
+    /* 保持此前缩窄的最大宽度以避免过宽 */
+    max-width: 720px !important;
+    padding: 16px !important;
+}
+
+/* Ensure conversation/history takes full width */
+#conversation-history,
+.history-item,
+.qa-container {
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* Remove any sibling selector rules that adjusted size when sidebar exists */
+.sidebar.collapsed~.main-container .container,
+.sidebar~.main-container,
+.sidebar+.main-container {
+    max-width: 100% !important;
+}
+
+/* Hide sidebar-related footer toggle if present elsewhere */
+.toggle-sidebar,
+.sidebar-footer {
+    display: none !important;
+}
+
+/* Small screens: ensure layout remains usable */
+@media (max-width: 880px) {
+    .input-wrapper {
+        margin: 0 12px !important;
+    }
+
+    .input-container {
+        padding: 12px !important;
+    }
+}
+
+/* End of sidebar removal overrides */

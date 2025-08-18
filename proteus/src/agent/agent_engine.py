@@ -119,7 +119,23 @@ class AgentEngine:
             agent_data = AgentManager().get_agent(agentid)
             if agent_data:
                 instruction = agent_data.system_prompt or instruction
-                # TODO: 根据agent_data.tools过滤/补充工具集合
+                # 根据 agent_data.tools 过滤/补充工具集合
+                try:
+                    allowed_tools = set(agent_data.tools or [])
+                except Exception:
+                    allowed_tools = set()
+                if allowed_tools:
+                    original_tools = dict(self.tools)
+                    self.tools = {
+                        name: tool
+                        for name, tool in original_tools.items()
+                        if name in allowed_tools
+                    }
+                    missing = allowed_tools - set(self.tools.keys())
+                    if missing:
+                        logger.warning(
+                            f"Agent {agentid} 请求的工具不在当前工具集合中: {missing}"
+                        )
 
         self.tools = {tool.name: tool for tool in tools}
         self.instruction = instruction
@@ -227,6 +243,52 @@ class AgentEngine:
             agent_prompt = Template(COT_PROMPT_TEMPLATES).safe_substitute(values)
         return agent_prompt
 
+    # Public convenience wrappers for clearer API and easier testing
+    def build_prompt(self, query: str, scratchpad_items: List[ScratchpadItem]) -> str:
+        """
+        构建模型 prompt 的公共方法（包装内部实现，便于单元测试与外部调用）。
+
+        Args:
+            query: 用户查询文本
+            scratchpad_items: Scratchpad 条目列表
+
+        Returns:
+            agent prompt 字符串
+        """
+        return self._construct_prompt(query, scratchpad_items)
+
+    async def get_model_response(
+        self, prompt: str, chat_id: str, model_name: Optional[str] = None
+    ) -> str:
+        """
+        调用模型并返回模型原始响应（异步）。
+
+        Args:
+            prompt: 要发送给模型的 prompt
+            chat_id: 会话 id（用于上报/日志）
+            model_name: 可选模型名称，默认使用实例的 self.model_name
+
+        Returns:
+            模型返回的字符串
+        """
+        model = model_name or self.model_name
+        return await self._call_model(prompt, chat_id, model)
+
+    async def parse_model_response(
+        self, response_text: str, chat_id: str
+    ) -> Dict[str, Any]:
+        """
+        解析模型响应为动作字典（异步包装 parse 实现）。
+
+        Args:
+            response_text: 模型返回的字符串
+            chat_id: 会话 id
+
+        Returns:
+            解析后的动作字典
+        """
+        return await self._parse_action(response_text, chat_id)
+
     async def _call_model(self, prompt: str, chat_id: str, model_name: str) -> str:
         start_time = time.time()
         try:
@@ -250,6 +312,183 @@ class AgentEngine:
             )
             logger.error(error_info)
             return {"thinking": error_info}
+
+    async def _execute_tool(
+        self,
+        tool,
+        action: str,
+        action_input: Dict[str, Any],
+        chat_id: str,
+        action_id: str,
+        stream: bool,
+    ) -> str:
+        """
+        统一工具执行逻辑（含同步/异步兼容、browser-agent 特殊处理、重试与事件上报）。
+        返回观测结果字符串（observation）。
+        """
+        retry_count = 0
+        last_error = None
+        while retry_count <= tool.max_retries:
+            if self.stopped:
+                # 发送agent结束事件
+                if stream and self.stream_manager:
+                    event = await create_agent_complete_event("已停止")
+                    await self.stream_manager.send_message(chat_id, event)
+                raise AgentError("Agent stopped")
+            try:
+                # 发送工具进度事件
+                if stream and self.stream_manager:
+                    event = await create_tool_progress_event(
+                        action, "running", action_input, action_id
+                    )
+                    await self.stream_manager.send_message(chat_id, event)
+
+                # 特殊action预处理
+                if action == "user_input":
+                    action_input["chat_id"] = chat_id
+                    action_input["node_id"] = f"{chat_id}-{uuid.uuid1()}"
+                need_history = action_input.get("need_history", False)
+                if action == "chat" and need_history:
+                    observations_str = "\n".join(self._gather_observations())
+                    action_input["history_action_result"] = observations_str
+                if action == "workflow_execute":
+                    action_input["chat_id"] = chat_id
+                    action_input["stream_manager"] = self.stream_manager
+
+                # 实际执行工具，兼容同步/异步实现
+                if action == "browser_agent":
+                    # browser_agent 需要在主事件循环外执行，因此使用run_in_executor包装asyncio.run
+                    loop = asyncio.get_running_loop()
+                    observation = await loop.run_in_executor(
+                        None, lambda: asyncio.run(tool.run(action_input))
+                    )
+                elif getattr(tool, "is_async", False):
+                    observation = await tool.run(action_input)
+                else:
+                    # 同步调用保持兼容
+                    observation = tool.run(action_input)
+
+                # 记录度量
+                self.metrics.record_tool_usage(action)
+
+                if action == "chat" and need_history:
+                    # 清理临时历史字段
+                    action_input.pop("history_action_result", None)
+
+                # 发送动作完成事件
+                if stream and self.stream_manager:
+                    event = await create_action_complete_event(
+                        action, observation, action_id
+                    )
+                    await self.stream_manager.send_message(chat_id, event)
+
+                return observation
+
+            except Exception as e:
+                retry_count += 1
+                last_error = str(e)
+                self.metrics.record_retry()
+
+                # 发送工具重试事件
+                if stream and self.stream_manager:
+                    event = await create_tool_retry_event(
+                        action, retry_count, tool.max_retries, last_error
+                    )
+                    await self.stream_manager.send_message(chat_id, event)
+
+                if retry_count > tool.max_retries:
+                    raise ToolExecutionError(
+                        f"Tool {action} failed after {retry_count} retries: {last_error}"
+                    )
+                await asyncio.sleep(tool.retry_delay)
+
+    def _gather_observations(self) -> List[str]:
+        """从当前scratchpad或内部缓存收集观测，用于构建历史上下文（可扩展）。"""
+        # 目前仅从最近的scratchpad_items输出观测文本（如果存在）
+        try:
+            return [
+                item.observation
+                for item in getattr(self, "_last_observations", [])
+                if item.observation
+            ]
+        except Exception:
+            return []
+
+    async def _process_iteration(
+        self,
+        query: str,
+        chat_id: str,
+        scratchpad_items: List[ScratchpadItem],
+        observations: List[str],
+        iteration_count: int,
+        stream: bool,
+    ) -> tuple[Optional[str], Optional[ScratchpadItem], Optional[str]]:
+        """
+        将单次迭代的逻辑提取为独立方法，返回 (final_answer, scratchpad_item, observation)
+        以便单元测试与重用。
+        """
+        # 在需要时初始化 mcp 管理器
+        if self.agentmodel == "mcp-agent":
+            await initialize_mcp_manager()
+
+        # 生成 prompt 并调用模型获取响应
+        prompt = self._construct_prompt(query, scratchpad_items)
+        logger.info(f"Prompt for iteration {iteration_count}: \n{prompt}")
+        model_response = await asyncio.wait_for(
+            self._call_model(prompt, chat_id, self.model_name), timeout=self.llm_timeout
+        )
+
+        if not model_response or not isinstance(model_response, str):
+            raise ValueError("LLM API call failed response is empty or not str type")
+
+        # 解析模型响应为动作结构
+        result_dict = await self._parse_action(model_response, chat_id)
+        action_dict = result_dict.get("tool", {})
+        action = action_dict.get("name", "")
+        action_input = action_dict.get("params", {}) or {}
+        thought = result_dict.get("thinking", {})
+
+        observation = ""
+
+        logger.info(f"thinking: {thought}")
+        logger.info(f"action: {action}")
+
+        # 发送agent思考事件
+        if stream and self.stream_manager:
+            event = await create_agent_thinking_event(f"{thought}")
+            await self.stream_manager.send_message(chat_id, event)
+
+        # 处理 final_answer 快速返回
+        if action == "final_answer":
+            return action_input, None, None
+
+        # 校验动作
+        if not action or action not in self.tools:
+            raise ToolNotFoundError(f"Invalid action: {action}")
+
+        tool = self.tools[action]
+        action_id = str(uuid.uuid4())
+
+        # 发送动作开始事件
+        if stream and self.stream_manager:
+            event = await create_action_start_event(action, action_input, action_id)
+            await self.stream_manager.send_message(chat_id, event)
+
+        # 使用提取的方法统一执行工具，并返回观测结果
+        observation = await self._execute_tool(
+            tool=tool,
+            action=action,
+            action_input=action_input,
+            chat_id=chat_id,
+            action_id=action_id,
+            stream=stream,
+        )
+
+        # 将当前迭代的思考和执行过程保存为ScratchpadItem对象
+        scratchpad_item = ScratchpadItem(
+            thought=thought, action=action, observation=observation
+        )
+        return None, scratchpad_item, observation
 
     @log_execution_time
     async def set_user_input(self, node_id: str, value: Any) -> None:
@@ -347,128 +586,24 @@ class AgentEngine:
                     return
                 iteration_count += 1
                 try:
-                    if self.agentmodel == "mcp-agent":
-                        await initialize_mcp_manager()
-                    prompt = self._construct_prompt(query, scratchpad_items)
-                    logger.info(f"Prompt for iteration {iteration_count}: \n{prompt}")
-                    model_response = await asyncio.wait_for(
-                        self._call_model(prompt, chat_id, self.model_name),
-                        timeout=self.llm_timeout,
-                    )
-                    if not model_response or not isinstance(model_response, str):
-                        raise ValueError(
-                            "LLM API call failed response is empty or not str type"
+                    # 将单次迭代逻辑委派到独立方法，便于测试与维护
+                    final_answer_local, scratchpad_item, observation = (
+                        await self._process_iteration(
+                            query=query,
+                            chat_id=chat_id,
+                            scratchpad_items=scratchpad_items,
+                            observations=observations,
+                            iteration_count=iteration_count,
+                            stream=stream,
                         )
-                    result_dict = None
-                    result_dict = await self._parse_action(model_response, chat_id)
-                    action_dict = result_dict.get("tool", {})
-                    action = action_dict.get("name", "")
-                    action_input = action_dict.get("params", "")
-                    thought = result_dict.get("thinking", {})
-                    observation = ""
-
-                    logger.info(f"thinking: {thought}")
-                    logger.info(f"action: {action}")
-
-                    # 发送agent思考事件
-                    if stream and self.stream_manager:
-                        event = await create_agent_thinking_event(f"{thought}")
-                        await self.stream_manager.send_message(chat_id, event)
-
-                    if action == "final_answer":
-                        final_answer = action_input
+                    )
+                    if scratchpad_item:
+                        scratchpad_items.append(scratchpad_item)
+                    if observation:
+                        observations.append(observation)
+                    if final_answer_local:
+                        final_answer = final_answer_local
                         break
-
-                    if not action or action not in self.tools:
-                        raise ToolNotFoundError(f"Invalid action: {action}")
-
-                    tool = self.tools[action]
-
-                    action_id = str(uuid.uuid4())
-                    # 发送动作开始事件
-                    if stream and self.stream_manager:
-                        event = await create_action_start_event(
-                            action, action_input, action_id
-                        )
-                        await self.stream_manager.send_message(chat_id, event)
-
-                    retry_count = 0
-                    while retry_count <= tool.max_retries:
-                        if self.stopped:
-                            # 发送agent结束事件
-                            if stream and self.stream_manager:
-                                event = await create_agent_complete_event("已停止")
-                                await self.stream_manager.send_message(chat_id, event)
-                            return
-                        try:
-                            # 发送工具进度事件
-                            if stream and self.stream_manager:
-                                event = await create_tool_progress_event(
-                                    action, "running", action_input, action_id
-                                )
-                                await self.stream_manager.send_message(chat_id, event)
-                            if action == "user_input":
-                                action_input["chat_id"] = chat_id
-                                action_input["node_id"] = f"{chat_id}-{uuid.uuid1()}"
-                            need_history = action_input.get("need_history", False)
-                            if action == "chat" and need_history:
-                                # 在需要历史记录时才拼接observations
-                                observations_str = "\n".join(observations)
-                                action_input["history_action_result"] = observations_str
-                            if action == "workflow_execute":
-                                action_input["chat_id"] = chat_id
-                                action_input["stream_manager"] = self.stream_manager
-
-                            # 执行工具
-                            if action == "browser_agent":
-                                # browser_agent需要在主事件循环中执行
-                                loop = asyncio.get_running_loop()
-                                observation = await loop.run_in_executor(
-                                    None, lambda: asyncio.run(tool.run(action_input))
-                                )
-                            elif tool.is_async:
-                                observation = await tool.run(action_input)
-                            else:
-                                observation = tool.run(action_input)
-                            self.metrics.record_tool_usage(action)
-
-                            if action == "chat" and need_history:
-                                del action_input["history_action_result"]
-
-                            # 发送动作完成事件
-                            if stream and self.stream_manager:
-                                event = await create_action_complete_event(
-                                    action, observation, action_id
-                                )
-                                await self.stream_manager.send_message(chat_id, event)
-
-                            break  # 工具执行成功，退出重试循环
-
-                        except Exception as e:
-                            retry_count += 1
-                            self.metrics.record_retry()
-                            error_msg = str(e)
-
-                            # 发送工具重试事件
-                            if stream and self.stream_manager:
-                                event = await create_tool_retry_event(
-                                    action, retry_count, tool.max_retries, error_msg
-                                )
-                                await self.stream_manager.send_message(chat_id, event)
-
-                            if retry_count > tool.max_retries:
-                                raise ToolExecutionError(
-                                    f"Tool {action} failed after {retry_count} retries: {error_msg}"
-                                )
-
-                            await asyncio.sleep(tool.retry_delay)
-
-                    # 将当前迭代的思考和执行过程保存为ScratchpadItem对象
-                    scratchpad_item = ScratchpadItem(
-                        thought=thought, action=action, observation=observation
-                    )
-                    scratchpad_items.append(scratchpad_item)
-                    observations.append(observation)
                 except ActionBadException as e:
                     logger.error(f"[{chat_id}] {e.message}")
                     final_answer = e.message

@@ -9,7 +9,6 @@ from .task_manager import task_manager
 
 from .agent_manager import AgentManager, AgentData
 from src.nodes.node_config import NodeConfigManager
-from ..api.llm_api import call_llm_api_stream
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 agent_manager = AgentManager()
@@ -200,6 +199,7 @@ async def get_node_tools():
             "message": f"获取工具列表失败: {str(e)}",
             "data": None,
         }
+
 
 @router.delete("/task/{task_id}")
 async def cancel_task(task_id: str):

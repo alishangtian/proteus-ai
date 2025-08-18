@@ -223,7 +223,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="base-model",
+                        model_name="deepseek-chat",
                     )
                 else:
                     text = await call_llm_api(
@@ -241,7 +241,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="base-model",
+                        model_name="deepseek-chat",
                     )
 
             end_time = time.time()

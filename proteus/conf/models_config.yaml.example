@@ -1,5 +1,5 @@
 # 模型配置YAML文件
-base-model:
+deepseek-chat:
   base_url: https://api.deepseek.com/v1
   api_key: vTwpJaVSl1ctTJtRGimzcPitcKU******PdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
   model_name: deepseek-chat

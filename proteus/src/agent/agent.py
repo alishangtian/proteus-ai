@@ -48,6 +48,7 @@ from ..manager.multi_agent_manager import TeamRole, AgentEvent
 from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache
 from .common.configuration import AgentConfiguration
+from langfuse import observe
 
 logger = logging.getLogger(__name__)
 
@@ -76,23 +77,27 @@ class Agent:
     _cache_lock = threading.Lock()
 
     @classmethod
+    @observe(name="get_agents", capture_input=True, capture_output=True)
     def get_agents(cls, chat_id: str) -> List["Agent"]:
         """获取指定chat_id下的agent列表副本"""
         with cls._cache_lock:
             return list(cls._agent_cache.get(chat_id, []))
 
     @classmethod
+    @observe(name="set_agents", capture_input=True, capture_output=True)
     def set_agents(cls, chat_id: str, agents: List["Agent"]) -> None:
         """设置指定chat_id下的agent列表"""
         with cls._cache_lock:
             cls._agent_cache[chat_id] = agents.copy()
 
     @classmethod
+    @observe(name="clear_agents", capture_input=True, capture_output=True)
     def clear_agents(cls, chat_id: str) -> None:
         """清除指定chat_id的agent缓存"""
         with cls._cache_lock:
             cls._agent_cache.pop(chat_id, None)
 
+    @observe(name="__init__", capture_input=True, capture_output=True)
     def __init__(
         self,
         tools: List[Any],  # 修改为Any类型以支持多种工具输入
@@ -183,6 +188,7 @@ class Agent:
                 StepLimitTerminationCondition(self.max_iterations)
             )
 
+    @observe(name="_validate_tools", capture_input=True, capture_output=True)
     def _validate_tools(self) -> None:
         """验证并规范化工具列表，支持多种工具输入类型"""
         seen_names = set()
@@ -223,6 +229,11 @@ class Agent:
 
         self.tools = normalized_tools
 
+    @observe(
+        name="_load_historical_scratchpad_items",
+        capture_input=True,
+        capture_output=True,
+    )
     def _load_historical_scratchpad_items(
         self, conversation_id: str, size: int = 5, expire_hours: int = 12
     ) -> List[ScratchpadItem]:
@@ -296,6 +307,9 @@ class Agent:
             logger.error(f"从Redis加载历史信息失败: {e}")
             return []
 
+    @observe(
+        name="_save_conversation_to_redis", capture_input=True, capture_output=True
+    )
     def _save_conversation_to_redis(
         self,
         conversation_id: str,
@@ -373,6 +387,7 @@ class Agent:
         )
         raise last_exception
 
+    @observe(name="_load_conversation_history", capture_input=True, capture_output=True)
     def _load_conversation_history(
         self, conversation_id: str, size: int = 5, expire_hours: int = 12
     ) -> str:
@@ -439,6 +454,7 @@ class Agent:
             logger.error(f"加载对话历史失败: {e}")
             return ""
 
+    @observe(name="_construct_prompt", capture_input=True, capture_output=True)
     def _construct_prompt(self, context: str = None, query: str = None) -> str:
         """构造提示模板，使用缓存优化工具描述生成
 
@@ -501,6 +517,7 @@ class Agent:
         agent_prompt = Template(self.prompt_template).safe_substitute(values)
         return agent_prompt
 
+    @observe(name="_call_model", capture_input=True, capture_output=True)
     async def _call_model(self, prompt: str, chat_id: str, model_name: str) -> str:
         start_time = time.time()
         try:
@@ -512,6 +529,7 @@ class Agent:
             self.metrics.record_call(execution_time, is_error=True)
             raise LLMAPIError(f"LLM API call failed: {str(e)}")
 
+    @observe(name="_parse_action", capture_input=True, capture_output=True)
     async def _parse_action(
         self, response_text: str, chat_id: str, query: str = None
     ) -> Dict[str, Any]:
@@ -581,6 +599,7 @@ class Agent:
             return {"thinking": error_info}
 
     @log_execution_time
+    @observe(name="set_user_input", capture_input=True, capture_output=True)
     async def set_user_input(self, node_id: str, value: Any) -> None:
         """设置用户输入值
 
@@ -594,6 +613,7 @@ class Agent:
         else:
             raise ValueError(f"No pending user input request for node {node_id}")
 
+    @observe(name="wait_for_user_input", capture_input=True, capture_output=True)
     async def wait_for_user_input(
         self, node_id: str, prompt: str, chat_id: str, input_type: str
     ) -> Any:
@@ -625,9 +645,11 @@ class Agent:
 
         return value
 
+    @observe(name="stop", capture_input=True, capture_output=True)
     async def stop(self) -> None:
         self.stopped = True
 
+    @observe(name="clear_context", capture_input=True, capture_output=True)
     def clear_context(self) -> None:
         """清空agent上下文，包括scratchpad_items和cache信息"""
         self.scratchpad_items.clear()
@@ -635,6 +657,7 @@ class Agent:
         self._response_cache.clear()
         logger.info("Agent context cleared")
 
+    @observe(name="setup_event_subscriptions", capture_input=True, capture_output=True)
     async def setup_event_subscriptions(self, agentid: str) -> None:
         """初始化事件订阅
         Args:
@@ -653,6 +676,7 @@ class Agent:
             logger.error(f"Failed to setup event subscriptions: {str(e)}")
             raise
 
+    @observe(name="_handle_event", capture_input=True, capture_output=True)
     async def _handle_event(self, event: AgentEvent) -> None:
         # 注册当前agent到缓存
         with Agent._cache_lock:
@@ -743,6 +767,7 @@ class Agent:
                     event.sender_id, await create_agent_error_event(str(e))
                 )
 
+    @observe(name="_register_agent", capture_input=True, capture_output=True)
     async def _register_agent(self, chat_id: str) -> None:
         """注册当前agent到缓存"""
         with Agent._cache_lock:
@@ -754,6 +779,7 @@ class Agent:
             ):
                 Agent._agent_cache[chat_id].append(self)
 
+    @observe(name="_prepare_execution", capture_input=True, capture_output=True)
     async def _prepare_execution(
         self, query: str, chat_id: str, is_result: bool
     ) -> None:
@@ -769,6 +795,7 @@ class Agent:
                     self.conversation_id, origin_query_item
                 )
 
+    @observe(name="_execute_tool", capture_input=True, capture_output=True)
     async def _execute_tool(
         self, tool, action: str, action_input: dict, action_id: str, chat_id: str
     ) -> str:
@@ -780,12 +807,14 @@ class Agent:
         except Exception as e:
             raise ToolExecutionError(f"Tool {action} failed: {str(e)}")
 
+    @observe(name="_handle_termination", capture_input=True, capture_output=True)
     async def _handle_termination(self, ctx: dict) -> bool:
         """检查终止条件"""
         return any(
             tc.should_terminate(self, **ctx) for tc in self.termination_conditions
         )
 
+    @observe(name="run", capture_input=True, capture_output=True)
     async def run(
         self,
         query: str,
@@ -1117,6 +1146,7 @@ class Agent:
                 logger.error(f"资源清理时发生异常: {str(e)}", exc_info=True)
                 raise
 
+    @observe(name="_send_tool_events", capture_input=True, capture_output=True)
     async def _send_tool_events(
         self, action: str, action_input: dict, action_id: str, chat_id: str
     ) -> None:
@@ -1124,6 +1154,7 @@ class Agent:
         start_event = await create_action_start_event(action, action_input, action_id)
         await self.stream_manager.send_message(chat_id, start_event)
 
+    @observe(name="_send_tool_progress_event", capture_input=True, capture_output=True)
     async def _send_tool_progress_event(
         self, action: str, action_input: dict, action_id: str, chat_id: str
     ) -> None:
@@ -1133,6 +1164,7 @@ class Agent:
         )
         await self.stream_manager.send_message(chat_id, progress_event)
 
+    @observe(name="_send_agent_complete_event", capture_input=True, capture_output=True)
     async def _send_agent_complete_event(self, message: str, chat_id: str) -> None:
         """发送agent完成事件"""
         event = await create_agent_complete_event(message)

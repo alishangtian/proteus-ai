@@ -1,9 +1,8 @@
 import Icons from './icons.js';
+import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON } from './utils.js';
+import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement } from './ui.js';
+import { registerSSEHandlers } from './sse-handlers.js';
 
-// 生成对话ID的函数
-function generateConversationId() {
-    return Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
-}
 
 // 临时存储历史对话数据 {model: htmlContent}
 const historyStorage = {};
@@ -336,6 +335,116 @@ document.addEventListener('DOMContentLoaded', () => {
     // 添加菜单项点击事件
     const modelOptions = document.querySelectorAll('.menu-item.model-option');
     const itecountContainer = document.getElementById('itecount-container');
+    const modelSelect = document.getElementById('model-select');
+
+    // 将左侧菜单项填充到聊天框左下角的下拉选择中（并保持与菜单互通）
+    if (modelSelect) {
+        modelOptions.forEach(item => {
+            const model = item.getAttribute('data-model');
+            const textDiv = item.querySelector('.menu-item-text');
+            const label = textDiv ? textDiv.textContent.trim() : model;
+            const opt = document.createElement('option');
+            opt.value = model;
+            opt.textContent = label;
+            modelSelect.appendChild(opt);
+        });
+
+        // 当下拉变化时，触发对应菜单项的点击逻辑（复用现有处理）
+        modelSelect.addEventListener('change', () => {
+            const newModel = modelSelect.value;
+            const target = Array.from(modelOptions).find(i => i.getAttribute('data-model') === newModel);
+            if (target) {
+                // 触发菜单项的点击逻辑（会做历史保存/恢复等）
+                target.click();
+            }
+        });
+    }
+
+    // 填充具体模型名称下拉（从后端 /models 获取）
+    const modelNameSelect = document.getElementById('model-name-select');
+    if (modelNameSelect) {
+        // 清理默认项，保留空选项
+        // 从后端加载
+        fetch('/models').then(resp => {
+            if (!resp.ok) throw new Error('Failed to load models');
+            return resp.json();
+        }).then(data => {
+            if (data && Array.isArray(data.models) && data.models.length > 0) {
+                // 将每个模型加入下拉
+                data.models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    modelNameSelect.appendChild(opt);
+                });
+                // 优化：默认选中第一个具体模型（跳过占位的空选项）
+                // 如果页面中已有占位 option (value === '')，则选择第一个模型项；否则选择第一个 option
+                const firstModelValue = data.models[0];
+                try {
+                    modelNameSelect.value = firstModelValue;
+                    // 如果直接设置 value 无效（例如 option 尚未附着），则使用 selectedIndex 作为回退
+                    if (modelNameSelect.value !== firstModelValue) {
+                        // 寻找第一个非空值的 option 索引
+                        const idx = Array.from(modelNameSelect.options).findIndex(o => o.value && o.value !== '');
+                        if (idx >= 0) modelNameSelect.selectedIndex = idx;
+                    }
+                } catch (e) {
+                    // 忽略错误，保留下拉现状并在控制台记录
+                    console.warn('设置默认模型失败，保留占位项', e);
+                }
+            } else if (data && Array.isArray(data.models)) {
+                // 空数组或其它情况，仍将（可能为空的）models 列表加入
+                data.models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    modelNameSelect.appendChild(opt);
+                });
+            }
+        }).catch(err => {
+            console.error('加载模型列表失败:', err);
+        });
+    }
+
+    // Thought 开关：读取本地存储并绑定切换事件（默认不展示）
+    const thoughtToggle = document.getElementById('thought-toggle');
+    try {
+        const savedThought = localStorage.getItem('showThought');
+        if (savedThought === 'true') {
+            document.body.classList.add('show-thought');
+            if (thoughtToggle) thoughtToggle.checked = true;
+        } else {
+            document.body.classList.remove('show-thought');
+            if (thoughtToggle) thoughtToggle.checked = false;
+        }
+    } catch (e) {
+        console.warn('读取 showThought 本地存储失败', e);
+    }
+
+    if (thoughtToggle) {
+        thoughtToggle.addEventListener('change', function () {
+            try {
+                if (this.checked) {
+                    // 选中：设置 class 并保存状态
+                    document.body.classList.add('show-thought');
+                    localStorage.setItem('showThought', 'true');
+                } else {
+                    // 取消选中：移除 class、清理页面中所有 .thought 元素 并保存状态
+                    document.body.classList.remove('show-thought');
+                    localStorage.setItem('showThought', 'false');
+
+                    try {
+                        // 移除所有已渲染的 thought 节点，避免保留空占位
+                        document.querySelectorAll('.thought').forEach(el => el.remove());
+                    } catch (cleanErr) {
+                        console.warn('移除 .thought 元素失败', cleanErr);
+                    }
+                }
+            } catch (e) {
+                console.warn('设置 showThought 本地存储失败', e);
+            }
+        });
+    }
 
     // 更新轮次显示状态
     function updateIterationDisplay(selectedItem) {
@@ -357,6 +466,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // 为初始模型生成conversation_id
             currentConversationId = generateConversationId();
             conversationIdStorage[currentModel] = currentConversationId;
+            // 同步下拉选中
+            if (modelSelect) modelSelect.value = currentModel;
         }
     });
 
@@ -503,6 +614,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this.classList.add('active');
             currentModel = newModel;
             updateIterationDisplay(this);
+            // 同步下拉选择（如果存在）
+            if (modelSelect) {
+                modelSelect.value = newModel;
+            }
         });
     });
 
@@ -548,20 +663,11 @@ document.addEventListener('DOMContentLoaded', () => {
         listItemIndent: '1' // 规范列表缩进
     });
 
+    // wrapper -> 调用 ui 模块的 scrollToBottom，传入 conversationHistory
     function scrollToBottom() {
-        if (isScrolling) return;
-
-        isScrolling = true;
-        const lastElement = conversationHistory.lastElementChild;
-        if (lastElement) {
-            lastElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        if (typeof uiScrollToBottom === 'function') {
+            try { uiScrollToBottom(conversationHistory); } catch (e) { console.warn('uiScrollToBottom 调用失败', e); }
         }
-
-        // 设置滚动冷却时间
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            isScrolling = false;
-        }, 500); // 500ms内不重复滚动
     }
 
     // 事件处理
@@ -584,135 +690,59 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // 重置UI
+    // wrapper -> 调用 ui 模块的 resetUI，传入 userInput 和 sendButton
     function resetUI() {
-        userInput.value = '';
-        userInput.disabled = false;
-        sendButton.disabled = false;
-        sendButton.textContent = '发送';
-        sendButton.classList.remove('stop');
         isProcessing = false;
-        userInput.focus();
+        if (typeof uiResetUI === 'function') {
+            try { uiResetUI(userInput, sendButton); } catch (e) { console.warn('uiResetUI 调用失败', e); }
+        } else {
+            userInput.value = '';
+            userInput.disabled = false;
+            sendButton.disabled = false;
+            sendButton.textContent = '发送';
+            sendButton.classList.remove('stop');
+            userInput.focus();
+        }
     }
 
-    // 渲染节点结果
+    // wrapper -> 调用 ui 模块的 renderNodeResult，传入 currentIteration
     function renderNodeResult(data, container) {
-        // 根据状态设置样式类和文本
-        let statusClass = '';
-        let statusText = '';
-        let content = '';
-
-        // 首先检查error是否存在
-        if (data.error) {
-            statusClass = 'error';
-            statusText = '执行失败';
-            content = `<div class="error">${data.error}</div>`;
-        } else {
-            // 如果没有error，则根据status判断
-            switch (data.status) {
-                case 'running':
-                    // 如果是上一个迭代的节点或已完成的节点，显示为completed
-                    if (data.iteration && data.iteration < currentIteration) {
-                        statusClass = 'success';
-                        statusText = '执行完成';
-                        content = data.data ? (typeof data.data === 'string' ? marked.parse(data.data) : `<pre>${JSON.stringify(data.data, null, 2)}</pre>`) : '';
-                    } else if (data.completed) {
-                        statusClass = 'success';
-                        statusText = '执行完成';
-                        content = data.data ? (typeof data.data === 'string' ? marked.parse(data.data) : `<pre>${JSON.stringify(data.data, null, 2)}</pre>`) : '';
-                    } else {
-                        statusClass = 'running';
-                        statusText = '执行中';
-                        content = '<div class="running-indicator"></div>';
-                    }
-                    break;
-                case 'completed':
-                    statusClass = 'success';
-                    statusText = '执行完成';
-                    content = data.data ? `<pre>${JSON.stringify(data.data, null, 2)}</pre>` : '';
-                    break;
-                default:
-                    statusClass = '';
-                    statusText = data.status || '未知状态';
-                    content = '';
-            }
+        if (typeof uiRenderNodeResult === 'function') {
+            try { uiRenderNodeResult(data, container, currentIteration); } catch (e) { console.warn('uiRenderNodeResult 调用失败', e); }
+            return;
         }
-
-        // 查找是否已存在相同节点的div
-        const existingNode = container.querySelector(`[data-node-id="${data.node_id}"]`);
-        if (existingNode) {
-            // 更新现有节点
-            existingNode.className = `node-result ${statusClass}`;
-            const wasCollapsed = existingNode.classList.contains('collapsed');
-            existingNode.innerHTML = `
-                <div class="node-header">
-                    <span>节点: ${data.node_id}</span>
-                    <span>${statusText}</span>
-                </div>
-                <div class="node-content">${content}</div>
-            `;
-            if (wasCollapsed || data.status === 'completed') {
-                existingNode.classList.add('collapsed');
-            }
-        } else {
-            // 创建新节点
-            const nodeDiv = document.createElement('div');
-            nodeDiv.className = `node-result ${statusClass}`;
-            nodeDiv.setAttribute('data-node-id', data.node_id);
-            nodeDiv.innerHTML = `
-                <div class="node-header">
-                    <span>节点: ${data.node_id}</span>
-                    <span>${statusText}</span>
-                </div>
-                <div class="node-content">${content}</div>
-            `;
-            // 默认展开结果容器
-            nodeDiv.classList.remove('collapsed');
-            container.appendChild(nodeDiv);
-        }
-
-        // 添加可靠的点击事件处理
-        const nodeHeader = container.querySelector(`[data-node-id="${data.node_id}"] .node-header`);
-        if (nodeHeader) {
-            nodeHeader.onclick = function (e) {
-                e.stopPropagation();
-                const nodeResult = this.closest('.node-result');
-                nodeResult.classList.toggle('collapsed');
-
-                // 强制重绘以确保动画效果
-                nodeResult.style.display = 'none';
-                nodeResult.offsetHeight; // trigger reflow
-                nodeResult.style.display = '';
-            };
-        }
+        // fallback: minimal rendering if ui 模块不可用
+        const el = document.createElement('div');
+        el.className = 'node-result';
+        el.textContent = `${data.node_id}: ${data.status || ''}`;
+        container.appendChild(el);
     }
 
-    // 渲染解释说明
+    // wrapper -> 调用 ui 模块的 renderExplanation
     function renderExplanation(content, container) {
-        // 查找或创建explanation div
-        let explanationDiv = container.querySelector('.explanation');
-        if (!explanationDiv) {
-            explanationDiv = document.createElement('div');
-            explanationDiv.className = 'explanation';
-            container.appendChild(explanationDiv);
+        if (typeof uiRenderExplanation === 'function') {
+            try { uiRenderExplanation(content, container); } catch (e) { console.warn('uiRenderExplanation 调用失败', e); }
+            return;
         }
-        // 使用累积的内容更新div
-        const htmlContent = marked.parse(content);
-        explanationDiv.innerHTML = htmlContent;
+        const div = container.querySelector('.explanation') || (() => {
+            const d = document.createElement('div'); d.className = 'explanation'; container.appendChild(d); return d;
+        })();
+        div.innerHTML = marked.parse(content);
     }
 
-    // 渲染回答
+    // wrapper -> 调用 ui 模块的 renderAnswer
     function renderAnswer(content, container) {
-        // 查找或创建answer div
+        if (typeof uiRenderAnswer === 'function') {
+            try { uiRenderAnswer(content, container); } catch (e) { console.warn('uiRenderAnswer 调用失败', e); }
+            return;
+        }
         let answerDiv = container.querySelector('.answer:last-child');
         if (!answerDiv) {
             answerDiv = document.createElement('div');
             answerDiv.className = 'answer';
             container.appendChild(answerDiv);
         }
-        // 使用累积的内容更新div
-        const htmlContent = marked.parse(content);
-        answerDiv.innerHTML = htmlContent;
+        answerDiv.innerHTML = marked.parse(content);
     }
 
     // 停止执行的函数
@@ -835,9 +865,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const selectedModel = selectedModelButton.getAttribute('data-model');
 
+            // 统一读取具体模型下拉（如果存在），并规范化为空值为 undefined
+            const selectedModelNameEl = document.getElementById('model-name-select');
+            const rawSelectedModelName = selectedModelNameEl ? selectedModelNameEl.value : '';
+            const selectedModelName = rawSelectedModelName && rawSelectedModelName.trim() !== '' ? rawSelectedModelName.trim() : undefined;
+
             let response;
             if (selectedModel === 'multi-agent') {
                 // 多智能体模式使用 /agents/route 接口
+                // 将 model_name 也一并传递，便于后端区分具体底层模型
                 response = await fetch('/agents/route', {
                     method: 'POST',
                     headers: {
@@ -847,7 +883,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         query: text,
                         conversation_id: currentConversationId,
                         max_iterations: parseInt(document.getElementById('itecount').value) || 10,
-                        stream: true
+                        stream: true,
+                        model_name: selectedModelName
                     })
                 });
             } else {
@@ -860,6 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({
                         text,
                         model: selectedModel,
+                        model_name: selectedModelName,
                         conversation_id: currentConversationId,
                         itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined
                     })
@@ -879,816 +917,25 @@ document.addEventListener('DOMContentLoaded', () => {
             currentChatId = result.chat_id;
             const eventSource = new EventSource(`stream/${result.chat_id}`);
 
-            // 超时处理
-            // const timeoutId = setTimeout(() => {
-            //     eventSource.close();
-            //     answerElement.innerHTML += `<div class="error">请求超时</div>`;
-            //     resetUI();
-            // }, 600000);
-
-            // 处理智能体选择事件
-            eventSource.addEventListener('agent_selection', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const selectionDiv = document.createElement('div');
-                    selectionDiv.className = 'agent-event agent-selection';
-                    selectionDiv.innerHTML = `
-                        <div class="agent-event-card">
-                            <div class="agent-header">
-                                <div class="agent-icon">🤖</div>
-                                <div class="agent-meta">
-                                    <span class="agent-name">${data.agent_name}</span>
-                                </div>
-                            </div>
-                            <div class="agent-content">
-                                <div class="agent-section">
-                                    <div class="agent-detail">
-                                        <span class="detail-label">任务:</span>
-                                        <span class="detail-value">${data.agent_task}</span>
-                                    </div>
-                                    <div class="agent-detail">
-                                        <span class="detail-label">选择原因:</span>
-                                        <span class="detail-value">${data.selection_reason}</span>
-                                    </div>
-                                </div>
-                                <div class="agent-footer">
-                                    <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    answerElement.appendChild(selectionDiv);
-                } catch (error) {
-                    console.error('解析智能体选择事件失败:', error);
-                }
-            });
-
-            // 处理智能体执行事件
-            eventSource.addEventListener('agent_execution', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const executionDiv = document.createElement('div');
-                    executionDiv.className = `agent-event agent-execution ${data.execution_step}`;
-
-                    let executionContent = '';
-                    if (data.execution_step === 'start') {
-                        executionContent = `
-                            <div class="agent-event-card">
-                                <div class="agent-header">
-                                    <div class="agent-icon">▶️</div>
-                                    <div class="agent-meta">
-                                        <span class="agent-name">${data.agent_name}</span>
-                                        <span class="agent-status">开始执行</span>
-                                    </div>
-                                </div>
-                                <div class="agent-content">
-                                    <div class="agent-section">
-                                        <div class="agent-detail">
-                                            <span class="detail-label">可使用工具: </span>
-                                            <span class="detail-value">${data.execution_data.tools.map(t => `<span class="tool-tag">${t}</span>`).join('')}</span>
-                                        </div>
-                                    </div>
-                                    <div class="agent-footer">
-                                        <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                                    </div>
-                                </div>
-                            </div>`;
-                    } else if (data.execution_step === 'complete') {
-                        executionContent = `
-                            <div class="agent-event-card">
-                                <div class="agent-header">
-                                    <div class="agent-icon">✅</div>
-                                    <div class="agent-meta">
-                                        <span class="agent-name">${data.agent_name}</span>
-                                        <span class="agent-status">执行完成</span>
-                                    </div>
-                                </div>
-                                <div class="agent-content">
-                                    <div class="agent-section">
-                                        <div class="agent-detail">
-                                            <span class="detail-label">执行结果:</span>
-                                            <div class="detail-value result-content">${marked.parse(data.execution_data.result || '')}</div>
-                                        </div>
-                                        <div class="agent-detail">
-                                            <span class="detail-label">状态:</span>
-                                            <span class="detail-value">${data.execution_data.status}</span>
-                                        </div>
-                                    </div>
-                                    <div class="agent-footer">
-                                        <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                                    </div>
-                                </div>
-                            </div>`;
-                    }
-
-                    executionDiv.innerHTML = executionContent;
-                    answerElement.appendChild(executionDiv);
-                } catch (error) {
-                    console.error('解析智能体执行事件失败:', error);
-                }
-            });
-
-            // 处理状态消息
-            eventSource.addEventListener('status', event => {
-                const message = event.data;
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'status-message';
-                statusDiv.textContent = message;
-                answerElement.appendChild(statusDiv);
-            });
-
-            // 处理工作流事件
-            eventSource.addEventListener('workflow', event => {
-                currentIteration++; // 每次收到新的工作流事件时增加迭代计数
-                try {
-                    const workflow = JSON.parse(event.data);
-                    const workflowDiv = document.createElement('div');
-                    workflowDiv.className = 'workflow-info collapsed';
-                    workflowDiv.innerHTML = `
-                        <div class="workflow-header">
-                            <span>工作流已生成: ${workflow.nodes.length} 个节点</span>
-                        </div>
-                        <div class="workflow-content">
-                            <pre>${JSON.stringify(workflow, null, 2)}</pre>
-                        </div>
-                    `;
-                    answerElement.appendChild(workflowDiv);
-
-                    // Add click handler for workflow header
-                    const workflowHeader = workflowDiv.querySelector('.workflow-header');
-                    if (workflowHeader) {
-                        workflowHeader.onclick = function () {
-                            workflowDiv.classList.toggle('collapsed');
-                        };
-                    }
-                } catch (error) {
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'error';
-                    errorDiv.textContent = '解析工作流失败';
-                    answerElement.appendChild(errorDiv);
-                }
-            });
-
-            // 处理节点结果
-            eventSource.addEventListener('node_result', event => {
-                try {
-                    const result = JSON.parse(event.data);
-                    // 如果当前节点完成，将之前所有运行中的节点标记为完成
-                    if (result.status === 'completed') {
-                        const runningNodes = answerElement.querySelectorAll('.node-result.running');
-                        runningNodes.forEach(node => {
-                            node.classList.remove('running');
-                            node.classList.add('success');
-                            const statusSpan = node.querySelector('.node-header span:last-child');
-                            if (statusSpan) {
-                                statusSpan.textContent = '执行完成';
-                            }
-                            const loadingIndicator = node.querySelector('.running-indicator');
-                            if (loadingIndicator) {
-                                loadingIndicator.remove();
-                            }
-                        });
-                    }
-                    renderNodeResult(result, answerElement);
-                } catch (error) {
-                    answerElement.innerHTML += `<div class="error">解析节点结果失败</div>`;
-                }
-            });
-
-            // 处理解释说明
-            eventSource.addEventListener('explanation', event => {
-                try {
-                    const response = JSON.parse(event.data);
-                    if (response.success && response.data) {
-                        currentExplanation += response.data;
-                        renderExplanation(currentExplanation, answerElement);
-                    } else if (!response.success) {
-                        answerElement.innerHTML += `<div class="error">${response.error || '解析解释说明失败'}</div>`;
-                    }
-                } catch (error) {
-                    answerElement.innerHTML += `<div class="error">解析解释说明失败</div>`;
-                }
-            });
-
-            // 处理直接回答
-            eventSource.addEventListener('answer', event => {
-                try {
-                    const response = JSON.parse(event.data);
-                    if (response.success && response.data) {
-                        currentAnswer += response.data;
-                        renderAnswer(currentAnswer, answerElement);
-                    } else if (!response.success) {
-                        answerElement.innerHTML += `<div class="error">${response.error || '解析回答失败'}</div>`;
-                    }
-                } catch (error) {
-                    answerElement.innerHTML += `<div class="error">解析回答失败</div>`;
-                }
-            });
-
-            // 处理工具进度事件
-            eventSource.addEventListener('tool_progress', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const actionId = data.action_id || currentActionId;
-                    currentActionId = actionId; // 更新当前actionId
-
-                    // 查找或创建action group
-                    // let actionGroup = answerElement.querySelector(`.action-group[data-action-id="${actionId}"]`);
-                    // if (!actionGroup) {
-                    //     actionGroup = document.createElement('div');
-                    //     actionGroup.className = 'action-group';
-                    //     actionGroup.setAttribute('data-action-id', actionId);
-                    //     answerElement.appendChild(actionGroup);
-                    //     currentActionGroup = actionGroup;
-                    // }
-
-                    // 更新工具状态
-                    // const toolStatus = actionGroup.querySelector('.tool-status');
-                    // if (toolStatus) {
-                    //     toolStatus.textContent = `执行中 (${data.progress || 0}%)`;
-                    //     toolStatus.className = 'tool-status running';
-                    // } else {
-                    //     actionGroup.innerHTML = `
-                    //         <div class="tool-header">
-                    //             <span class="tool-name">${data.action || '工具执行'}</span>
-                    //             <span class="tool-status running">执行中 (${data.progress || 0}%)</span>
-                    //         </div>
-                    //         <div class="tool-details"></div>
-                    //     `;
-                    // }
-                } catch (error) {
-                    console.error('解析工具进度失败:', error);
-                }
-            });
-
-            // 处理用户输入请求事件
-            eventSource.addEventListener('user_input_required', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const inputDiv = document.createElement('div');
-                    inputDiv.className = 'user-input-container';
-
-                    // 创建输入表单，使用markdown渲染prompt
-                    let inputHtml = `
-                        <div class="input-prompt">${marked.parse(data.prompt)}</div>
-                        <div class="input-form">
-                    `;
-                    // 根据输入类型创建不同的输入控件
-                    switch (data.input_type) {
-                        case 'geolocation':
-                            inputHtml += `
-                                <div class="geolocation-input" style="display:none">
-                                    <input type="hidden" class="input-field" id="user-input-${data.node_id}">
-                                    <div class="geolocation-status">正在获取位置信息...</div>
-                                </div>
-                            `;
-                            // 自动触发位置获取
-                            setTimeout(() => submitUserInput(data.node_id, 'geolocation'), 100);
-                            break;
-                        case 'local_browser':
-                            inputHtml += `
-                                <div class="local-browser-input">
-                                    <input type="number" class="input-field" id="user-input-${data.node_id}"
-                                        placeholder="输入本地浏览器应用端口号"
-                                        min="1024"
-                                        max="65535"
-                                        ${data.validation.required ? 'required' : ''}
-                                    />
-                                </div>
-                            `;
-                            break;
-                        case 'password':
-                            inputHtml += `
-                                <input type="password" class="input-field" id="user-input-${data.node_id}"
-                                    value="${data.default_value || ''}"
-                                    ${data.validation.required ? 'required' : ''}
-                                    ${data.validation.pattern ? `pattern="${data.validation.pattern}"` : ''}
-                                    ${data.validation.min_length ? `minlength="${data.validation.min_length}"` : ''}
-                                    ${data.validation.max_length ? `maxlength="${data.validation.max_length}"` : ''}
-                                />
-                            `;
-                            break;
-                        default: // text
-                            inputHtml += `
-                                <input type="text" class="input-field" id="user-input-${data.node_id}"
-                                    value="${data.default_value || ''}"
-                                    ${data.validation.required ? 'required' : ''}
-                                    ${data.validation.pattern ? `pattern="${data.validation.pattern}"` : ''}
-                                    ${data.validation.min_length ? `minlength="${data.validation.min_length}"` : ''}
-                                    ${data.validation.max_length ? `maxlength="${data.validation.max_length}"` : ''}
-                                />
-                            `;
-                    }
-
-                    inputHtml += `
-                            <button class="submit-input" data-node-id="${data.node_id}" data-input-type="${data.input_type}" data-prompt="${data.prompt}">提交</button>
-                        </div>
-                    `;
-
-                    inputDiv.innerHTML = inputHtml;
-                    answerElement.appendChild(inputDiv);
-
-                    // 为提交按钮添加事件监听
-                    const submitButton = inputDiv.querySelector('.submit-input');
-                    if (submitButton) {
-                        submitButton.addEventListener('click', () => {
-                            const nodeId = submitButton.getAttribute('data-node-id');
-                            const inputType = submitButton.getAttribute('data-input-type');
-                            const prompt = submitButton.getAttribute('data-prompt');
-                            submitUserInput(nodeId, inputType, prompt);
-                        });
-                    }
-
-                    // 聚焦到输入框
-                    const inputField = document.getElementById(`user-input-${data.node_id}`);
-                    if (inputField) {
-                        inputField.focus();
-                    }
-                } catch (error) {
-                    console.error('解析用户输入请求失败:', error);
-                    answerElement.innerHTML += `<div class="error">解析用户输入请求失败</div>`;
-                }
-            });
-
-            // 处理工具重试事件
-            eventSource.addEventListener('tool_retry', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const retryDiv = document.createElement('div');
-                    retryDiv.className = 'tool-retry';
-                    retryDiv.innerHTML = `
-                        <div class="retry-info">
-                            <span>工具 ${data.tool} 重试中 (${data.attempt}/${data.max_retries})</span>
-                            <span class="retry-error">${data.error}</span>
-                        </div>
-                    `;
-                    answerElement.appendChild(retryDiv);
-                } catch (error) {
-                    console.error('解析工具重试失败:', error);
-                }
-            });
-
-            // 处理action开始事件
-            eventSource.addEventListener('action_start', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const actionId = data.action_id || Date.now().toString();
-                    currentActionId = actionId; // 同时更新全局变量
-
-                    // 如果是file_write动作，自动下载文件
-                    if (data.action === 'file_write') {
-                        const input = data.input;
-
-                        // 规范化文件名
-                        const sanitizeFilename = (name) => {
-                            return name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5\-_]/g, '_')
-                                .replace(/_+/g, '_')
-                                .replace(/^_+|_+$/g, '');
-                        };
-
-                        // 确定文件类型和MIME类型
-                        const getMimeType = (format) => {
-                            const mimeTypes = {
-                                'txt': 'text/plain',
-                                'csv': 'text/csv',
-                                'json': 'application/json',
-                                'xml': 'application/xml',
-                                'pdf': 'application/pdf',
-                                'jpg': 'image/jpeg',
-                                'jpeg': 'image/jpeg',
-                                'png': 'image/png',
-                                'gif': 'image/gif',
-                                'html': 'text/html',
-                                'js': 'application/javascript',
-                                'css': 'text/css'
-                            };
-                            return mimeTypes[format.toLowerCase()] || 'application/octet-stream';
-                        };
-
-                        // 生成规范化的文件名
-                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                        const baseName = sanitizeFilename(input.filename || 'file');
-                        const extension = (input.format || 'txt').toLowerCase();
-                        const fileName = `${baseName}_${timestamp}.${extension}`;
-
-                        // 创建并下载文件
-                        const blob = new Blob([input.content], {
-                            type: getMimeType(extension) + ';charset=utf-8'
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = fileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                    }
-
-                    // 保存执行数据
-                    toolExecutions[actionId] = {
-                        action: data.action,
-                        input: data.input,
-                        status: 'running',
-                        startTime: (data.timestamp * 1000) || Date.now(),
-                        progress: null,
-                        result: null,
-                        endTime: null
-                    };
-
-                    // 创建action group容器
-                    // const actionGroup = document.createElement('div');
-                    // actionGroup.className = 'action-group';
-                    // actionGroup.setAttribute('data-action-id', actionId);
-                    // answerElement.appendChild(actionGroup);
-                    // currentActionGroup = actionGroup;
-
-                    // 创建工具条目
-                    const toolItem = document.createElement('div');
-                    toolItem.className = 'tool-item';
-                    toolItem.setAttribute('data-action-id', actionId);
-                    toolItem.innerHTML = `
-                        <span class="tool-name">${data.action}</span>
-                        <span class="tool-status running">执行中 (0%)</span>
-                        <button class="view-details-btn">
-                            <span class="btn-text">查看详情</span>
-                            ${Icons.detail}
-                        </button>
-                    `;
-
-                    // 添加到工具列表
-                    const toolsList = document.querySelector('.tools-list');
-                    toolsList.appendChild(toolItem);
-
-                    // 更新工具计数
-                    const toolsCount = document.querySelector('.tools-count');
-                    toolsCount.textContent = toolsList.children.length;
-
-                    // 添加点击事件
-                    toolItem.querySelector('.view-details-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const detailsContainer = document.querySelector('.tool-details-container');
-                        detailsContainer.classList.add('visible');
-
-                        const detailsContent = document.querySelector('.tool-details-content');
-                        const execution = toolExecutions[actionId];
-
-                        // 实时构建详情内容
-                        let resultContent = '执行中...';
-                        let metricsContent = `
-                            <div class="metric">
-                                <span class="metric-label">开始时间:</span>
-                                <span class="metric-value">${new Date(execution.startTime).toLocaleTimeString()}</span>
-                            </div>
-                        `;
-
-                        if (execution.status === 'completed') {
-                            resultContent = `<pre>${typeof execution.result === 'string' ?
-                                execution.result : JSON.stringify(execution.result, null, 2)}</pre>`;
-                            metricsContent += `
-                                <div class="metric">
-                                    <span class="metric-label">结束时间:</span>
-                                    <span class="metric-value">${new Date(execution.endTime).toLocaleTimeString()}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">执行耗时:</span>
-                                    <span class="metric-value">${(execution.duration).toFixed(2)}ms</span>
-                                </div>
-                            `;
-                        } else {
-                            metricsContent += `
-                                <div class="metric">
-                                    <span class="metric-label">已执行:</span>
-                                    <span class="metric-value">${Date.now() - execution.startTime}ms</span>
-                                </div>
-                            `;
-                        }
-
-                        detailsContent.innerHTML = `
-                            <div class="tool-params-section">
-                                <div class="tool-param">
-                                    <div class="tool-param-label">工具名称</div>
-                                    <div class="tool-param-value">${execution.action}</div>
-                                </div>
-                                <div class="tool-param">
-                                    <div class="tool-param-label">参数</div>
-                                    <div class="tool-param-value"><pre>${JSON.stringify(execution.input, null, 2)}</pre></div>
-                                </div>
-                            </div>
-                            <div class="tool-result-section">
-                                <div class="tool-result">
-                                    <div class="result-label">执行结果</div>
-                                    <div class="result-value">
-                                        ${resultContent}
-                                    </div>
-                                </div>
-                                <div class="tool-metrics">
-                                    ${metricsContent}
-                                </div>
-                            </div>
-                        `;
-
-                        // 关闭按钮事件
-                        detailsContainer.querySelector('.close-details').addEventListener('click', () => {
-                            detailsContainer.classList.remove('visible');
-                        });
-                    });
-                } catch (error) {
-                    console.error('解析action开始事件失败:', error);
-                }
-            });
-
-            // 处理工具进度事件
-            eventSource.addEventListener('tool_progress', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const actionId = data.action_id || currentActionId;
-                    if (!actionId) {
-                        console.error('缺少action_id，且没有当前action_id');
-                        return;
-                    }
-
-                    // 更新执行数据
-                    if (toolExecutions[actionId]) {
-                        toolExecutions[actionId].progress = data.progress;
-                        currentActionId = actionId; // 更新当前actionId
-                    }
-
-                    // 更新工具状态
-                    const toolItem = document.querySelector(`.tool-item[data-action-id="${actionId}"]`);
-                    const actionGroup = document.querySelector(`.action-group[data-action-id="${actionId}"]`);
-
-                    if (toolItem) {
-                        const statusEl = toolItem.querySelector('.tool-status');
-                        if (statusEl) {
-                            statusEl.textContent = `执行中 (${data.progress || 0}%)`;
-                            statusEl.className = 'tool-status running';
-                        }
-                    }
-
-                    if (actionGroup) {
-                        const statusEl = actionGroup.querySelector('.tool-status');
-                        if (statusEl) {
-                            statusEl.textContent = `执行中 (${data.progress || 0}%)`;
-                        }
-                    }
-
-                    // 同时更新详情面板状态
-                    const detailsContainer = document.querySelector('.tool-details-container.visible');
-                    if (detailsContainer && detailsContainer.querySelector(`[data-action-id="${actionId}"]`)) {
-                        const detailsContent = document.querySelector('.tool-details-content');
-                        if (detailsContent) {
-                            const resultValue = detailsContent.querySelector('.result-value');
-                            if (resultValue) {
-                                resultValue.textContent = `执行中... (${data.progress || 0}%)`;
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('解析工具进度失败:', error);
-                }
-            });
-
-            // 处理action完成事件
-            eventSource.addEventListener('action_complete', event => {
-                const timestamp = new Date().getTime(); // 使用当前时间作为fallback
-                try {
-                    const data = JSON.parse(event.data);
-                    const actionId = data.action_id || currentActionId;
-                    if (!actionId) {
-                        console.error('缺少action_id，且没有当前action_id');
-                        return;
-                    }
-
-                    // 更新执行数据
-                    if (toolExecutions[actionId]) {
-                        toolExecutions[actionId].status = 'completed';
-                        toolExecutions[actionId].result = data.result;
-                        toolExecutions[actionId].endTime = (data.timestamp * 1000) || Date.now(); // 秒转毫秒
-                        toolExecutions[actionId].duration = toolExecutions[actionId].endTime - toolExecutions[actionId].startTime;
-                        currentActionId = actionId; // 更新当前actionId
-                    }
-
-                    // 更新所有相关UI元素
-                    const toolItem = document.querySelector(`.tool-item[data-action-id="${actionId}"]`);
-                    const actionGroup = document.querySelector(`.action-group[data-action-id="${actionId}"]`);
-
-                    if (toolItem) {
-                        // 更新工具条目状态
-                        const statusEl = toolItem.querySelector('.tool-status');
-                        if (statusEl) {
-                            statusEl.textContent = '完成';
-                            statusEl.className = 'tool-status success';
-                        }
-                    }
-
-                    if (actionGroup) {
-                        // 更新action group状态
-                        const statusEl = actionGroup.querySelector('.tool-status');
-                        if (statusEl) {
-                            statusEl.textContent = '完成';
-                            statusEl.className = 'tool-status success';
-                        }
-
-                        // 添加执行结果
-                        const detailsEl = actionGroup.querySelector('.tool-details');
-                        if (detailsEl) {
-                            detailsEl.innerHTML = `
-                                <div class="tool-result">
-                                    <pre>${typeof data.result === 'string' ?
-                                    data.result : JSON.stringify(data.result, null, 2)}</pre>
-                                </div>
-                                <div class="tool-metrics">
-                                    <div>执行时间: ${toolExecutions[actionId]?.duration || 0}ms</div>
-                                </div>
-                            `;
-                        }
-                    }
-
-                    // 确保详情面板可见时更新内容
-                    const visibleDetails = document.querySelector('.tool-details-container.visible');
-                    if (visibleDetails && visibleDetails.querySelector(`[data-action-id="${actionId}"]`)) {
-                        const detailsContent = document.querySelector('.tool-details-content');
-                        if (detailsContent) {
-                            const resultValue = detailsContent.querySelector('.result-value');
-                            if (resultValue) {
-                                resultValue.innerHTML = `<pre>${typeof data.result === 'string' ?
-                                    data.result : JSON.stringify(data.result, null, 2)}</pre>`;
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('解析action完成事件失败:', error);
-                }
-            });
-
-            // 关闭详情面板事件
-            document.querySelector('.close-details').addEventListener('click', () => {
-                document.querySelector('.tool-details-container').classList.remove('visible');
-            });
-
-            // 处理agent开始事件
-            // eventSource.addEventListener('agent_start', event => {
-            //     try {
-            //         const data = JSON.parse(event.data);
-            //         const startDiv = document.createElement('div');
-            //         startDiv.className = 'agent-start';
-            //         const query = data.query;
-            //         startDiv.innerHTML = `
-            //             <div class="agent-info">
-            //                 <span class="agent-status">智能体开始处理您的问题</span>
-            //                 <span class="agent-query"></span>
-            //                 <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-            //             </div>
-            //         `;
-            //         answerElement.appendChild(startDiv);
-            //     } catch (error) {
-            //         console.error('解析agent开始事件失败:', error);
-            //     }
-            // });
-
-            // 处理agent思考事件
-            eventSource.addEventListener('agent_thinking', event => {
-                // if (currentModel != null && currentModel == "deep-research") {
-                //     return;
-                // }
-                try {
-                    const data = JSON.parse(event.data);
-                    const thinkingDiv = document.createElement('div');
-                    thinkingDiv.className = 'agent-thinking';
-                    thinkingDiv.innerHTML = `
-                        <div class="thinking-info">
-                            <span class="thinking-indicator"></span>
-                            <span class="thinking-content">${data.thought}</span>
-                            <span class="thinking-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                        </div>
-                    `;
-                    answerElement.appendChild(thinkingDiv);
-                } catch (error) {
-                    console.error('解析agent思考事件失败:', error);
-                }
-            });
-
-            // 处理agent错误事件
-            eventSource.addEventListener('agent_error', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'agent-error';
-                    errorDiv.innerHTML = `
-                        <div class="error-info">
-                            <span class="error-icon">⚠️</span>
-                            <span class="error-message">${data.error}</span>
-                            <span class="error-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                        </div>
-                    `;
-                    answerElement.appendChild(errorDiv);
-                } catch (error) {
-                    console.error('解析agent错误事件失败:', error);
-                }
-            });
-
-            // 处理智能体评估事件
-            eventSource.addEventListener('agent_evaluation', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const evaluationDiv = document.createElement('div');
-                    evaluationDiv.className = 'agent-event agent-evaluation';
-
-                    let satisfactionIcon = data.evaluation_result.is_satisfied ? '✓' : '✗';
-                    let satisfactionClass = data.evaluation_result.is_satisfied ? 'satisfied' : 'unsatisfied';
-
-                    evaluationDiv.innerHTML = `
-                        <div class="agent-event-card">
-                            <div class="agent-header">
-                                <div class="agent-icon">🔍</div>
-                                <div class="agent-meta">
-                                    <span class="agent-name">${data.agent_name}</span>
-                                    <div class="agent-status ${satisfactionClass}">
-                                        <span class="status-icon">${satisfactionIcon}</span>
-                                        <span>${data.evaluation_result.is_satisfied ? '满意' : '不满意'}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="agent-content">
-                                <div class="agent-section">
-                                    <div class="agent-detail">
-                                        <span class="detail-label">评估结果:</span>
-                                        <span class="detail-value">${data.evaluation_result.reason}</span>
-                                    </div>
-                                    ${data.evaluation_result.need_handover ? `
-                                    <div class="agent-detail">
-                                        <span class="detail-label">交接建议:</span>
-                                        <span class="detail-value">${data.evaluation_result.handover_suggestions}</span>
-                                    </div>
-                                    ` : ''}
-                                    ${data.feedback ? `
-                                    <div class="agent-detail">
-                                        <span class="detail-label">反馈:</span>
-                                        <span class="detail-value">${data.feedback}</span>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                                <div class="agent-footer">
-                                    <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    answerElement.appendChild(evaluationDiv);
-                } catch (error) {
-                    console.error('解析智能体评估事件失败:', error);
-                }
-            });
-
-            // 处理agent完成事件
-            eventSource.addEventListener('agent_complete', event => {
-                try {
-                    const data = JSON.parse(event.data);
-                    const content = data.result;
-                    const completeDiv = document.createElement('div');
-                    completeDiv.className = 'agent-complete';
-                    completeDiv.innerHTML = `
-                        <div class="complete-info">
-                            <div class="action_complete">${marked.parse(content)}</div>
-                        </div>
-                    `;
-                    answerElement.appendChild(completeDiv);
-                } catch (error) {
-                    console.error('解析agent完成事件失败:', error);
-                }
-            });
-
-            // 处理完成事件
-            eventSource.addEventListener('complete', event => {
-                // try {
-                //     const result = event.data;
-                //     const message = result || '完成';
-                //     const completeDiv = document.createElement('div');
-                //     completeDiv.className = 'complete';
-                //     completeDiv.innerHTML = `<div>${message}</div>`;
-                //     answerElement.appendChild(completeDiv);
-                // } catch (error) {
-                //     const errorDiv = document.createElement('div');
-                //     errorDiv.className = 'error';
-                //     errorDiv.textContent = '解析完成事件失败';
-                //     answerElement.appendChild(errorDiv);
-                // }
-                eventSource.close();
-                // clearTimeout(timeoutId);
-                resetUI();
-            });
-
-            // 处理错误
-            eventSource.onerror = () => {
-                eventSource.close();
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error';
-                errorDiv.textContent = '连接错误';
-                answerElement.appendChild(errorDiv);
-                // clearTimeout(timeoutId);
-                resetUI();
-            };
+            // 将 SSE 事件处理委托到 sse-handlers 模块
+            try {
+                registerSSEHandlers(eventSource, {
+                    answerElement: answerElement,
+                    toolExecutions: toolExecutions,
+                    currentActionIdRef: { value: currentActionId },
+                    currentIterationRef: { value: currentIteration },
+                    renderNodeResult: renderNodeResult,
+                    renderExplanation: renderExplanation,
+                    renderAnswer: renderAnswer,
+                    createQuestionElement: createQuestionElement,
+                    Icons: Icons,
+                    submitUserInput: submitUserInput,
+                    onComplete: () => { resetUI(); },
+                    onError: () => { /* 全局错误处理（保留空实现） */ }
+                });
+            } catch (e) {
+                console.warn('registerSSEHandlers 调用失败', e);
+            }
 
         } catch (error) {
             console.error('发送消息失败:', error);

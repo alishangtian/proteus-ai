@@ -18,10 +18,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
-from src.agent.prompt.cot_prompt import COT_PROMPT_TEMPLATES
-from src.agent.prompt.react_agent_prompt_zh import REACT_AGENT_PROMPT_ZH
-from src.agent.prompt.planner_react_agent_prompt import PLANNER_REACT_AGENT_PROMPT
 from src.agent.prompt.react_agent_prompt import REACT_AGENT_PROMPT
+from src.agent.prompt.react_prompt import REACT_PROMPT
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
@@ -30,26 +28,13 @@ from src.agent.agent import Agent
 from src.agent.react_agent import ReactAgent
 from src.agent.common.configuration import AgentConfiguration
 
-from src.manager.multi_agent_manager import TeamRole, get_multi_agent_manager
+from src.manager.multi_agent_manager import get_multi_agent_manager
 
-from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
-from src.api.events import create_complete_event, create_error_event
 from langfuse import observe, Langfuse
 
 from src.api.events import (
-    create_status_event,
-    create_workflow_event,
-    create_result_event,
-    create_answer_event,
     create_complete_event,
-    create_error_event,
 )
-from src.api.utils import convert_node_result
-from src.api.llm_api import call_llm_api_stream
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -83,7 +68,49 @@ stream_manager = StreamManager.get_instance()
 agent_dict = {}
 
 
+@observe(name="_watch_agent_task", capture_input=True, capture_output=True)
+async def _watch_agent_task(task: asyncio.Task, chat_id: str):
+    """监控 process_agent 后台 task，等待其完成并记录/转发结果或错误。
+    1) 如果任务成功且返回值为字符串/可序列化对象，发送完成事件；
+    2) 如果任务抛出异常，发送错误事件并写日志。
+    该 watcher 是 fire-and-forget 的辅助任务，避免丢失子任务的输出或异常。
+    """
+    try:
+        result = await task
+        try:
+            # 优先使用 create_complete_event（全局事件）发送最终结果
+            from src.api.events import create_complete_event
+
+            # create_complete_event 接收可选 message 参数，这里传入 result 的字符串形式
+            await stream_manager.send_message(
+                chat_id, await create_complete_event(result)
+            )
+            logger.info(
+                f"[{chat_id}] process_agent completed, output logged by watcher."
+            )
+        except Exception:
+            # 回退：仅写日志
+            logger.info(
+                f"[{chat_id}] process_agent completed, watcher could not send complete event. Result: {result}"
+            )
+    except asyncio.CancelledError:
+        logger.info(f"[{chat_id}] process_agent task was cancelled.")
+    except Exception as e:
+        logger.error(f"[{chat_id}] process_agent raised exception: {e}", exc_info=True)
+        try:
+            from src.api.events import create_error_event
+
+            await stream_manager.send_message(
+                chat_id, await create_error_event(f"Agent task failed: {str(e)}")
+            )
+        except Exception:
+            logger.error(
+                f"[{chat_id}] watcher failed to send error event: {e}", exc_info=True
+            )
+
+
 # 延迟初始化历史服务
+@observe(name="get_history_service", capture_input=True, capture_output=True)
 def get_history_service():
     """延迟初始化历史服务"""
     from src.api.history_service import HistoryService
@@ -92,6 +119,7 @@ def get_history_service():
 
 
 # 延迟初始化工作流引擎
+@observe(name="get_workflow_engine", capture_input=True, capture_output=True)
 def get_workflow_engine():
     """延迟初始化工作流引擎"""
     from src.core.engine import WorkflowEngine
@@ -109,6 +137,7 @@ def get_workflow_engine():
 
 
 # 延迟初始化工作流服务
+@observe(name="get_workflow_service", capture_input=True, capture_output=True)
 def get_workflow_service():
     """延迟初始化工作流服务"""
     from src.api.workflow_service import WorkflowService
@@ -117,6 +146,7 @@ def get_workflow_service():
 
 
 # 在启动时注册工作流节点类型 - 改为按需加载
+@observe(name="register_workflow_nodes", capture_input=True, capture_output=True)
 def register_workflow_nodes(workflow_engine, node_manager):
     """注册所有可用的节点类型"""
     import importlib
@@ -160,13 +190,15 @@ async def lifespan(app: FastAPI):
     from src.agent.task_manager import task_manager
 
     await task_manager.start()
-    yield
-    # 关闭逻辑
-    loop = asyncio.get_event_loop()
-    for task in asyncio.all_tasks(loop):
-        if task is not asyncio.current_task(loop):
+    try:
+        yield
+    finally:
+        # 关闭逻辑：取消除当前任务之外的所有任务，并等待它们完成（忽略异常）
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
             task.cancel()
-    loop.stop()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 app = FastAPI(title="Workflow Engine API", version="1.0.0", lifespan=lifespan)
@@ -211,7 +243,32 @@ class AuthMiddleware:
 # 注册中间件
 from src.login.login_router import get_current_user
 
-app.add_middleware(AuthMiddleware)
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """认证中间件，检查用户登录状态（使用 FastAPI 的 http middleware 接口）"""
+    exclude_paths = {
+        "/register",  # 注册接口
+        "/login",  # 登录接口
+        "/health",  # 健康检查
+        "/static",  # 静态文件
+        "/favicon.ico",  # 网站图标
+    }
+
+    path = request.url.path
+    logger.info(f"request path {path}")
+
+    # 检查是否在排除路径中
+    if any(path.startswith(p) for p in exclude_paths):
+        return await call_next(request)
+
+    # 检查登录状态（get_current_user 在文件中已延迟导入）
+    user = await get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login")
+
+    return await call_next(request)
+
 
 # 注册路由
 from src.auth.router import router as l_router
@@ -287,6 +344,7 @@ class NodeResultResponse(BaseModel):
     error: Optional[str] = Field(None, description="错误信息（如果执行失败）")
 
 
+@observe(name="health_check", capture_input=True, capture_output=True)
 @app.get("/health", response_model=ApiResponse)
 async def health_check():
     """健康检查接口"""
@@ -315,7 +373,7 @@ async def get_agent_page(request: Request):
 
 
 @app.get("/super-agent", response_class=HTMLResponse)
-async def get_agent_page(request: Request):
+async def get_super_agent_page(request: Request):
     """返回super-agent交互页面"""
     return templates.TemplateResponse("superagent/index.html", {"request": request})
 
@@ -325,6 +383,7 @@ async def get_agent_page(request: Request):
 async def create_chat(
     text: str = Body(..., embed=True),
     model: str = Body(..., embed=True),
+    model_name: str = Body(None, embed=True),
     itecount: int = Body(5, embed=True),
     agentid: str = Body(None, embed=True),
     team_name: str = Body(None, embed=True),
@@ -368,13 +427,9 @@ async def create_chat(
         "codeact-agent",
     ]
 
-    # if model == "workflow":
-    #     # 启动工作流异步任务处理用户请求
-    #     asyncio.create_task(process_workflow(chat_id, text, agentid))
-    # el
     if model in agent_model_list:
-        # 启动智能体异步任务处理用户请求
-        asyncio.create_task(
+        # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
+        task = asyncio.create_task(
             process_agent(
                 chat_id,
                 text,
@@ -383,14 +438,18 @@ async def create_chat(
                 agentmodel=model,
                 team_name=team_name,
                 conversation_id=conversation_id,
+                model_name=model_name,
             )
         )
+        # 启动一个 watcher 来监控后台 task 的完成情况并记录/转发 output 或错误
+        asyncio.create_task(_watch_agent_task(task, chat_id))
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
 
     return {"success": True, "chat_id": chat_id}
 
 
+@observe(name="stop_chat", capture_input=True, capture_output=True)
 @app.get("/stop/{model}/{chat_id}")
 async def stop_chat(model: str, chat_id: str):
     agent_model_list = [
@@ -418,6 +477,7 @@ async def stop_chat(model: str, chat_id: str):
     return {"success": True, "chat_id": chat_id}
 
 
+@observe(name="stream_request", capture_input=True, capture_output=True)
 @app.get("/stream/{chat_id}")
 async def stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -441,6 +501,7 @@ async def stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
+@observe(name="replay_stream_request", capture_input=True, capture_output=True)
 @app.get("/replay/stream/{chat_id}")
 async def replay_stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -466,117 +527,6 @@ async def replay_stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
-async def process_workflow(chat_id: str, text: str, agentid: str = None):
-    """处理用户请求的异步函数
-
-    Args:
-        chat_id: 聊天会话ID
-        text: 用户输入的文本
-        agentid: 代理ID(可选)
-    """
-    logger.info(f"[{chat_id}] 开始处理请求: {text[:100]}...")
-    try:
-
-        # 获取工作流服务（延迟初始化）
-        workflow_service = get_workflow_service()
-
-        # 开始生成工作流
-        logger.info(f"[{chat_id}] 开始生成工作流")
-        await stream_manager.send_message(
-            chat_id, await create_status_event("generating", "正在生成工作流...")
-        )
-        workflow = await workflow_service.generate_workflow(text, chat_id)
-
-        if not workflow or not workflow.get("nodes"):
-            # 如果没有生成工作流，直接返回普通回答
-            logger.info(f"[{chat_id}] 无工作流生成，转为生成普通回答")
-            await stream_manager.send_message(
-                chat_id, await create_status_event("answering", "正在生成回答...")
-            )
-            try:
-                messages = [
-                    {"role": "system", "content": "请根据用户问题提供简洁准确的回答。"},
-                    {"role": "user", "content": text},
-                ]
-                async for chunk in call_llm_api_stream(messages, chat_id):
-                    await stream_manager.send_message(
-                        chat_id,
-                        await create_answer_event(
-                            {"event": "answer", "success": True, "data": chunk}
-                        ),
-                    )
-                await stream_manager.send_message(
-                    chat_id, await create_complete_event()
-                )
-            except Exception as e:
-                logger.error(f"[{chat_id}] 生成回答时发生错误: {str(e)}", exc_info=True)
-                await stream_manager.send_message(
-                    chat_id, await create_error_event("生成回答失败，请稍后重试")
-                )
-            return
-
-        # 发送工作流定义
-        logger.info(
-            f"[{chat_id}] 工作流生成成功，节点数: {len(workflow.get('nodes', []))}"
-        )
-        await stream_manager.send_message(
-            chat_id, await create_workflow_event(workflow)
-        )
-        await asyncio.sleep(0.1)  # 添加小延迟使前端显示更流畅
-
-        # 开始执行工作流
-        await stream_manager.send_message(
-            chat_id, await create_status_event("executing", "正在执行工作流...")
-        )
-        workflow_id = f"workflow-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-        try:
-            logger.info(f"[{chat_id}] 开始执行工作流: {workflow_id}")
-            # 使用流式执行工作流
-            # 执行工作流并处理结果流
-            # 使用流式执行并实时发送结果
-            # 获取工作流引擎（延迟初始化）
-            workflow_engine = get_workflow_engine()
-
-            async for node_id, result in workflow_engine.execute_workflow_stream(
-                json.dumps(workflow), chat_id, {}
-            ):
-                logger.info(
-                    f"[{chat_id}] 节点 {node_id} 执行状态: status={result.status} 执行结果：success={result.success}"
-                )
-                # 使用工具函数转换结果为可序列化的字典
-                result_dict = convert_node_result(node_id, result)
-                # 立即发送节点状态更新
-                event = await create_result_event(node_id, result_dict)
-                await stream_manager.send_message(chat_id, event)
-                # 添加小延迟确保前端能够正确接收和处理事件
-                await asyncio.sleep(0.01)
-
-            # 获取工作流执行结果并生成说明
-            # logger.info(f"[{chat_id}] 开始生成执行说明")
-            # workflow_results = engine.get_workflow_progress(workflow_id)
-            # async for chunk in workflow_service.explain_workflow_result(text, workflow, workflow_results, chat_id):
-            #     await stream_manager.send_message(chat_id, await create_explanation_event({
-            #         "event": "explanation",
-            #         "success": True,
-            #         "data": chunk
-            #     }))
-            await stream_manager.send_message(chat_id, await create_complete_event())
-            logger.info(f"[{chat_id}] 工作流执行完成")
-
-        except Exception as e:
-            error_msg = f"执行工作流失败: {str(e)}"
-            logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
-            await stream_manager.send_message(
-                chat_id, await create_error_event(error_msg)
-            )
-
-    except Exception as e:
-        error_msg = f"处理请求失败: {str(e)}"
-        logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
-        await stream_manager.send_message(chat_id, await create_error_event(error_msg))
-
-
 @observe(name="process_agent", capture_input=True, capture_output=True)
 async def process_agent(
     chat_id: str,
@@ -586,6 +536,7 @@ async def process_agent(
     agentmodel: str = None,
     team_name: str = None,
     conversation_id: str = None,
+    model_name: str = None,
 ):
     """处理Agent请求的异步函数
 
@@ -675,7 +626,7 @@ async def process_agent(
                 max_iterations=itecount,
                 history_service=get_history_service(),
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name="base-model",
+                model_name=model_name,
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
@@ -686,9 +637,10 @@ async def process_agent(
 
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "codeact-agent":
+
             # CodeAct Agent模式：只允许使用python_execute和user_input工具
             all_tools = ["python_execute", "user_input"]
-            prompt_template = COT_PROMPT_TEMPLATES
+            prompt_template = REACT_AGENT_PROMPT
 
             # 创建详细的instruction
             instruction = (
@@ -696,41 +648,6 @@ async def process_agent(
                 "你可以使用Python代码进行任何计算、数据处理、文件操作等。如果你对用户请求有任何不确定的地方，"
                 "或者需要用户提供额外的信息，请使用user_input工具与用户进行交互。在编写代码时，请确保代码安全且只执行必要的操作。"
             )
-
-            agent = Agent(
-                tools=all_tools,
-                instruction=instruction,  # 使用详细的instruction
-                stream_manager=stream_manager,
-                max_iterations=itecount,
-                history_service=get_history_service(),
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name="base-model",
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
-                conversation_id=conversation_id,
-            )
-
-            await agent.run(text, chat_id)
-            await stream_manager.send_message(chat_id, await create_complete_event())
-        else:
-            # 获取基础工具集合 - 延迟初始化node_manager
-            # all_tools = NodeConfigManager.get_instance().get_tools()
-            all_tools = [
-                "python_execute",
-                "user_input",
-                "file_read",
-                "file_write",
-                "serper_search",
-                "web_crawler",
-                "weather_forecast",
-                "planner",
-            ]
-            prompt_template = REACT_AGENT_PROMPT
-            if agentmodel == "workflow":
-                prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
-                all_tools = NodeConfigManager.get_instance().get_tools(
-                    tool_type="workflow"
-                )
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
@@ -738,7 +655,60 @@ async def process_agent(
                 stream_manager=stream_manager,
                 max_iterations=itecount,
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name="base-model",
+                model_name=model_name,
+                prompt_template=prompt_template,
+                role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
+                langfuse_trace=langfuse,
+            )
+
+            # 调用Agent的run方法，启用stream功能
+            await agent.run(text, chat_id)
+
+            await stream_manager.send_message(chat_id, await create_complete_event())
+        elif agentmodel == "workflow":
+            prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
+            all_tools = NodeConfigManager.get_instance().get_tools(tool_type="workflow")
+            agent = ReactAgent(
+                tools=all_tools,
+                instruction="",
+                stream_manager=stream_manager,
+                max_iterations=itecount,
+                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
+                model_name=model_name,
+                prompt_template=prompt_template,
+                role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
+                langfuse_trace=langfuse,
+            )
+            # 调用Agent的run方法，启用stream功能
+            await agent.run(text, chat_id)
+            await stream_manager.send_message(chat_id, await create_complete_event())
+        else:
+            # 获取基础工具集合 - 延迟初始化node_manager
+            # all_tools = NodeConfigManager.get_instance().get_tools()
+            # 创建详细的instruction
+            instruction = (
+                "你是一个擅长使用工具的智能体，特别是使用搜索引擎搜索最新信息时，要记得使用爬虫爬取关联度较高的链接内容",
+                "python代码工具可以让你执行一些复杂的计算任务，调用金融工具获取金融相关的信息",
+            )
+            all_tools = [
+                "python_execute",
+                "user_input",
+                "file_read",
+                "file_write",
+                "serper_search",
+                "web_crawler",
+            ]
+            prompt_template = REACT_PROMPT
+            # 获取基础工具集合 - 延迟初始化node_manager
+            agent = ReactAgent(
+                tools=all_tools,
+                instruction=instruction,
+                stream_manager=stream_manager,
+                max_iterations=itecount,
+                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
+                model_name=model_name,
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
@@ -759,6 +729,7 @@ async def process_agent(
             await team.stop()
 
 
+@observe(name="handle_user_input", capture_input=True, capture_output=True)
 @app.post("/user_input")
 async def handle_user_input(
     node_id: str = Body(...), value: Any = Body(...), chat_id: str = Body(...)
@@ -784,6 +755,7 @@ async def handle_user_input(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@observe(name="execute_workflow", capture_input=True, capture_output=True)
 @app.post("/execute_workflow", response_model=ApiResponse)
 async def execute_workflow(request: WorkflowRequest):
     """
@@ -851,3 +823,41 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8888)
+
+
+# 提供模型配置列表接口，供前端下拉使用
+@observe(name="list_models", capture_input=True, capture_output=True)
+@app.get("/models")
+async def list_models():
+    """返回 conf/models_config.yaml 中定义的模型名列表
+
+    从当前文件所在目录开始，向上递归查找最近的 conf/models_config.yaml 文件。
+    如果到达文件系统根目录仍未找到，返回空的模型列表（而不是 500 错误）。
+    """
+    try:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        found_path = None
+        while True:
+            candidate = os.path.join(current_dir, "conf", "models_config.yaml")
+            if os.path.exists(candidate):
+                found_path = candidate
+                break
+            parent_dir = os.path.dirname(current_dir)
+            if parent_dir == current_dir:
+                # 已到达文件系统根目录，停止查找
+                break
+            current_dir = parent_dir
+
+        if not found_path:
+            logger.warning("未找到 models_config.yaml，返回空模型列表")
+            return {"success": True, "models": []}
+
+        with open(found_path, "r", encoding="utf-8") as f:
+            models_cfg = yaml.safe_load(f)
+
+        model_keys = list(models_cfg.keys()) if isinstance(models_cfg, dict) else []
+        return {"success": True, "models": model_keys}
+    except Exception as e:
+        logger.error(f"读取模型配置失败: {e}", exc_info=True)
+        # 发生不可预期错误时返回 500
+        raise HTTPException(status_code=500, detail=str(e))

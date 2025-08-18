@@ -27,6 +27,8 @@ from ..agent.prompt.deep_research.react_loop_prompt import REACT_LOOP_PROMPT
 from ..agent.prompt.deep_research.planner_react_loop_prompt import (
     PLANNER_REACT_LOOP_PROMPT,
 )
+from ..agent.prompt.summary_prompt import SUMMARY_PROMPT
+from ..agent.prompt.final_answer_prompt import FINAL_ANSWER_PROMPT
 from ..manager.mcp_manager import get_mcp_manager
 from ..api.stream_manager import StreamManager
 from .base_agent import (
@@ -69,15 +71,38 @@ def log_execution_time(func):
 
 
 class ReactAgent:
+    """基于ReAct模式的智能代理实现
+
+    主要功能:
+    - 管理工具执行
+    - 与LLM交互
+    - 处理对话历史
+    - 检查终止条件
+    - 处理事件流
+
+    属性:
+        _agent_cache: 类级别的agent缓存 {chat_id: [agent_list]}
+        _cache_lock: 缓存访问锁
+    """
+
     _agent_cache: Dict[str, List["ReactAgent"]] = {}
     _cache_lock = threading.Lock()
 
     @classmethod
     @observe(name="get_agents", capture_input=True, capture_output=True)
     def get_agents(cls, chat_id: str) -> List["ReactAgent"]:
-        """获取指定chat_id下的agent列表副本"""
+        """获取指定chat_id下的agent列表副本
+
+        参数:
+            chat_id: 聊天会话ID
+
+        返回:
+            该chat_id下的agent列表副本(浅拷贝)
+        """
         with cls._cache_lock:
-            return list(cls._agent_cache.get(chat_id, []))
+            agents = cls._agent_cache.get(chat_id, [])
+            logger.debug(f"Getting {len(agents)} agents for chat {chat_id}")
+            return list(agents)
 
     @classmethod
     @observe(name="set_agents", capture_input=True, capture_output=True)
@@ -96,29 +121,40 @@ class ReactAgent:
     @observe(name="__init__", capture_input=True, capture_output=True)
     def __init__(
         self,
-        tools: List[Any],  # 修改为Any类型以支持多种工具输入
-        prompt_template: str,  # 新增提示词模板参数
-        instruction: str = "",
-        description: str = "",
-        team_description: str = "",
-        timeout: int = 120,
-        llm_timeout: int = 60,
-        max_iterations: int = 10,
-        iteration_retry_delay: int = 60,
-        memory_size: int = 10,
-        cache_size: int = 100,
-        cache_ttl: int = 3600,
-        stream_manager: StreamManager = None,
-        context: str = None,
-        model_name: str = None,
-        reasoner_model_name: str = None,
-        agentcard: AgentCard = None,
-        role_type: TeamRole = None,
-        scratchpad_items: List[ScratchpadItem] = None,
-        termination_conditions: List[TerminationCondition] = None,  # 新增终止条件列表
-        conversation_id: str = None,  # 新增会话ID参数
+        tools: Dict[str, Tool],  # 工具字典映射：名称 -> Tool
+        prompt_template: str,  # 提示词模板
+        instruction: str = "",  # agent指令
+        description: str = "",  # agent描述
+        team_description: str = "",  # 团队描述
+        timeout: int = 120,  # 超时时间(秒)
+        llm_timeout: int = 60,  # LLM调用超时时间(秒)
+        max_iterations: int = 10,  # 最大迭代次数
+        iteration_retry_delay: int = 60,  # 迭代重试延迟(秒)
+        memory_size: int = 10,  # 记忆大小
+        cache_size: int = 100,  # 缓存大小
+        cache_ttl: int = 3600,  # 缓存TTL(秒)
+        stream_manager: StreamManager = None,  # 流管理器
+        context: str = None,  # 上下文信息
+        model_name: str = None,  # 主模型名称
+        reasoner_model_name: str = None,  # 推理模型名称
+        agentcard: AgentCard = None,  # agent卡片
+        role_type: TeamRole = None,  # 角色类型
+        scratchpad_items: List[ScratchpadItem] = None,  # 临时存储项
+        termination_conditions: List[TerminationCondition] = None,  # 终止条件列表
+        conversation_id: str = None,  # 会话ID
         langfuse_trace: Any = None,  # Langfuse追踪对象
     ):
+        """初始化ReactAgent
+
+        参数:
+            tools: 工具字典 {工具名称: Tool实例}
+            prompt_template: 提示词模板字符串
+            instruction: agent指令描述
+            ...其他参数见上方注释...
+
+        异常:
+            AgentError: 如果必要参数缺失
+        """
         if role_type is None:
             raise AgentError("role_type must be specified")
         self._is_subscribed = False  # 事件订阅状态标志
@@ -189,7 +225,8 @@ class ReactAgent:
         all_tools = config_manager.get_tools()
 
         if not self.tools:
-            self.tools = all_tools
+            # Normalize to dict mapping by name
+            self.tools = {t.name: t for t in all_tools}
             return
 
         normalized_tools = {}
@@ -269,6 +306,7 @@ class ReactAgent:
                         thought=item_dict.get("thought", ""),
                         action=item_dict.get("action", ""),
                         observation=item_dict.get("observation", ""),
+                        action_input=item_dict.get("action_input", "") or "",
                         is_origin_query=item_dict.get("is_origin_query", False),
                     )
                     historical_items.append(scratchpad_item)
@@ -392,12 +430,15 @@ class ReactAgent:
             redis_key = f"historical_scratchpad:{conversation_id}"
             current_timestamp = time.time()
 
-            # 将每个scratchpad item转换为JSON并保存
+            # 将每个scratchpad item转换为JSON并保存（包含 action_input 字段）
             for item in scratchpad_items:
                 item_dict = {
                     "thought": item.thought,
                     "action": item.action,
                     "observation": item.observation,
+                    "action_input": (
+                        item.action_input if hasattr(item, "action_input") else ""
+                    ),
                     "is_origin_query": item.is_origin_query,
                 }
                 item_json = json.dumps(item_dict, ensure_ascii=False)
@@ -500,17 +541,19 @@ class ReactAgent:
         新增conversation字段用于传递连续会话历史
         """
 
-        @lru_cache(maxsize=1)  # 只缓存最新的工具描述，因为工具列表不经常变化
+        @lru_cache(maxsize=32)  # 增大缓存大小，适应更多工具变化
         def get_tools_description() -> tuple[str, str]:
-            """获取工具描述和工具名称列表，只包含name、description、params和outputs字段"""
-            tool_names = ", ".join(self.tools.keys())
-            tools_desc = []
-
-            for tool in self.tools.values():
-                # 直接使用工具的full_description，该描述已在node_config.py中按照新格式构建
-                tools_desc.append(tool.full_description)
-
-            return "\n".join(tools_desc), tool_names
+            """获取工具描述和工具名称列表
+            返回:
+                tuple: (工具描述字符串, 工具名称列表字符串)
+            """
+            with self._cache_lock:  # 加锁保证线程安全
+                tool_names = ", ".join(sorted(self.tools.keys()))  # 排序保证一致性
+                tools_desc = [
+                    tool.full_description
+                    for tool in sorted(self.tools.values(), key=lambda x: x.name)
+                ]
+                return "\n".join(tools_desc), tool_names
 
         tools_list, tool_names = get_tools_description()
         agent_prompt = None
@@ -522,7 +565,8 @@ class ReactAgent:
             item for item in self.scratchpad_items if not item.is_origin_query
         ]
         for i, item in enumerate(execution_items, 1):
-            agent_scratchpad += item.to_react_context(index=i) + "\n"
+            # 在prompt构建时使用摘要而不是完整的observation
+            agent_scratchpad += item.to_react_context(index=i, use_summary=True) + "\n"
 
         # 统一提示模板构造
         # query赋值优化：只有当query为None时，才从scratchpad_items中查找is_origin_query为true的item，否则直接使用query
@@ -549,7 +593,11 @@ class ReactAgent:
         if not self.langfuse_trace:
             # 如果没有trace则直接调用LLM
             messages = [{"role": "user", "content": prompt}]
-            return await call_llm_api(messages, model_name=model_name)
+            resp = await call_llm_api(messages, model_name=model_name)
+            # 兼容 llm_api 可能返回 (text, usage) 或 直接返回 text
+            if isinstance(resp, tuple) and len(resp) == 2:
+                return resp[0]
+            return resp
 
         try:
             with self.langfuse_trace.start_as_current_span(name="llm-call") as span:
@@ -564,16 +612,35 @@ class ReactAgent:
                 ) as generation:
                     start_time = time.time()
                     messages = [{"role": "user", "content": prompt}]
-                    response = await call_llm_api(messages, model_name=model_name)
+                    resp = await call_llm_api(messages, model_name=model_name)
+                    # 兼容返回 (text, usage) 或 text
+                    if isinstance(resp, tuple) and len(resp) == 2:
+                        response_text, usage = resp
+                    else:
+                        response_text, usage = resp, {}
 
-                    # 更新generation信息
+                    logger.info(f"usage : ${usage}")
+
+                    # 尝试使用真实usage字段，如果没有则使用之前的估算
+                    usage_details = {
+                        "input_tokens": usage.get("prompt_tokens")
+                        or usage.get("input_tokens")
+                        or len(prompt.split()),
+                        "output_tokens": usage.get("completion_tokens")
+                        or usage.get("output_tokens")
+                        or len(response_text.split()),
+                        "total_tokens": usage.get("total_tokens")
+                        or (
+                            usage.get("prompt_tokens", 0)
+                            + usage.get("completion_tokens", 0)
+                        )
+                        or (len(prompt.split()) + len(response_text.split())),
+                    }
+
                     generation.update(
-                        output=response,
-                        usage_details={
-                            "input_tokens": len(prompt.split()),  # 简单估算
-                            "output_tokens": len(response.split()),  # 简单估算
-                        },
-                        cost_details={"total_cost": 0.0023},  # 可以从配置获取实际成本
+                        output=response_text,
+                        usage_details=usage_details,
+                        cost_details={"total_cost": usage.get("total_cost", 0.0023)},
                     )
 
                     # 评分
@@ -583,7 +650,7 @@ class ReactAgent:
                     execution_time = time.time() - start_time
                     self.metrics.record_call(execution_time, is_error=False)
 
-                    return response
+                    return response_text
 
         except Exception as e:
             execution_time = time.time() - start_time if "start_time" in locals() else 0
@@ -598,18 +665,18 @@ class ReactAgent:
 
             raise LLMAPIError(f"LLM API call failed: {str(e)}")
 
-    # Pre-compile regex patterns for performance
+    # 类级别预编译正则表达式，提升性能
     _THOUGHT_PATTERN = re.compile(
-        r"Thought[:：]\s*(.*?)(?=\nAction[:：]|\nAnswer[:：]|$)", re.DOTALL
+        r"Thought\s*[:：]\s*(.*?)(?=\nAction\s*[:：]|\nAnswer\s*[:：]|$)", re.DOTALL
     )
     _ACTION_PATTERN = re.compile(
-        r"Action[:：]\s*(.*?)(?=\nAction Input[:：]|$)", re.DOTALL
+        r"Action\s*[:：]\s*(.*?)(?=\nAction Input\s*[:：]|$)", re.DOTALL
     )
     _ACTION_INPUT_PATTERN = re.compile(
-        r"Action Input[:：]\s*(.*?)(?=\nThought[:：]|\nAction[:：]|\nAnswer[:：]|$)",
+        r"Action Input\s*[:：]\s*(.*?)(?=\nThought\s*[:：]|\nAction\s*[:：]|\nAnswer\s*[:：]|$)",
         re.DOTALL,
     )
-    _ANSWER_PATTERN = re.compile(r"Answer[:：]\s*(.*)", re.DOTALL)
+    _ANSWER_PATTERN = re.compile(r"Answer\s*[:：]\s*(.*)", re.DOTALL)
 
     @observe(name="_parse_action", capture_input=True, capture_output=True)
     async def _parse_action(
@@ -740,60 +807,56 @@ class ReactAgent:
             ):
                 ReactAgent._agent_cache[chat_id].append(self)
 
-    @observe(name="_execute_tool", capture_input=True, capture_output=True)
-    async def _execute_tool(
-        self, tool, action: str, action_input: dict, action_id: str, chat_id: str
-    ) -> str:
-        """执行工具并处理结果"""
-        tool_span = None
-        if self.langfuse_trace:
-            try:
-                tool_span = self.langfuse_trace.span(
-                    name=f"tool_{action}",
-                    input={
-                        "action": action,
-                        "input": action_input,
-                        "action_id": action_id,
-                    },
-                    metadata={
-                        "chat_id": chat_id,
-                        "tool_name": tool.name,
-                        "tool_description": tool.description,
-                    },
-                )
-                logger.info(f"Created Langfuse span for tool: {action}")
-            except Exception as e:
-                logger.error(f"Failed to create tool span: {str(e)}")
+    def _create_tool_span(
+        self, action: str, action_input: dict, action_id: str, chat_id: str, tool
+    ):
+        """创建工具执行的Langfuse span"""
+        if not self.langfuse_trace:
+            return None
 
         try:
-            start_time = time.time()
-            if tool.is_async:
-                result = await tool.run(action_input)
-            else:
-                result = tool.run(action_input)
-
-            if tool_span:
-                try:
-                    tool_span.update(
-                        output={"result": result},
-                        metadata={"execution_time": time.time() - start_time},
-                    )
-                    tool_span.end()
-                except Exception as e:
-                    logger.error(f"Failed to update tool span: {str(e)}")
-
-            return result
+            span = self.langfuse_trace.span(
+                name=f"tool_{action}",
+                input={
+                    "action": action,
+                    "input": action_input,
+                    "action_id": action_id,
+                },
+                metadata={
+                    "chat_id": chat_id,
+                    "tool_name": tool.name,
+                    "tool_description": tool.description,
+                },
+            )
+            logger.info(f"Created Langfuse span for tool: {action}")
+            return span
         except Exception as e:
-            if tool_span:
-                try:
-                    tool_span.update(
-                        output={"error": str(e)},
-                        status_message=f"Tool failed: {str(e)}",
-                    )
-                    tool_span.end()
-                except Exception as e:
-                    logger.error(f"Failed to update tool span with error: {str(e)}")
-            raise ToolExecutionError(f"Tool {action} failed: {str(e)}")
+            logger.error(f"Failed to create tool span: {str(e)}")
+            return None
+
+    def _update_tool_span(self, span, result, start_time=None, is_error=False):
+        """更新工具span状态"""
+        if not span:
+            return
+
+        try:
+            if is_error:
+                span.update(
+                    output={"error": result},
+                    status_message=f"Tool failed: {result}",
+                )
+            else:
+                span.update(
+                    output={"result": result},
+                    metadata=(
+                        {"execution_time": time.time() - start_time}
+                        if start_time
+                        else None
+                    ),
+                )
+            span.end()
+        except Exception as e:
+            logger.error(f"Failed to update tool span: {str(e)}")
 
     @observe(name="_handle_termination", capture_input=True, capture_output=True)
     async def _handle_termination(self, ctx: dict) -> bool:
@@ -822,6 +885,151 @@ class ReactAgent:
         logger.info(f"Iteration LLM Response: {model_response}")
         result_dict = await self._parse_action(model_response, chat_id, query)
         return result_dict
+
+    @observe(name="_generate_summary", capture_input=True, capture_output=True)
+    async def _generate_summary(
+        self, tool_result: str, action: str, action_input: dict
+    ) -> str:
+        """使用gpt-5-nano模型生成工具执行结果摘要或格式化处理
+
+        Args:
+            tool_result: 工具执行的完整结果
+            action: 执行的工具名称
+            action_input: 工具输入参数
+
+        Returns:
+            str: 生成的摘要或格式化结果
+        """
+        try:
+            # 使用独立的摘要提示词模板
+            action_input_str = (
+                json.dumps(action_input, ensure_ascii=False)
+                if isinstance(action_input, dict)
+                else str(action_input)
+            )
+
+            summary_prompt = SUMMARY_PROMPT.format(
+                action=action, action_input=action_input_str, tool_result=tool_result
+            )
+
+            messages = [{"role": "user", "content": summary_prompt}]
+            summary_result = await call_llm_api(messages, model_name="gpt-5-nano")
+
+            # 兼容返回值格式
+            if isinstance(summary_result, tuple) and len(summary_result) == 2:
+                summary_text = summary_result[0]
+            else:
+                summary_text = summary_result
+
+            return summary_text.strip()
+
+        except Exception as e:
+            logger.error(f"生成摘要失败: {str(e)}")
+            # 如果摘要生成失败，返回截断的原始结果
+            return tool_result[:200] + ("..." if len(tool_result) > 200 else "")
+
+    @observe(name="_extract_tool_results", capture_input=True, capture_output=True)
+    def _extract_tool_results(self, tool_execution_ids: list = None) -> dict:
+        """提取指定工具执行id的完整结果
+
+        Args:
+            tool_execution_ids: 需要提取完整结果的工具执行id列表，如果为None则提取所有
+
+        Returns:
+            dict: 包含工具执行id到完整结果的映射
+        """
+        tool_results = {}
+
+        # 过滤出实际的工具执行步骤
+        execution_items = [
+            item
+            for item in self.scratchpad_items
+            if not item.is_origin_query and item.tool_execution_id
+        ]
+
+        for item in execution_items:
+            # 如果指定了特定的工具执行id，只提取这些
+            if (
+                tool_execution_ids is None
+                or item.tool_execution_id in tool_execution_ids
+            ):
+                tool_results[item.tool_execution_id] = {
+                    "tool_name": item.action,
+                    "input": item.action_input,
+                    "result": item.observation,
+                    "summary": item.summary,
+                }
+
+        return tool_results
+
+    @observe(
+        name="_generate_final_answer_with_context",
+        capture_input=True,
+        capture_output=True,
+    )
+    async def _generate_final_answer_with_context(
+        self, preliminary_answer: str, query: str, required_tool_ids: list = None
+    ) -> tuple:
+        """使用完整工具执行结果生成最终回复
+
+        Args:
+            preliminary_answer: 初步的答案
+            query: 用户原始查询
+            required_tool_ids: 需要提取的工具执行ID列表，如果为None则提取所有
+
+        Returns:
+            tuple: (最终回复, 实际使用的工具id列表)
+        """
+        try:
+            # 提取指定的工具执行结果
+            if required_tool_ids:
+                tool_results = self._extract_tool_results(required_tool_ids)
+                logger.info(
+                    f"按需提取了{len(tool_results)}个指定的工具执行结果: {required_tool_ids}"
+                )
+            else:
+                tool_results = self._extract_tool_results()
+                logger.info(f"提取了所有{len(tool_results)}个工具执行结果")
+
+            # 构建完整的工具执行结果文本
+            tool_results_text = ""
+            for tool_id, result_info in tool_results.items():
+                tool_results_text += f"""
+工具执行ID: {tool_id}
+工具名称: {result_info['tool_name']}
+输入参数: {result_info['input']}
+执行结果: {result_info['result']}
+---
+"""
+
+            # 构建最终回复生成提示词
+            final_prompt = FINAL_ANSWER_PROMPT.format(
+                query=query,
+                preliminary_answer=preliminary_answer,
+                tool_results_text=tool_results_text,
+            )
+
+            messages = [{"role": "user", "content": final_prompt}]
+
+            # 使用主模型生成最终回复
+            model_name = self.model_name or self.reasoner_model_name
+            final_result = await call_llm_api(messages, model_name=model_name)
+
+            # 兼容返回值格式
+            if isinstance(final_result, tuple) and len(final_result) == 2:
+                final_answer = final_result[0]
+            else:
+                final_answer = final_result
+
+            # 返回最终回复和实际使用的工具执行id列表
+            used_tool_ids = list(tool_results.keys())
+
+            return final_answer.strip(), used_tool_ids
+
+        except Exception as e:
+            logger.error(f"生成最终回复失败: {str(e)}")
+            # 如果生成失败，返回初步答案
+            return preliminary_answer, []
 
     @observe(name="_execute_tool_action", capture_input=True, capture_output=True)
     async def _execute_tool_action(
@@ -898,11 +1106,14 @@ class ReactAgent:
             event = await create_action_complete_event(action, observation, action_id)
             await self.stream_manager.send_message(chat_id, event)
 
+        # 生成工具执行结果摘要
+        summary = await self._generate_summary(observation, action, action_input)
+
         # 处理特殊逻辑
         if action == "user_input":
             thought = f"{thought}\n{action_input['prompt']}"
 
-        return observation, thought
+        return observation, thought, summary, action_id
 
     @observe(name="run", capture_input=True, capture_output=True)
     async def run(
@@ -940,9 +1151,11 @@ class ReactAgent:
             if not is_result:
                 # 清空scratchpad_items列表
                 self.scratchpad_items = []
-                # 添加初始查询item
+                # 添加初始查询item（将query作为action_input保存，便于后续追踪）
                 self.scratchpad_items.append(
-                    ScratchpadItem(is_origin_query=True, thought=query)
+                    ScratchpadItem(
+                        is_origin_query=True, thought=query, action_input=query
+                    )
                 )
                 # 保存用户查询到对话历史
                 if self.conversation_id:
@@ -974,11 +1187,10 @@ class ReactAgent:
         finally:
             self._cleanup_resources()
 
-    @observe(name="_run_main_loop", capture_input=True, capture_output=True)
-    async def _run_main_loop(
-        self, chat_id: str, query: str, context: str, stream: bool, span: Any = None
-    ) -> str:
-        """运行Agent主循环"""
+    async def _prepare_main_loop(
+        self, chat_id: str, query: str, context: str, span: Any
+    ) -> None:
+        """准备主循环运行环境"""
         if span:
             try:
                 span.update(
@@ -993,12 +1205,20 @@ class ReactAgent:
                 )
             except Exception as e:
                 logger.error(f"Failed to update Langfuse span status: {str(e)}")
+
+    @observe(name="_run_main_loop", capture_input=True, capture_output=True)
+    async def _run_main_loop(
+        self, chat_id: str, query: str, context: str, stream: bool, span: Any = None
+    ) -> str:
+        """运行Agent主循环"""
+        await self._prepare_main_loop(chat_id, query, context, span)
+
         observations = []
         iteration_count = 0
         final_answer = None
         last_error = None
 
-        while iteration_count < self.max_iterations:
+        while iteration_count < self.max_iterations and not self.stopped:
             if self.stopped:
                 break
 
@@ -1032,7 +1252,33 @@ class ReactAgent:
 
                 # 处理最终答案
                 if action == "final_answer":
-                    final_answer = action_input
+                    # 解析新的action_input格式
+                    if isinstance(action_input, dict) and "answer" in action_input:
+                        # 新格式：包含answer和required_tool_ids
+                        preliminary_answer = action_input["answer"]
+                        required_tool_ids = action_input.get("required_tool_ids", [])
+                    else:
+                        # 兼容旧格式：直接是答案字符串
+                        preliminary_answer = action_input
+                        required_tool_ids = []  # 空列表意味着不召回任何工具结果
+
+                    # 使用指定的工具执行结果生成最终回复
+                    if required_tool_ids:
+                        enhanced_answer, used_tool_ids = (
+                            await self._generate_final_answer_with_context(
+                                preliminary_answer, query, required_tool_ids
+                            )
+                        )
+                        final_answer = {
+                            "answer": enhanced_answer,
+                            "tool_execution_results": used_tool_ids,
+                        }
+                    else:
+                        # 如果没有指定工具ID，直接使用初步答案
+                        final_answer = {
+                            "answer": preliminary_answer,
+                            "tool_execution_results": [],
+                        }
                     break
 
                 # 验证工具
@@ -1051,8 +1297,10 @@ class ReactAgent:
                     except Exception as e:
                         logger.error(f"Failed to create tool span: {str(e)}")
 
-                observation, thought = await self._execute_tool_action(
-                    action, action_input, thought, chat_id, tool, observations
+                observation, thought, summary, tool_execution_id = (
+                    await self._execute_tool_action(
+                        action, action_input, thought, chat_id, tool, observations
+                    )
                 )
 
                 if tool_span:
@@ -1064,9 +1312,22 @@ class ReactAgent:
                     except Exception as e:
                         logger.error(f"Failed to end tool span: {str(e)}")
 
-                # 保存执行记录
+                # 保存执行记录，记录action_input作为param（当为复杂对象时序列化为JSON）
+                try:
+                    param_str = (
+                        json.dumps(action_input, ensure_ascii=False)
+                        if isinstance(action_input, (dict, list))
+                        else str(action_input)
+                    )
+                except Exception:
+                    param_str = str(action_input)
                 new_item = ScratchpadItem(
-                    thought=thought, action=action, observation=observation
+                    thought=thought,
+                    action=action,
+                    observation=observation,
+                    action_input=param_str,
+                    summary=summary,
+                    tool_execution_id=tool_execution_id,
                 )
                 self.scratchpad_items.append(new_item)
                 observations.append(observation)
@@ -1089,7 +1350,10 @@ class ReactAgent:
                         logger.error(f"Failed to update main span with error: {str(e)}")
 
                 error_item = ScratchpadItem(
-                    thought=last_error, action="", observation=last_error
+                    thought=last_error,
+                    action="",
+                    observation=last_error,
+                    param=last_error,
                 )
                 self.scratchpad_items.append(error_item)
                 await asyncio.sleep(self.iteration_retry_delay)
@@ -1114,13 +1378,22 @@ class ReactAgent:
         self,
         chat_id: str,
         stream: bool,
-        final_answer: str,
+        final_answer: dict,
         observations: list,
     ) -> str:
         """处理最终结果"""
+        # 处理新的final_answer格式
+        if isinstance(final_answer, dict) and "answer" in final_answer:
+            answer_text = final_answer["answer"]
+            tool_execution_results = final_answer.get("tool_execution_results", [])
+        else:
+            # 兼容旧格式
+            answer_text = final_answer
+            tool_execution_results = []
+
         # 发送完成事件
         if stream and self.stream_manager:
-            event = await create_agent_complete_event(final_answer or observations[-1])
+            event = await create_agent_complete_event(answer_text or observations[-1])
             await self.stream_manager.send_message(chat_id, event)
 
         # 保存对话记录
@@ -1130,12 +1403,26 @@ class ReactAgent:
                 self.conversation_id, self.scratchpad_items
             )
             # 保存助手回答到对话历史
-            if final_answer:
+            if answer_text is not None:
                 self._save_conversation_to_redis(
-                    self.conversation_id, assistant_answer=final_answer
+                    self.conversation_id, assistant_answer=answer_text
                 )
 
-        return final_answer
+        # 计算最终输出，若无最终答案则回落到最近的observations
+        final_output = (
+            answer_text
+            if answer_text is not None
+            else (observations[-1] if observations else "")
+        )
+
+        # 如果有tool_execution_results，可以在这里进行额外处理
+        # 比如记录哪些工具结果被用于最终答案生成
+        if tool_execution_results:
+            logger.info(
+                f"最终答案使用了{len(tool_execution_results)}个工具执行结果: {tool_execution_results}"
+            )
+
+        return final_output
 
     @observe(name="_cleanup_resources", capture_input=True, capture_output=True)
     def _cleanup_resources(self):
