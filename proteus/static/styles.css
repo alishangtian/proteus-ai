@@ -2522,3 +2522,244 @@ body {
 }
 
 /* End of sidebar removal overrides */
+/* ====== Markdown & Rendered content 美化（追加） ====== */
+/* 使由 marked.parse 输出的内容在 .node-content/.workflow-content/.result-value/.explanation/.answer 中更美观 */
+.node-content,
+.workflow-content,
+.result-value,
+.result-content,
+.explanation,
+.answer {
+    color: #111827;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+/* 段落 */
+.node-content p,
+.workflow-content p,
+.result-value p,
+.explanation p,
+.answer p {
+    margin: 0 0 12px 0;
+    color: #374151;
+}
+
+/* 标题 */
+.node-content h1,
+.workflow-content h1,
+.result-value h1,
+.explanation h1,
+.answer h1,
+.node-content h2,
+.workflow-content h2,
+.result-value h2,
+.explanation h2,
+.answer h2 {
+    color: #0f172a;
+    margin: 8px 0;
+    font-weight: 700;
+}
+
+/* 列表 */
+.node-content ul,
+.node-content ol,
+.workflow-content ul,
+.workflow-content ol,
+.result-value ul,
+.result-value ol,
+.explanation ul,
+.explanation ol,
+.answer ul,
+.answer ol {
+    margin: 8px 0 12px 20px;
+    color: #374151;
+}
+
+/* 引用 */
+.node-content blockquote,
+.workflow-content blockquote,
+.result-value blockquote,
+.explanation blockquote,
+.answer blockquote {
+    border-left: 4px solid rgba(59, 130, 246, 0.12);
+    background: #f8fbff;
+    padding: 10px 14px;
+    margin: 12px 0;
+    color: #0f172a;
+    border-radius: 6px;
+}
+
+/* 内联代码 */
+.node-content code,
+.workflow-content code,
+.result-value code,
+.explanation code,
+.answer code {
+    background: rgba(15, 23, 42, 0.05);
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-family: 'Menlo', 'Monaco', monospace;
+    font-size: 13px;
+}
+
+/* 代码块（fenced code） */
+.node-content pre,
+.workflow-content pre,
+.result-value pre,
+.explanation pre,
+.answer pre {
+    background: linear-gradient(180deg, #0f172a06, #0f172a04);
+    border: 1px solid #e6eefc;
+    padding: 14px;
+    border-radius: 10px;
+    overflow: auto;
+    font-family: 'Menlo', 'Monaco', monospace;
+    font-size: 13px;
+    color: #0b1220;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    margin: 12px 0;
+}
+
+/* 高亮语言标签（如果 marked 输出了 <code class="language-xxx">） */
+.node-content pre code[class*="language-"],
+.workflow-content pre code[class*="language-"],
+.result-value pre code[class*="language-"],
+.explanation pre code[class*="language-"],
+.answer pre code[class*="language-"] {
+    display: block;
+}
+
+/* 表格 */
+.node-content table,
+.workflow-content table,
+.result-value table,
+.explanation table,
+.answer table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 13px;
+}
+
+.node-content table th,
+.workflow-content table th,
+.result-value table th,
+.explanation table th,
+.answer table th {
+    background: #f1f5f9;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.node-content table td,
+.workflow-content table td,
+.result-value table td,
+.explanation table td,
+.answer table td {
+    padding: 8px 10px;
+    border-bottom: 1px dashed #e6eefc;
+}
+
+/* 图片自适应 */
+.node-content img,
+.workflow-content img,
+.result-value img,
+.explanation img,
+.answer img {
+    max-width: 100%;
+    border-radius: 8px;
+    display: block;
+    margin: 8px 0;
+}
+
+/* 强化 node / workflow 卡片的内边距与背景，区分不同类型 */
+.node-result .node-content,
+.workflow-info .workflow-content {
+    background: linear-gradient(180deg, #ffffff, #fbfdff);
+    border-radius: 8px;
+    padding: 14px;
+}
+
+/* result-value 明显边框 */
+.result-value {
+    background: linear-gradient(180deg, #ffffff, #fbfdff);
+    border: 1px solid #e6eefc;
+    padding: 12px;
+    border-radius: 8px;
+}
+
+/* 复制 tooltip 调整（提升可见度） */
+.copy-tooltip {
+    background: #111827;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    pointer-events: none;
+}
+
+.copy-btn:hover .copy-tooltip {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* running-indicator 更美观的加载动画 */
+.running-indicator {
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #a3bffa, #60a5fa);
+    width: 60%;
+    animation: runningPulse 1.2s linear infinite;
+    margin: 6px 0;
+}
+
+@keyframes runningPulse {
+    0% {
+        transform: translateX(-8%);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: translateX(8%);
+        opacity: 1;
+    }
+
+    100% {
+        transform: translateX(-8%);
+        opacity: 0.8;
+    }
+}
+
+/* 微调 agent-event 卡片间距与阴影 */
+.agent-event-card,
+.agent-content,
+.agent-details,
+.tool-result {
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.agent-event-card:hover,
+.tool-result:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+}
+
+/* 响应式：缩小代码块在小屏时的 padding */
+@media (max-width: 640px) {
+
+    .node-content pre,
+    .workflow-content pre,
+    .result-value pre,
+    .explanation pre,
+    .answer pre {
+        padding: 10px;
+        font-size: 12px;
+    }
+}
+
+/* ====== End Markdown styles ====== */

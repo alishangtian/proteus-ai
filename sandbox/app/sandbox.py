@@ -1,171 +1,139 @@
 """
 sandbox.py
-提供安全性更高的代码执行封装 — 将 Python 和 Shell 代码在子进程中执行，
-并使用进程资源限制、超时与输出截断来降低滥用风险。
+提供代码执行封装。
+- Python 代码在当前进程中通过受限环境执行。
+- Shell 代码为保持兼容性，仍在子进程中执行。
 
 注意：
-- 仍然存在安全风险：允许任意 shell 或 python 代码执行本质上就是危险的。
-  应把该服务仅在受信网络/环境中使用，或进一步使用容器/namespace等隔离措施。
-- 该文件使用 Unix-specific 的 resource 限制（适用于 macOS / Linux）。
+- 直接执行代码本质上存在风险。尽管我们使用 restrictedpy 来限制 Python 环境，
+  但仍强烈建议在容器（如 Docker）或虚拟机等强隔离环境中使用此沙箱服务。
+- Shell 命令执行依旧危险，请谨慎使用。
 """
 
-from typing import Tuple
+import logging
 import subprocess
 import tempfile
-import sys
 import os
-import shlex
-import logging
-
-# 尝试导入 resource 模块以设置进程限制（仅在 Unix-like 系统可用）
-try:
-    import resource
-except Exception:
-    resource = None  # 在不支持的系统上将不会设置 RLIMIT
+from typing import Tuple, List
 
 logger = logging.getLogger(__name__)
 
 
-def _set_limits(max_cpu_seconds: int = 2, max_memory_bytes: int = 256 * 1024 * 1024):
-    """
-    返回一个在子进程 preexec_fn 中调用的函数，用来设置进程的资源限制。
-    仅在 Unix-like 系统可用（依赖 resource 模块）。
-    """
-
-    def _inner():
-        if resource is None:
-            return
-        try:
-            # 限制 CPU 时间（秒）
-            resource.setrlimit(resource.RLIMIT_CPU, (max_cpu_seconds, max_cpu_seconds))
-        except Exception:
-            pass
-        try:
-            # 限制地址空间（近似内存上限）
-            resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
-        except Exception:
-            pass
-        try:
-            # 限制可创建文件大小（防止生成超大文件）
-            resource.setrlimit(
-                resource.RLIMIT_FSIZE, (10 * 1024 * 1024, 10 * 1024 * 1024)
-            )
-        except Exception:
-            pass
-
-    return _inner
-
-
 def _truncate_output(s: str, max_chars: int) -> str:
+    """截断字符串，如果它超过了最大长度。"""
     if s is None:
         return ""
-    if len(s) <= max_chars:
-        return s
-    return s[:max_chars] + "\n...[truncated]"
+    if len(s) > max_chars:
+        return s[:max_chars] + "\n...[truncated]"
+    return s
 
 
 def execute_python_code(
     code: str, timeout: int = 5, max_output: int = 10000
-) -> Tuple[str, str]:
+) -> Tuple[int, str, str]:
     """
-    在子进程中执行 Python 代码，返回 (stdout, stderr)。
-    - 使用临时文件保存代码并通过当前运行的 Python 解释器执行。
-    - 使用 resource 限制 CPU 和内存（仅 Unix）。
-    - 使用 timeout 控制最大执行时间。
-    - 截断超长输出以避免 OOM / 日志膨胀。
+    在独立子进程中执行 Python 代码以提高隔离性（不使用 RestrictedPython）。
+    - 将代码写入临时文件，然后使用系统的 python3 以 -u 模式运行（不缓存输出）。
+    - 通过子进程的超时和输出截断来控制执行。
+    :return: (exit_code, stdout, stderr)
+             exit_code: 0 成功, -1 超时, -2 沙箱内部错误, 其他为子进程返回码
     """
     if not isinstance(code, str):
-        return "", "invalid code type"
+        return -2, "", "无效的代码类型，必须是字符串。"
 
-    tmp = None
+    tmp_path = None
     try:
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".py", delete=False, mode="w", encoding="utf-8"
+        # 将代码写入临时文件（避免在主进程中 exec）
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(code)
+            tmp_path = f.name
+
+        # 使用系统 Python 运行临时文件，-u 保证 stdout/stderr 不被缓冲
+        cmd = ["/usr/bin/env", "python3", "-u", tmp_path]
+        return_code, stdout, stderr = _run_subprocess(
+            cmd=cmd,
+            timeout=timeout,
+            max_output=max_output,
         )
-        tmp.write(code)
-        tmp.flush()
-        tmp.close()
 
-        cmd = [sys.executable or "python3", tmp.name]
+        return return_code, stdout, stderr
 
-        # 最小化环境变量，避免子进程凭借主进程敏感环境运行
-        allowed_env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "LANG": os.environ.get("LANG", "en_US.UTF-8"),
-        }
+    except subprocess.TimeoutExpired:
+        logger.warning("Python 代码执行超时 %d 秒", timeout)
+        return -1, "", f"执行超时 {timeout} 秒"
+    except Exception as e:
+        logger.exception("在沙箱中执行 Python 代码时发生异常")
+        stderr = _truncate_output(f"沙箱内部错误: {e}", max_output)
+        return -2, "", stderr
+    finally:
+        # 尽力删除临时文件
+        try:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
 
-        completed = subprocess.run(
+
+def _run_subprocess(
+    cmd: List[str],
+    timeout: int,
+    max_output: int,
+) -> Tuple[int, str, str]:
+    """
+    一个统一的子进程执行函数，包含超时、资源限制和输出截断。
+    注意：资源限制 (resource) 在此版本中为简化已移除。
+    :return: (exit_code, stdout, stderr)
+    """
+    process = None
+    try:
+        process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            shell=False,
             text=True,
-            timeout=timeout,
-            env=allowed_env,
-            preexec_fn=_set_limits(
-                max_cpu_seconds=timeout + 1, max_memory_bytes=256 * 1024 * 1024
-            ),
+            encoding="utf-8",
+            errors="backslashreplace",
         )
-        stdout = _truncate_output(completed.stdout, max_output)
-        stderr = _truncate_output(completed.stderr, max_output)
-        return stdout, stderr
+        stdout, stderr = process.communicate(timeout=timeout)
+        stdout = _truncate_output(stdout, max_output)
+        stderr = _truncate_output(stderr, max_output)
+        return process.returncode, stdout, stderr
+
     except subprocess.TimeoutExpired:
-        logger.warning("Python code execution timed out after %s seconds", timeout)
-        return "", f"Execution timed out after {timeout} seconds"
+        logger.warning("执行超时 %d 秒: %s", timeout, cmd)
+        if process:
+            process.kill()
+            out, err = process.communicate()
+            stdout = _truncate_output(out, max_output)
+            stderr = _truncate_output(err, max_output)
+            stderr += f"\n执行超时 {timeout} 秒"
+            return -1, stdout, stderr
+        return -1, "", f"执行超时 {timeout} 秒"
+
     except Exception as e:
-        logger.exception("Exception while running python code")
-        return "", str(e)
-    finally:
-        if tmp is not None:
-            try:
-                os.unlink(tmp.name)
-            except Exception:
-                pass
+        logger.exception("运行子进程时发生异常: %s", cmd)
+        return -2, "", f"沙箱内部错误: {e}"
 
 
 def execute_shell_code(
     code: str, timeout: int = 5, max_output: int = 10000
-) -> Tuple[str, str]:
+) -> Tuple[int, str, str]:
     """
-    在子进程中执行 shell 命令并返回 (stdout, stderr)。
-    - 使用 /bin/sh -c 来运行命令（保留 shell 特性）。
-    - 设置超时、输出截断与进程资源限制以减少风险。
-    - 使用尽量精简的环境变量。
+    在子进程中执行 shell 命令。
+    - 使用 `/bin/sh -c` 来运行命令。
+    - **警告**: 依然存在安全风险，依赖于外部的强隔离环境。
+
+    :return: (exit_code, stdout, stderr)
     """
     if not isinstance(code, str):
-        return "", "invalid code type"
-
-    # 简单防护：拒绝一些明显危险的关键词（仅作第一层防护，不可靠）
-    forbidden_tokens = ["&", ";;", "|", "rm -rf", "mkfs", "dd ", ">:"]  # 例子
-    for t in forbidden_tokens:
-        if t in code:
-            return "", f"Forbidden token detected in shell code: {t}"
+        return -2, "", "无效的代码类型，必须是字符串。"
 
     cmd = ["/bin/sh", "-c", code]
-
-    allowed_env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
-    }
-
-    try:
-        completed = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=timeout,
-            env=allowed_env,
-            preexec_fn=_set_limits(
-                max_cpu_seconds=timeout + 1, max_memory_bytes=128 * 1024 * 1024
-            ),
-            shell=False,
-        )
-        stdout = _truncate_output(completed.stdout, max_output)
-        stderr = _truncate_output(completed.stderr, max_output)
-        return stdout, stderr
-    except subprocess.TimeoutExpired:
-        logger.warning("Shell command timed out after %s seconds", timeout)
-        return "", f"Execution timed out after {timeout} seconds"
-    except Exception as e:
-        logger.exception("Exception while running shell code")
-        return "", str(e)
+    return _run_subprocess(
+        cmd=cmd,
+        timeout=timeout,
+        max_output=max_output,
+    )

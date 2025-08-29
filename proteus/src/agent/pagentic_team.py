@@ -1,11 +1,12 @@
-"""多Agent团队实现，包含五个不同角色的agent"""
-
-import asyncio
-from typing import Dict, Any
-from ..manager.multi_agent_manager import TeamRole, get_multi_agent_manager
-from .agent import Agent, AgentConfiguration
+from .react_agent import ReactAgent
+from .common.configuration import AgentConfiguration
 import logging
-from langfuse import observe
+from src.utils.langfuse_wrapper import langfuse_wrapper
+from src.manager.multi_agent_manager import (
+    TeamRole,
+)
+from typing import Dict, Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 class PagenticTeam:
     """包含五个角色的Agent团队"""
 
-    @observe(name="__init__", capture_input=True, capture_output=True)
+    @langfuse_wrapper.observe_decorator(
+        name="__init__", capture_input=True, capture_output=True
+    )
     def __init__(
         self,
         tools_config: Dict[str, Any] = None,
@@ -40,56 +43,116 @@ class PagenticTeam:
             start_role: 启动角色
             conversation_id: 会话ID，用于获取历史迭代信息
         """
-        self.agents: Dict[TeamRole, Agent] = {}
+        self.agents: Dict[TeamRole, ReactAgent] = {}
         self.team_rules = team_rules or "默认团队规范"
         self.conversation_id = conversation_id
         self._initialize_agents(tools_config or {})
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
 
-    @observe(name="_initialize_agents", capture_input=True, capture_output=True)
+    @langfuse_wrapper.observe_decorator(
+        name="_initialize_agents", capture_input=True, capture_output=True
+    )
     def _initialize_agents(self, tools_config: Dict[TeamRole, AgentConfiguration]):
         """初始化各个角色的agent实例"""
         # 组装team_description
         team_description = (
-            "\n#团队信息\n\n"
-            + "##团队规范\n\n"
+            "\n# 团队信息\n"
+            + "## 团队规范\n"
             + self.team_rules
-            + "\n##团队成员\n\n"
+            + "\n## 团队成员\n"
             + "\n".join(
-                f"{role.value}: {config.role_description}\n"
+                f"{role.value}: {config.agent_description}\n"
                 for role, config in tools_config.items()
             )
         )
 
-        # 遍历所有角色，初始化agent
+        # 遍历所有角色，初始化agent（使用 ReactAgent 实现）
         for role, config in tools_config.items():
-            self.agents[role] = Agent(
-                tools=config.tools,
+            # 获取agent_instruction的实际内容
+            agent_instruction_content = config.agent_instruction
+            # 拼接 instruction
+            full_instruction = f"{team_description}\n" f"{agent_instruction_content}"
+            self.agents[role] = ReactAgent(
+                tools=(
+                    {str(t): t for t in getattr(config, "tools", [])}
+                    if isinstance(config.tools, (list, tuple))
+                    else (config.tools or {})
+                ),
                 prompt_template=config.prompt_template,
-                role_type=role,
-                model_name=config.model_name,
-                termination_conditions=config.termination_conditions,
-                team_description=team_description,
-                description=config.agent_description,
-                max_iterations=config.max_iterations,
-                llm_timeout=config.llm_timeout,
+                instruction=full_instruction,
+                model_name=getattr(config, "model_name", None),
+                termination_conditions=getattr(config, "termination_conditions", None),
+                max_iterations=getattr(config, "max_iterations", None),
+                llm_timeout=getattr(config, "llm_timeout", None),
                 conversation_id=self.conversation_id,  # 传递会话ID
+                role_type=role,
+                scratchpad_items=getattr(config, "historical_scratchpad_items", None),
             )
 
-    @observe(name="register_agents", capture_input=True, capture_output=True)
-    async def register_agents(self):
-        """将所有agent注册到MultiAgentManager"""
-        manager = get_multi_agent_manager()
-
+    @langfuse_wrapper.observe_decorator(
+        name="register_agents", capture_input=True, capture_output=True
+    )
+    async def register_agents(self, chat_id: str = None):
+        """将所有agent注册并启动每个agent的 Redis 监听（不使用 MultiAgentManager）"""
         for role, agent in self.agents.items():
-            manager.register_agent(agent.agentcard.agentid, agent)
+            # 直接让 agent 自行监听其专属队列
             await agent.setup_event_subscriptions(agent.agentcard.agentid)
 
-        # 启动事件循环并保存任务引用
-        self._event_loop_task = asyncio.create_task(manager.start_event_loop())
+            # 如果提供了 chat_id，则注册到 team agents 列表
+            if chat_id:
+                try:
+                    # 直接调用 Redis 注册逻辑，避免循环导入
+                    await self._register_team_agent_to_redis(
+                        chat_id,
+                        agent.agentcard.agentid,
+                        role.value if hasattr(role, "value") else str(role),
+                    )
+                except Exception as e:
+                    logger.error(f"注册 team agent 失败: {e}", exc_info=True)
 
-    @observe(name="run", capture_input=True, capture_output=True)
+        # 不再启动集中式事件循环
+        self._event_loop_task = None
+
+    async def _register_team_agent_to_redis(
+        self, chat_id: str, agent_id: str, role_type: str
+    ):
+        """注册 team 中的 agent 到 Redis（内部实现）
+
+        Args:
+            chat_id: 聊天会话ID
+            agent_id: agent ID
+            role_type: agent 角色类型
+        """
+        try:
+            from ..utils.redis_cache import RedisCache
+            from datetime import datetime
+            import json
+
+            redis_cache = RedisCache()
+
+            # 添加 agent 到 team agents 列表
+            team_agents_key = f"team_agents:{chat_id}"
+            agent_info = {
+                "agent_id": agent_id,
+                "role_type": role_type,
+                "registered_at": datetime.now().isoformat(),
+            }
+            redis_cache.rpush(
+                team_agents_key, json.dumps(agent_info, ensure_ascii=False)
+            )
+
+            # 设置过期时间 24 小时
+            redis_cache.expire(team_agents_key, 24 * 3600)
+
+            logger.info(f"[{chat_id}] 已注册 team agent: {agent_id} ({role_type})")
+
+        except Exception as e:
+            logger.error(f"[{chat_id}] 注册 team agent 失败: {str(e)}", exc_info=True)
+
+    @langfuse_wrapper.observe_decorator(
+        name="run", capture_input=True, capture_output=True
+    )
     async def run(self, query: str, chat_id: str, stream: bool = True):
         """
         启动团队工作流程
@@ -105,24 +168,13 @@ class PagenticTeam:
         start_agent = self.agents[self.startRole]
         await start_agent.run(query, chat_id, stream)
 
-    @observe(name="stop", capture_input=True, capture_output=True)
+    @langfuse_wrapper.observe_decorator(
+        name="stop", capture_input=True, capture_output=True
+    )
     async def stop(self):
-        """停止所有agent和事件循环"""
+        """停止所有agent（不再依赖 MultiAgentManager 的事件循环）"""
         # 先停止所有agent
         for agent in self.agents.values():
             await agent.stop()
-
-        # 停止事件循环
-        manager = get_multi_agent_manager()
-        await manager.stop_event_loop()
-
-        # 取消事件循环任务
-        if self._event_loop_task is not None and not self._event_loop_task.done():
-            self._event_loop_task.cancel()
-            try:
-                await asyncio.wait_for(self._event_loop_task, timeout=2.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.warning("取消事件循环任务超时或已被取消")
-
         self._event_loop_task = None
-        logger.info("团队和事件循环已停止")
+        logger.info("团队已停止，所有agent监听已关闭")

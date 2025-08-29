@@ -7,7 +7,7 @@ from ..api.config import API_CONFIG
 import os, time, json
 import logging
 from threading import Lock
-from ..utils.redis_cache import RedisCache
+from ..utils.redis_cache import RedisCache, get_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -170,13 +170,36 @@ class SerperSearchNode(BaseNode):
         """
         try:
             execute_result = await self.execute(params)
-            result_text = ""
-            if not execute_result["success"]:
-                result_text = f"搜索失败。错误信息：{execute_result['error']}"
+            if not execute_result.get("success"):
+                error_message = execute_result.get("error", "未知错误")
+                result_text = f"搜索失败。错误信息：{error_message}"
                 return {"result": result_text, **execute_result}
-            return {"result": execute_result["results"]}
+
+            results = execute_result.get("results", [])
+            if not results:
+                return {"result": "未找到相关搜索结果。", **execute_result}
+
+            # 格式化为带序号的纯文本
+            result_items = []
+            for i, item in enumerate(results, 1):
+                title = item.get("title", "无标题")
+                snippet = item.get("snippet", "无摘要")
+                link = item.get("link", "无链接")
+                # 兼容 answer_box 的情况
+                if item.get("is_answer_box"):
+                    result_items.append(f'{i}. [精选摘要] {title}\n   "{snippet}"')
+                else:
+                    result_items.append(
+                        f"{i}. {title}\n   摘要: {snippet}\n   链接: {link}"
+                    )
+
+            result_text = "\n\n".join(result_items)
+
+            # 将格式化后的文本放入 'result' 键
+            return {"result": result_text, **execute_result}
+
         except Exception as e:
-            return {"result": f"Error: {str(e)}", "error": str(e)}
+            return {"result": f"Error: {str(e)}", "error": str(e), "success": False}
 
     def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
         """从Redis缓存获取搜索结果"""

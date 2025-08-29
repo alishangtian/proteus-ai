@@ -19,7 +19,7 @@ class AgentConfiguration:
     def __init__(
         self,
         role_type: TeamRole = None,
-        role_description: str = "",
+        agent_instruction: str = "",
         agent_description: str = "",
         prompt_template: str = "",
         model_name: str = "deepseek-chat",
@@ -48,7 +48,7 @@ class AgentConfiguration:
             historical_scratchpad_items: 历史迭代信息，从Redis中获取
         """
         self.role_type = role_type
-        self.role_description = role_description
+        self.agent_instruction = agent_instruction
         self.prompt_template = prompt_template
         self.model_name = model_name
         self.termination_conditions = termination_conditions or []

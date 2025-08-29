@@ -18,19 +18,27 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
-from src.agent.prompt.react_agent_prompt import REACT_AGENT_PROMPT
 from src.agent.prompt.react_prompt import REACT_PROMPT
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
+from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.paper import PAPER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
 from src.agent.agent import Agent
 from src.agent.react_agent import ReactAgent
 from src.agent.common.configuration import AgentConfiguration
+from src.agent.base_agent import IncludeFields
 
 from src.manager.multi_agent_manager import get_multi_agent_manager
 
-from langfuse import observe, Langfuse
+
+from src.utils.langfuse_wrapper import langfuse_wrapper
 
 from src.api.events import (
     create_complete_event,
@@ -53,12 +61,6 @@ log_file_path = os.getenv("log_file_path", "logs/workflow_engine.log")
 setup_logger(log_file_path)
 logger = logging.getLogger(__name__)
 
-langfuse = Langfuse()
-if langfuse.auth_check():
-    logger.info("Langfuse authentication successful.")
-else:
-    logger.error("Langfuse authentication failed.")
-
 
 # 创建全局流管理实例 - 必须优先初始化
 from src.api.stream_manager import StreamManager
@@ -67,59 +69,22 @@ stream_manager = StreamManager.get_instance()
 
 agent_dict = {}
 
-
-@observe(name="_watch_agent_task", capture_input=True, capture_output=True)
-async def _watch_agent_task(task: asyncio.Task, chat_id: str):
-    """监控 process_agent 后台 task，等待其完成并记录/转发结果或错误。
-    1) 如果任务成功且返回值为字符串/可序列化对象，发送完成事件；
-    2) 如果任务抛出异常，发送错误事件并写日志。
-    该 watcher 是 fire-and-forget 的辅助任务，避免丢失子任务的输出或异常。
-    """
-    try:
-        result = await task
-        try:
-            # 优先使用 create_complete_event（全局事件）发送最终结果
-            from src.api.events import create_complete_event
-
-            # create_complete_event 接收可选 message 参数，这里传入 result 的字符串形式
-            await stream_manager.send_message(
-                chat_id, await create_complete_event(result)
-            )
-            logger.info(
-                f"[{chat_id}] process_agent completed, output logged by watcher."
-            )
-        except Exception:
-            # 回退：仅写日志
-            logger.info(
-                f"[{chat_id}] process_agent completed, watcher could not send complete event. Result: {result}"
-            )
-    except asyncio.CancelledError:
-        logger.info(f"[{chat_id}] process_agent task was cancelled.")
-    except Exception as e:
-        logger.error(f"[{chat_id}] process_agent raised exception: {e}", exc_info=True)
-        try:
-            from src.api.events import create_error_event
-
-            await stream_manager.send_message(
-                chat_id, await create_error_event(f"Agent task failed: {str(e)}")
-            )
-        except Exception:
-            logger.error(
-                f"[{chat_id}] watcher failed to send error event: {e}", exc_info=True
-            )
-
-
-# 延迟初始化历史服务
-@observe(name="get_history_service", capture_input=True, capture_output=True)
-def get_history_service():
-    """延迟初始化历史服务"""
-    from src.api.history_service import HistoryService
-
-    return HistoryService()
+agent_model_list = [
+    "workflow",
+    "super-agent",
+    "home",
+    "mcp-agent",
+    "multi-agent",
+    "browser-agent",
+    "deep-research",
+    "codeact-agent",
+]
 
 
 # 延迟初始化工作流引擎
-@observe(name="get_workflow_engine", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="get_workflow_engine", capture_input=True, capture_output=True
+)
 def get_workflow_engine():
     """延迟初始化工作流引擎"""
     from src.core.engine import WorkflowEngine
@@ -137,7 +102,9 @@ def get_workflow_engine():
 
 
 # 延迟初始化工作流服务
-@observe(name="get_workflow_service", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="get_workflow_service", capture_input=True, capture_output=True
+)
 def get_workflow_service():
     """延迟初始化工作流服务"""
     from src.api.workflow_service import WorkflowService
@@ -146,7 +113,9 @@ def get_workflow_service():
 
 
 # 在启动时注册工作流节点类型 - 改为按需加载
-@observe(name="register_workflow_nodes", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="register_workflow_nodes", capture_input=True, capture_output=True
+)
 def register_workflow_nodes(workflow_engine, node_manager):
     """注册所有可用的节点类型"""
     import importlib
@@ -344,7 +313,9 @@ class NodeResultResponse(BaseModel):
     error: Optional[str] = Field(None, description="错误信息（如果执行失败）")
 
 
-@observe(name="health_check", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="health_check", capture_input=True, capture_output=True
+)
 @app.get("/health", response_model=ApiResponse)
 async def health_check():
     """健康检查接口"""
@@ -378,7 +349,9 @@ async def get_super_agent_page(request: Request):
     return templates.TemplateResponse("superagent/index.html", {"request": request})
 
 
-@observe(name="create_chat", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="create_chat", capture_input=True, capture_output=True
+)
 @app.post("/chat")
 async def create_chat(
     text: str = Body(..., embed=True),
@@ -403,30 +376,6 @@ async def create_chat(
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     stream_manager.create_stream(chat_id, text)
 
-    # 创建并保存历史记录
-    from src.api.history_service import ChatHistory
-
-    history_service = get_history_service()
-    chat_history = ChatHistory(
-        id=chat_id,
-        query=text,
-        timestamp=datetime.now().isoformat(),
-        model=model,
-        agentid=agentid,
-    )
-    history_service.add_history(chat_history)
-
-    agent_model_list = [
-        "workflow",
-        "super-agent",
-        "home",
-        "mcp-agent",
-        "multi-agent",
-        "browser-agent",
-        "deep-research",
-        "codeact-agent",
-    ]
-
     if model in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
         task = asyncio.create_task(
@@ -441,43 +390,112 @@ async def create_chat(
                 model_name=model_name,
             )
         )
-        # 启动一个 watcher 来监控后台 task 的完成情况并记录/转发 output 或错误
-        asyncio.create_task(_watch_agent_task(task, chat_id))
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
 
     return {"success": True, "chat_id": chat_id}
 
 
-@observe(name="stop_chat", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="stop_chat", capture_input=True, capture_output=True
+)
 @app.get("/stop/{model}/{chat_id}")
 async def stop_chat(model: str, chat_id: str):
-    agent_model_list = [
-        "workflow",
-        "super-agent",
-        "home",
-        "mcp-agent",
-        "multi-agent",
-        "browser-agent",
-        "deep-research",
-    ]
     if model == "deep-research":
-        multi_agent_manager = get_multi_agent_manager()
-        for agent in Agent.get_agents(chat_id):
-            await agent.stop()
-            multi_agent_manager.unregister_agent(agent.agentcard.agentid)
+        # 优化后的 deep-research 停止逻辑
+        await _stop_deep_research_team(chat_id)
         await stream_manager.send_message(chat_id, await create_complete_event())
     elif model in agent_model_list:
-        await Agent.get_agents(chat_id)[0].stop()
+        # 其他模型的停止逻辑保持不变
+        agents = ReactAgent.get_agents(chat_id)
+        if agents:
+            await agents[0].stop()
         await stream_manager.send_message(chat_id, await create_complete_event())
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
-    Agent.clear_agents(chat_id)
+
+    # 清理 agent 缓存
+    ReactAgent.clear_agents(chat_id)
+
     logger.info(f"[{chat_id}] 已经停止")
     return {"success": True, "chat_id": chat_id}
 
 
-@observe(name="stream_request", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="_stop_deep_research_team", capture_input=True, capture_output=True
+)
+async def _stop_deep_research_team(chat_id: str):
+    """停止 deep-research team 下的所有 agents
+
+    Args:
+        chat_id: 聊天会话ID
+    """
+    try:
+        # 1. 从 Redis 获取 team 中的所有 agents
+        team_agents = await _get_team_agents(chat_id)
+
+        # 2. 从内存缓存获取 agents（作为备用）
+        cached_agents = Agent.get_agents(chat_id)
+        cached_react_agents = ReactAgent.get_agents(chat_id)
+
+        # 3. 合并所有需要停止的 agents
+        agents_to_stop = []
+
+        # 添加缓存中的 agents
+        agents_to_stop.extend(cached_agents)
+        agents_to_stop.extend(cached_react_agents)
+
+        # 4. 停止所有 agents
+        multi_agent_manager = get_multi_agent_manager()
+        stopped_agent_ids = set()
+
+        for agent in agents_to_stop:
+            if (
+                hasattr(agent, "agentcard")
+                and agent.agentcard.agentid not in stopped_agent_ids
+            ):
+                try:
+                    await agent.stop()
+                    multi_agent_manager.unregister_agent(agent.agentcard.agentid)
+                    stopped_agent_ids.add(agent.agentcard.agentid)
+                    logger.info(f"[{chat_id}] 已停止 agent: {agent.agentcard.agentid}")
+                except Exception as e:
+                    logger.error(
+                        f"[{chat_id}] 停止 agent {agent.agentcard.agentid} 失败: {e}"
+                    )
+
+        # 5. 根据 Redis 中的 team agents 信息，尝试停止可能遗漏的 agents
+        for team_agent_info in team_agents:
+            agent_id = team_agent_info.get("agent_id")
+            if agent_id and agent_id not in stopped_agent_ids:
+                try:
+                    # 尝试从 multi_agent_manager 注销
+                    multi_agent_manager.unregister_agent(agent_id)
+                    logger.info(f"[{chat_id}] 从 Redis 信息注销 agent: {agent_id}")
+                except Exception as e:
+                    logger.warning(f"[{chat_id}] 注销 agent {agent_id} 失败: {e}")
+
+        # 6. 清理 team 绑定关系
+        await _cleanup_team_binding(chat_id)
+
+        logger.info(
+            f"[{chat_id}] deep-research team 停止完成，共停止 {len(stopped_agent_ids)} 个 agents"
+        )
+
+    except Exception as e:
+        logger.error(
+            f"[{chat_id}] 停止 deep-research team 失败: {str(e)}", exc_info=True
+        )
+        # 即使出错也要尝试清理
+        try:
+            await _cleanup_team_binding(chat_id)
+        except Exception:
+            pass
+
+
+@langfuse_wrapper.observe_decorator(
+    name="stream_request", capture_input=True, capture_output=True
+)
 @app.get("/stream/{chat_id}")
 async def stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -501,7 +519,9 @@ async def stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
-@observe(name="replay_stream_request", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="replay_stream_request", capture_input=True, capture_output=True
+)
 @app.get("/replay/stream/{chat_id}")
 async def replay_stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -527,7 +547,147 @@ async def replay_stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
-@observe(name="process_agent", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="_register_team_binding", capture_input=True, capture_output=True
+)
+async def _register_team_binding(chat_id: str, team_name: str, agentmodel: str):
+    """注册 team 和 chatid 的绑定关系到 Redis
+
+    Args:
+        chat_id: 聊天会话ID
+        team_name: 团队名称
+        agentmodel: 代理模型类型
+    """
+    try:
+        from src.utils.redis_cache import RedisCache, get_redis_connection
+
+        redis_cache = get_redis_connection()
+
+        # 存储 team 绑定信息
+        team_info = {
+            "team_name": team_name,
+            "agentmodel": agentmodel,
+            "created_at": datetime.now().isoformat(),
+            "status": "active",
+        }
+
+        # 设置 team 绑定关系，过期时间 24 小时
+        team_binding_key = f"team_binding:{chat_id}"
+        redis_cache.setex(
+            team_binding_key, 24 * 3600, json.dumps(team_info, ensure_ascii=False)
+        )
+
+        # 初始化 team agents 列表
+        team_agents_key = f"team_agents:{chat_id}"
+        redis_cache.delete(team_agents_key)  # 清空可能存在的旧数据
+
+        logger.info(f"[{chat_id}] 已注册 team 绑定关系: {team_name} ({agentmodel})")
+
+    except Exception as e:
+        logger.error(f"[{chat_id}] 注册 team 绑定关系失败: {str(e)}", exc_info=True)
+
+
+@langfuse_wrapper.observe_decorator(
+    name="_register_team_agent", capture_input=True, capture_output=True
+)
+async def _register_team_agent(chat_id: str, agent_id: str, role_type: str):
+    """注册 team 中的 agent 到 Redis
+
+    Args:
+        chat_id: 聊天会话ID
+        agent_id: agent ID
+        role_type: agent 角色类型
+    """
+    try:
+        from src.utils.redis_cache import RedisCache, get_redis_connection
+
+        redis_cache = get_redis_connection()
+
+        # 添加 agent 到 team agents 列表
+        team_agents_key = f"team_agents:{chat_id}"
+        agent_info = {
+            "agent_id": agent_id,
+            "role_type": role_type,
+            "registered_at": datetime.now().isoformat(),
+        }
+        redis_cache.rpush(team_agents_key, json.dumps(agent_info, ensure_ascii=False))
+
+        # 设置过期时间 24 小时
+        redis_cache.expire(team_agents_key, 24 * 3600)
+
+        logger.info(f"[{chat_id}] 已注册 team agent: {agent_id} ({role_type})")
+
+    except Exception as e:
+        logger.error(f"[{chat_id}] 注册 team agent 失败: {str(e)}", exc_info=True)
+
+
+@langfuse_wrapper.observe_decorator(
+    name="_get_team_agents", capture_input=True, capture_output=True
+)
+async def _get_team_agents(chat_id: str):
+    """获取 team 中的所有 agents
+
+    Args:
+        chat_id: 聊天会话ID
+
+    Returns:
+        List[Dict]: agent 信息列表
+    """
+    try:
+        from src.utils.redis_cache import RedisCache, get_redis_connection
+
+        redis_cache = get_redis_connection()
+
+        team_agents_key = f"team_agents:{chat_id}"
+        agent_data_list = redis_cache.lrange(team_agents_key, 0, -1)
+
+        agents = []
+        for agent_data in agent_data_list:
+            try:
+                agent_info = json.loads(agent_data)
+                agents.append(agent_info)
+            except json.JSONDecodeError as e:
+                logger.warning(f"[{chat_id}] 解析 agent 信息失败: {e}")
+                continue
+
+        logger.info(f"[{chat_id}] 获取到 {len(agents)} 个 team agents")
+        return agents
+
+    except Exception as e:
+        logger.error(f"[{chat_id}] 获取 team agents 失败: {str(e)}", exc_info=True)
+        return []
+
+
+@langfuse_wrapper.observe_decorator(
+    name="_cleanup_team_binding", capture_input=True, capture_output=True
+)
+async def _cleanup_team_binding(chat_id: str):
+    """清理 team 绑定关系
+
+    Args:
+        chat_id: 聊天会话ID
+    """
+    try:
+        from src.utils.redis_cache import RedisCache, get_redis_connection
+
+        redis_cache = get_redis_connection()
+
+        # 删除 team 绑定信息
+        team_binding_key = f"team_binding:{chat_id}"
+        team_agents_key = f"team_agents:{chat_id}"
+
+        redis_cache.delete(team_binding_key)
+        redis_cache.delete(team_agents_key)
+
+        logger.info(f"[{chat_id}] 已清理 team 绑定关系")
+
+    except Exception as e:
+        logger.error(f"[{chat_id}] 清理 team 绑定关系失败: {str(e)}", exc_info=True)
+
+
+@langfuse_wrapper.observe_decorator(
+    name="process_agent", capture_input=True, capture_output=True
+)
 async def process_agent(
     chat_id: str,
     text: str,
@@ -552,6 +712,11 @@ async def process_agent(
     agent = None
     try:
         if agentmodel == "deep-research":
+            # 建立 team 和 chatid 的绑定关系
+            await _register_team_binding(
+                chat_id, team_name or "deep_research", agentmodel
+            )
+
             # 递归查找配置文件
             def find_config_dir(filename):
                 """递归查找配置文件目录"""
@@ -598,7 +763,7 @@ async def process_agent(
                     tools=config["tools"],
                     prompt_template=globals()[config["prompt_template"]],
                     agent_description=config["agent_description"],
-                    role_description=config["role_description"],
+                    agent_instruction=globals()[config["agent_instruction"]],
                     termination_conditions=termination_conditions,
                     model_name=config["model_name"],
                     max_iterations=itecount,
@@ -612,19 +777,18 @@ async def process_agent(
                 start_role=getattr(TeamRole, team_config["start_role"]),
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
-            await team.register_agents()
+            await team.register_agents(chat_id)
             logger.info(f"[{chat_id}] PagenticTeam开始运行")
             await team.run(text, chat_id)
         elif agentmodel == "super-agent":
             # 超级智能体，智能组建team并完成任务
             logger.info(f"[{chat_id}] 开始超级智能体请求")
             prompt_template = COT_TEAM_PROMPT_TEMPLATES
-            agent = Agent(
+            agent = ReactAgent(
                 tools=["team_generator", "team_runner", "user_input"],
                 instruction="",
                 stream_manager=stream_manager,
                 max_iterations=itecount,
-                history_service=get_history_service(),
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
                 model_name=model_name,
                 prompt_template=prompt_template,
@@ -639,8 +803,13 @@ async def process_agent(
         elif agentmodel == "codeact-agent":
 
             # CodeAct Agent模式：只允许使用python_execute和user_input工具
-            all_tools = ["python_execute", "user_input"]
-            prompt_template = REACT_AGENT_PROMPT
+            all_tools = [
+                "python_execute",
+                "user_input",
+                "file_write",
+            ]
+            prompt_template = REACT_PROMPT
+            include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
 
             # 创建详细的instruction
             instruction = (
@@ -651,7 +820,7 @@ async def process_agent(
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
-                instruction="",
+                instruction=instruction,
                 stream_manager=stream_manager,
                 max_iterations=itecount,
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
@@ -659,7 +828,7 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
-                langfuse_trace=langfuse,
+                include_fields=include_fields,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -679,7 +848,22 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
-                langfuse_trace=langfuse,
+            )
+            # 调用Agent的run方法，启用stream功能
+            await agent.run(text, chat_id)
+            await stream_manager.send_message(chat_id, await create_complete_event())
+        elif agentmodel == "browser-agent":
+            prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
+            agent = Agent(
+                tools=["browser_agent"],
+                instruction="",
+                stream_manager=stream_manager,
+                max_iterations=itecount,
+                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
+                model_name=model_name,
+                prompt_template=prompt_template,
+                role_type=TeamRole.GENERAL_AGENT,
+                conversation_id=conversation_id,
             )
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
@@ -699,6 +883,7 @@ async def process_agent(
                 "file_write",
                 "serper_search",
                 "web_crawler",
+                "weather_forecast",
             ]
             prompt_template = REACT_PROMPT
             # 获取基础工具集合 - 延迟初始化node_manager
@@ -712,7 +897,6 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
-                langfuse_trace=langfuse,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -729,33 +913,74 @@ async def process_agent(
             await team.stop()
 
 
-@observe(name="handle_user_input", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="handle_user_input", capture_input=True, capture_output=True
+)
 @app.post("/user_input")
 async def handle_user_input(
-    node_id: str = Body(...), value: Any = Body(...), chat_id: str = Body(...)
+    node_id: str = Body(...),
+    value: Any = Body(...),
+    chat_id: str = Body(...),
+    agent_id: str = Body(...),
 ):
-    """处理用户输入
+    """处理用户输入（使用 agent_id 进行过滤，优先精确匹配）
 
-    Args:
-        node_id: 需要用户输入的节点ID
-        value: 用户提供的输入值
-        chat_id: 聊天会话ID
-
-    Returns:
-        dict: 操作结果
+    行为：
+    - 从 ReactAgent 缓存中获取 chat_id 对应的 agent 列表
+    - 使用 agent_id 精确匹配目标 agent；若找到则向该 agent 发送输入
+    - 如果未找到匹配且仅存在一个 agent，则回退到该唯一 agent（向后兼容）
+    - 否则返回 400 错误提示未找到匹配 agent
     """
     try:
-        await ReactAgent.get_agents(chat_id)[0].set_user_input(node_id, value)
+        agents = ReactAgent.get_agents(chat_id)
+        if not agents:
+            raise HTTPException(
+                status_code=400, detail=f"No agents found for chat_id {chat_id}"
+            )
+
+        target_agent = None
+        # 尝试使用 agent_id 精确匹配
+        if agent_id:
+            for a in agents:
+                try:
+                    if (
+                        getattr(a, "agentcard", None)
+                        and getattr(a.agentcard, "agentid", None) == agent_id
+                    ):
+                        target_agent = a
+                        break
+                except Exception:
+                    continue
+
+        # 回退策略：若没有匹配且只有一个 agent，则使用该 agent（兼容旧行为）
+        if target_agent is None:
+            if len(agents) == 1:
+                target_agent = agents[0]
+                logger.info(
+                    f"[{chat_id}] agent_id {agent_id} 未命中，回退到唯一 agent {getattr(target_agent.agentcard, 'agentid', 'unknown')}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No matching agent for agent_id {agent_id} in chat {chat_id}",
+                )
+
+        await target_agent.set_user_input(node_id, value)
         return {"success": True, "message": "User input processed successfully"}
     except ValueError as ve:
-        # 处理输入验证错误
+        # 处理输入验证错误（例如没有等待的 user input）
         raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        # 重新抛出已知的 HTTPException
+        raise
     except Exception as e:
         logger.error(f"处理用户输入失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@observe(name="execute_workflow", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="execute_workflow", capture_input=True, capture_output=True
+)
 @app.post("/execute_workflow", response_model=ApiResponse)
 async def execute_workflow(request: WorkflowRequest):
     """
@@ -826,7 +1051,9 @@ if __name__ == "__main__":
 
 
 # 提供模型配置列表接口，供前端下拉使用
-@observe(name="list_models", capture_input=True, capture_output=True)
+@langfuse_wrapper.observe_decorator(
+    name="list_models", capture_input=True, capture_output=True
+)
 @app.get("/models")
 async def list_models():
     """返回 conf/models_config.yaml 中定义的模型名列表

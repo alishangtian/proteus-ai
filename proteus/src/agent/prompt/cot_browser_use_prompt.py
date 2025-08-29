@@ -5,7 +5,7 @@ COT_BROWSER_USE_PROMPT_TEMPLATES = """
 
 # 系统信息
 
-##当前时间 ${current_time}
+##当前时间 ${CURRENT_TIME}
 
 ##系统提示词
   ${instruction}
@@ -176,9 +176,6 @@ final_answer 或者 python_execute, serper_search, web_crawler, browser_agent, u
 
 ## 参考信息
 ${context}
-
-## 迭代历史
-${agent_scratchpad}
 
 # 开始解决用户问题吧，加油，你可以的
 

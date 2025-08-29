@@ -1,5 +1,4 @@
 from datetime import datetime
-from abc import ABC, abstractmethod
 import re
 from typing import List, Dict, Any
 import asyncio
@@ -11,6 +10,7 @@ import threading
 import json
 from string import Template
 from functools import wraps, lru_cache
+from types import SimpleNamespace
 from ..exception.action_bad import ActionBadException
 from ..api.llm_api import call_llm_api
 from ..api.events import (
@@ -24,14 +24,7 @@ from ..api.events import (
     create_agent_thinking_event,
     create_user_input_required_event,
 )
-from ..agent.prompt.deep_research.react_loop_prompt import REACT_LOOP_PROMPT
-from ..agent.prompt.deep_research.planner_react_loop_prompt import (
-    PLANNER_REACT_LOOP_PROMPT,
-)
-from ..manager.multi_agent_manager import get_multi_agent_manager
-from ..api.history_service import HistoryService
 from ..manager.mcp_manager import get_mcp_manager
-from .parse_xml import ParseXml
 from ..api.stream_manager import StreamManager
 from .base_agent import (
     AgentError,
@@ -46,8 +39,7 @@ from .base_agent import (
 )
 from ..manager.multi_agent_manager import TeamRole, AgentEvent
 from .terminition import TerminationCondition, StepLimitTerminationCondition
-from ..utils.redis_cache import RedisCache
-from .common.configuration import AgentConfiguration
+from ..utils.redis_cache import RedisCache, get_redis_connection
 from langfuse import observe
 
 logger = logging.getLogger(__name__)
@@ -113,7 +105,6 @@ class Agent:
         cache_size: int = 100,
         cache_ttl: int = 3600,
         stream_manager: StreamManager = None,
-        history_service: HistoryService = None,
         context: str = None,
         model_name: str = None,
         reasoner_model_name: str = None,
@@ -154,7 +145,6 @@ class Agent:
 
         self.stream_manager = stream_manager
         self.stopped = False
-        self.history_service = history_service
         self.mcp_manager = get_mcp_manager()
         self.context = context
         self.model_name = model_name
@@ -248,7 +238,7 @@ class Agent:
             List[ScratchpadItem]: 指定时间内最近size条的历史迭代信息，按时间戳升序排列（先发生的在前）
         """
         try:
-            redis_cache = RedisCache()
+            redis_cache = get_redis_connection()
             redis_key = f"conversation_history:{conversation_id}"
 
             # 计算过期时间戳
@@ -286,6 +276,8 @@ class Agent:
                         action=item_dict.get("action", ""),
                         observation=item_dict.get("observation", ""),
                         is_origin_query=item_dict.get("is_origin_query", False),
+                        tool_execution_id=item_dict.get("tool_execution_id", ""),
+                        role_type=item_dict.get("role_type", "") or "",
                     )
                     historical_items.append(scratchpad_item)
                 except (json.JSONDecodeError, Exception) as e:
@@ -335,7 +327,7 @@ class Agent:
 
         while retry_count <= max_retries:
             try:
-                redis_cache = RedisCache()
+                redis_cache = get_redis_connection()
                 redis_key = f"conversation_history:{conversation_id}"
                 current_timestamp = time.time()
 
@@ -402,7 +394,7 @@ class Agent:
             str: 格式化的对话历史记录字符串
         """
         try:
-            redis_cache = RedisCache()
+            redis_cache = get_redis_connection()
             redis_key = f"conversation_history:{conversation_id}"
 
             # 计算过期时间戳
@@ -467,9 +459,11 @@ class Agent:
             tool_names = ", ".join(self.tools.keys())
             tools_desc = []
 
-            for tool in self.tools.values():
-                # 直接使用工具的full_description，该描述已在node_config.py中按照新格式构建
-                tools_desc.append(tool.full_description)
+            # 按工具名称排序并为每个工具描述前添加序号，便于阅读
+            for i, tool in enumerate(
+                sorted(self.tools.values(), key=lambda x: x.name), 1
+            ):
+                tools_desc.append(f"{i}. {tool.full_description}")
 
             return "\n".join(tools_desc), tool_names
 
@@ -615,7 +609,12 @@ class Agent:
 
     @observe(name="wait_for_user_input", capture_input=True, capture_output=True)
     async def wait_for_user_input(
-        self, node_id: str, prompt: str, chat_id: str, input_type: str
+        self,
+        node_id: str,
+        prompt: str,
+        chat_id: str,
+        input_type: str,
+        agent_id: str = None,
     ) -> Any:
         """等待用户输入
 
@@ -623,13 +622,19 @@ class Agent:
             node_id: 节点ID
             prompt: 提示信息
             chat_id: 聊天会话ID
+            agent_id: 智能体ID（可选），用于在事件中标识来源agent
 
         Returns:
             Any: 用户输入值
         """
-        # 创建用户输入请求事件
+        # 创建用户输入请求事件，使用关键字参数明确传递，避免参数错位导致 agent_id 丢失
         if self.stream_manager:
-            event = await create_user_input_required_event(node_id, prompt, input_type)
+            event = await create_user_input_required_event(
+                node_id=node_id,
+                prompt=prompt,
+                input_type=input_type,
+                agent_id=agent_id,
+            )
             await self.stream_manager.send_message(chat_id, event)
 
         # 设置等待状态
@@ -659,22 +664,77 @@ class Agent:
 
     @observe(name="setup_event_subscriptions", capture_input=True, capture_output=True)
     async def setup_event_subscriptions(self, agentid: str) -> None:
-        """初始化事件订阅
-        Args:
-            agentid: 代理唯一ID
-        """
-        if self._is_subscribed:
+        """初始化事件订阅：直接监听 Redis 中属于该 agent 的队列 agent_queue:{agentid}"""
+        if getattr(self, "_is_subscribed", False):
             return
-
         try:
-            manager = get_multi_agent_manager()
-            # 订阅与自身role_type相同的事件
-            await manager.subscribe(agentid, self.role_type)
             self._is_subscribed = True
-            logger.info(f"Successfully subscribed to events for agent {agentid}")
+            # 启动后台监听任务（监听自己的 agent_queue）
+            loop = asyncio.get_running_loop()
+            self._agent_listener_task = loop.create_task(
+                self._listen_agent_queue(agentid)
+            )
+            logger.info(f"Agent {agentid} subscribed to agent_queue:{agentid}")
         except Exception as e:
-            logger.error(f"Failed to setup event subscriptions: {str(e)}")
+            logger.error(
+                f"Failed to setup event subscriptions for agent {agentid}: {str(e)}"
+            )
             raise
+
+    async def _listen_agent_queue(self, agentid: str):
+        """监听 Redis 中 agent_queue:{agentid}，将 JSON 事件恢复为本地调用（复用 _handle_event 逻辑）"""
+        redis_cache = RedisCache()
+        agent_key = f"agent_queue:{agentid}"
+        while not self.stopped:
+            try:
+                blpop_result = redis_cache.blpop([agent_key], timeout=1)
+                if not blpop_result:
+                    await asyncio.sleep(0.01)
+                    continue
+                key, value = blpop_result
+                if not key or not value:
+                    continue
+                try:
+                    event_dict = json.loads(value)
+                except Exception as e:
+                    logger.error(f"解析 agent_queue 事件 JSON 失败: {e} value={value}")
+                    continue
+
+                # 将 dict 转为带属性访问的对象，兼容 _handle_event 的预期结构
+                try:
+                    sender_role = event_dict.get("sender_role")
+                    try:
+                        sender_role_enum = (
+                            TeamRole(sender_role) if sender_role else None
+                        )
+                    except Exception:
+                        sender_role_enum = None
+                    try:
+                        role_type_enum = (
+                            TeamRole(event_dict.get("role_type"))
+                            if event_dict.get("role_type")
+                            else None
+                        )
+                    except Exception:
+                        role_type_enum = None
+
+                    event_obj = SimpleNamespace(
+                        priority=event_dict.get("priority", 1),
+                        chat_id=event_dict.get("chat_id"),
+                        event_id=event_dict.get("event_id", str(uuid.uuid4())),
+                        role_type=role_type_enum,
+                        sender_id=event_dict.get("sender_id"),
+                        sender_role=sender_role_enum,
+                        payload=event_dict.get("payload"),
+                        is_result=event_dict.get("is_result", False),
+                    )
+                    await self._handle_event(event_obj)
+                except Exception as e:
+                    logger.error(f"处理 agent_queue 事件失败: {e}", exc_info=True)
+
+            except Exception as e:
+                logger.error(f"agent_queue 监听循环异常: {e}", exc_info=True)
+                await asyncio.sleep(0.5)
 
     @observe(name="_handle_event", capture_input=True, capture_output=True)
     async def _handle_event(self, event: AgentEvent) -> None:
@@ -704,16 +764,25 @@ class Agent:
                         observation = event.payload.get("result")
                         thought = event.payload.get("metadata").get("origin_query")
                         self.scratchpad_items.append(
-                            ScratchpadItem(observation=observation, thought=thought)
+                            ScratchpadItem(
+                                observation=observation,
+                                thought=thought,
+                                tool_execution_id="",
+                                role_type=(
+                                    event.sender_role.value
+                                    if hasattr(event.sender_role, "value")
+                                    else str(event.sender_role)
+                                ),
+                            )
                         )
-                    # 执行任务并获取结果
-                    result = await self.run(
-                        query=None,
-                        chat_id=event.chat_id,
-                        stream=True,
-                        is_result=event.is_result,
-                        context=event.payload.get("context"),
-                    )
+                        # 执行任务并获取结果
+                        result = await self.run(
+                            query=None,
+                            chat_id=event.chat_id,
+                            stream=True,
+                            is_result=event.is_result,
+                            context=event.payload.get("context"),
+                        )
                 else:
                     # 清空agent上下文，包括scratchpad_items和cache信息
                     self.clear_context()
@@ -732,18 +801,27 @@ class Agent:
 
                 # 当原始事件的is_result为false且result不为none时发送handoff事件，发送结果给父级代理
                 if result is not None and event.is_result == False:
-                    manager = get_multi_agent_manager()
                     origin_query = (
-                        event.payload.get("task")
+                        event.payload.get("task", "")
                         + "\n"
-                        + event.payload.get("description")
+                        + event.payload.get("description", "")
                     )
-                    handoff_event = manager.create_event(
-                        chat_id=event.chat_id,
-                        role_type=event.sender_role,
-                        sender_id=self.agentcard.agentid,
-                        sender_role=self.role_type,
-                        payload={
+                    handoff_event = {
+                        "chat_id": event.chat_id,
+                        "priority": 0,
+                        "event_id": str(uuid.uuid4()),
+                        "role_type": (
+                            event.sender_role.value
+                            if hasattr(event.sender_role, "value")
+                            else str(event.sender_role)
+                        ),
+                        "sender_id": self.agentcard.agentid,
+                        "sender_role": (
+                            self.role_type.value
+                            if hasattr(self.role_type, "value")
+                            else str(self.role_type)
+                        ),
+                        "payload": {
                             "result": result,
                             "metadata": {
                                 "agent_id": self.agentcard.agentid,
@@ -752,14 +830,35 @@ class Agent:
                                 "origin_query": origin_query,
                             },
                         },
-                        priority=0,  # 高优先级
-                        is_result=True,
-                    )
-                    await manager.publish_event(handoff_event)
-                    logger.info(
-                        f"Handoff event sent to {event.sender_id} "
-                        f"(original event: {event.event_id})"
-                    )
+                        "is_result": True,
+                    }
+                    try:
+                        redis_cache = RedisCache()
+                        if event.sender_id:
+                            redis_cache.rpush(
+                                f"agent_queue:{event.sender_id}",
+                                json.dumps(handoff_event, ensure_ascii=False),
+                            )
+                            logger.info(
+                                f"Handoff event sent to agent_queue:{event.sender_id} (original event: {event.event_id})"
+                            )
+                        else:
+                            # 如果没有指定sender_id，则尝试将结果发送给对应角色的所有agent
+                            role_agents_key = f"role_agents:{event.sender_role.value if hasattr(event.sender_role,'value') else str(event.sender_role)}"
+                            agent_ids = redis_cache.lrange(role_agents_key, 0, -1) or []
+                            for aid in agent_ids:
+                                try:
+                                    redis_cache.rpush(
+                                        f"agent_queue:{aid}",
+                                        json.dumps(handoff_event, ensure_ascii=False),
+                                    )
+                                except Exception as e:
+                                    logger.error(
+                                        f"向 agent_queue:{aid} 推送 handoff 失败: {e}",
+                                        exc_info=True,
+                                    )
+                    except Exception as e:
+                        logger.error(f"发送 handoff 事件失败: {e}", exc_info=True)
         except Exception as e:
             logger.error(f"Error handling event {event.event_id}: {str(e)}")
             if self.stream_manager and hasattr(event, "sender_id"):
@@ -788,12 +887,15 @@ class Agent:
             origin_query_item = ScratchpadItem(
                 is_origin_query=True,
                 thought=query,
+                tool_execution_id="",
+                role_type=(
+                    self.role_type.value
+                    if hasattr(self.role_type, "value")
+                    else str(self.role_type)
+                ),
             )
             self.scratchpad_items.append(origin_query_item)
-            if self.conversation_id:
-                self._save_scratchpad_item_to_redis(
-                    self.conversation_id, origin_query_item
-                )
+            # 注意：agent.py不直接保存到Redis，统一由React Agent负责
 
     @observe(name="_execute_tool", capture_input=True, capture_output=True)
     async def _execute_tool(
@@ -850,6 +952,12 @@ class Agent:
                 origin_query_item = ScratchpadItem(
                     is_origin_query=True,
                     thought=query,
+                    tool_execution_id="",
+                    role_type=(
+                        self.role_type.value
+                        if hasattr(self.role_type, "value")
+                        else str(self.role_type)
+                    ),
                 )
                 self.scratchpad_items.append(origin_query_item)
 
@@ -1053,7 +1161,15 @@ class Agent:
 
                     # 将当前迭代的思考和执行过程保存为ScratchpadItem对象
                     scratchpad_item = ScratchpadItem(
-                        thought=thought, action=action, observation=observation
+                        thought=thought,
+                        action=action,
+                        observation=observation,
+                        tool_execution_id="",
+                        role_type=(
+                            self.role_type.value
+                            if hasattr(self.role_type, "value")
+                            else str(self.role_type)
+                        ),
                     )
                     self.scratchpad_items.append(scratchpad_item)
                     observations.append(observation)
@@ -1073,7 +1189,15 @@ class Agent:
                     logger.error(f"[{chat_id}] {error_msg}")
                     # 错误情况下添加一个错误项
                     error_item = ScratchpadItem(
-                        thought=error_msg, action="", observation=error_msg
+                        thought=error_msg,
+                        action="",
+                        observation=error_msg,
+                        tool_execution_id="",
+                        role_type=(
+                            self.role_type.value
+                            if hasattr(self.role_type, "value")
+                            else str(self.role_type)
+                        ),
                     )
                     self.scratchpad_items.append(error_item)
                     await asyncio.sleep(self.iteration_retry_delay)
@@ -1114,17 +1238,38 @@ class Agent:
                 event = await create_agent_error_event(error_msg)
                 await self.stream_manager.send_message(chat_id, event)
 
-            # 发布错误事件
-            manager = get_multi_agent_manager()
-            error_event = manager.create_event(
-                chat_id=chat_id,
-                role_type=TeamRole.COORDINATOR,
-                sender_id=self.agentcard.agentid,
-                sender_role=self.role_type,
-                priority=1,
-                payload={"error": error_msg},
-            )
-            await manager.publish_event(error_event)
+            # 发布错误事件 -> 直接写入 COORDINATOR 角色对应的 agent 列表的 agent_queue
+            try:
+                redis_cache = RedisCache()
+                role_key = f"role_agents:{TeamRole.COORDINATOR.value}"
+                agent_ids = redis_cache.lrange(role_key, 0, -1) or []
+                error_event = {
+                    "chat_id": chat_id,
+                    "priority": 1,
+                    "event_id": str(uuid.uuid4()),
+                    "role_type": TeamRole.COORDINATOR.value,
+                    "sender_id": self.agentcard.agentid,
+                    "sender_role": (
+                        self.role_type.value
+                        if hasattr(self.role_type, "value")
+                        else str(self.role_type)
+                    ),
+                    "payload": {"error": error_msg},
+                    "is_result": False,
+                }
+                for aid in agent_ids:
+                    try:
+                        redis_cache.rpush(
+                            f"agent_queue:{aid}",
+                            json.dumps(error_event, ensure_ascii=False),
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"向 agent_queue:{aid} 推送 error_event 失败: {e}",
+                            exc_info=True,
+                        )
+            except Exception as e:
+                logger.error(f"发布错误事件失败: {e}", exc_info=True)
             raise
         finally:
             try:

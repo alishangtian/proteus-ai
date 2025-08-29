@@ -195,6 +195,7 @@ async def create_user_input_required_event(
     prompt: str,
     input_type: str = "text",
     default_value: Any = None,
+    agent_id: str = None,
     validation: Dict[str, Any] = None,
 ) -> Dict:
     """创建用户输入请求事件
@@ -217,6 +218,7 @@ async def create_user_input_required_event(
             "input_type": input_type,
             "default_value": default_value,
             "validation": validation or {},
+            "agent_id": agent_id,
             "timestamp": time.time(),
         },
     )

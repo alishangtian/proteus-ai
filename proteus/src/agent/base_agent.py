@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Union, Callable, TypeVar, Generic
+from enum import Enum
 from dataclasses import dataclass, field
 import time
 import uuid
@@ -154,13 +155,23 @@ class AgentCard:
 
 
 @dataclass
+class IncludeFields(str, Enum):
+    """可包含在 prompt 中的字段"""
+
+    THOUGHT = "thought"
+    ACTION = "action"
+    ACTION_INPUT = "action_input"
+    OBSERVATION = "observation"
+
+
+@dataclass
 class ScratchpadItem:
     """表示Agent思考和执行过程的一个步骤
 
-    新增:
+    包含:
         action_input: 可选的动作参数（字符串），当长度超过200时会被截断为前200字符
-        summary: 工具执行结果的摘要
         tool_execution_id: 工具执行的唯一标识符
+        role_type: 可选，记录该条scratchpad所属的角色（用于多角色场景的过滤）
     """
 
     thought: str = ""
@@ -168,8 +179,8 @@ class ScratchpadItem:
     observation: str = ""
     action_input: str = ""
     is_origin_query: bool = False
-    summary: str = ""
     tool_execution_id: str = ""
+    role_type: str = ""
 
     def __post_init__(self):
         # 确保 action_input 为字符串并限制长度不超过200
@@ -183,6 +194,15 @@ class ScratchpadItem:
         if len(self.action_input) > 200:
             self.action_input = self.action_input[:200]
 
+        # 确保 role_type 为字符串
+        try:
+            if self.role_type is None:
+                self.role_type = ""
+            else:
+                self.role_type = str(self.role_type)
+        except Exception:
+            self.role_type = ""
+
     def to_dict(self) -> Dict[str, str]:
         """将对象转换为字典"""
         return {
@@ -191,8 +211,8 @@ class ScratchpadItem:
             "observation": self.observation,
             "action_input": self.action_input,
             "is_origin_query": self.is_origin_query,
-            "summary": self.summary,
             "tool_execution_id": self.tool_execution_id,
+            "role_type": self.role_type,
         }
 
     def to_string(self, index: int = None) -> str:
@@ -215,34 +235,43 @@ class ScratchpadItem:
         else:
             return f"思考: {self.thought}\n动作: {self.action}{param_display}\n观察: {formatted_observation}\n"
 
-    def to_react_context(self, index: int = None, use_summary: bool = False) -> str:
+    def to_react_context(
+        self,
+        index: int = None,
+        use_summary: bool = False,
+        include_fields: List[IncludeFields] = None,
+    ) -> str:
         """将对象转换为字符串表示，以紧凑的Markdown格式
 
         Args:
             index: 步骤索引
-            use_summary: 是否使用摘要替代完整的observation
+            use_summary: 保留参数向后兼容，但始终使用完整的observation
+            include_fields: 要包含的字段列表，例如 [IncludeFields.THOUGHT, IncludeFields.ACTION, IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
+                            如果为 None，则包含所有字段。
         """
-        # 当使用摘要且摘要存在时，使用摘要；否则使用完整的observation
-        observation_content = (
-            self.summary if (use_summary and self.summary) else self.observation
-        )
-        formatted_observation = self._format_markdown_observation(observation_content)
-        action_input = (
-            f"Action Input : {self.action_input}" if self.action_input else ""
-        )
+        if include_fields is None:
+            include_fields = [
+                IncludeFields.THOUGHT,
+                IncludeFields.ACTION,
+                IncludeFields.ACTION_INPUT,
+                IncludeFields.OBSERVATION,
+            ]
 
-        # 如果使用摘要且有工具执行ID，则在观察结果中添加ID信息和摘要标记
-        observation_with_metadata = formatted_observation
-        if use_summary and self.tool_execution_id and self.summary:
-            observation_with_metadata = (
-                f"[摘要] (工具执行ID: {self.tool_execution_id}) {formatted_observation}"
-            )
-        elif self.tool_execution_id:
-            observation_with_metadata = (
-                f"(工具执行ID: {self.tool_execution_id}) {formatted_observation}"
-            )
+        parts = []
+        if IncludeFields.THOUGHT in include_fields and self.thought:
+            parts.append(f"Thought :{self.thought}")
 
-        return f"Thought : {self.thought}\nAction : {self.action}\n{action_input}\nObservation : {observation_with_metadata}\n"
+        if IncludeFields.ACTION in include_fields and self.action:
+            parts.append(f"Action :{self.action}")
+
+        if IncludeFields.ACTION_INPUT in include_fields and self.action_input:
+            parts.append(f"Action Input :{self.action_input}")
+
+        if IncludeFields.OBSERVATION in include_fields and self.observation:
+            formatted_observation = self._format_markdown_observation(self.observation)
+            parts.append(f"Observation :\n    {formatted_observation}")
+
+        return "\n".join(parts) + "\n" if parts else ""
 
     def _format_markdown_observation(self, text: str) -> str:
         """格式化markdown格式的observation内容

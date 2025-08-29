@@ -11,7 +11,7 @@ from .base import BaseNode
 from .web_crawler_local import SeleniumWebCrawlerNode
 from ..api.config import API_CONFIG
 from ..api.llm_api import call_llm_api
-from ..utils.redis_cache import RedisCache
+from ..utils.redis_cache import RedisCache, get_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +223,7 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="deepseek-chat",
+                        model_name="gpt-5-nano",
                     )
                 else:
                     text = await call_llm_api(
@@ -241,17 +241,17 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="deepseek-chat",
+                        model_name="gpt-5-nano",
                     )
 
             end_time = time.time()
             execution_time = end_time - start_time
-            content_length = len(text)
+            content_length = len(text[0])
             logger.info(
                 f"爬取成功: {url}, 内容长度: {content_length} 字符, 耗时: {execution_time:.2f} 秒"
             )
 
-            return {"success": True, "error": None, "content": text}
+            return {"success": True, "error": None, "content": text[0]}
 
         except requests.Timeout:
             end_time = time.time()

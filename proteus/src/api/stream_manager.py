@@ -5,7 +5,7 @@ import json
 from typing import Dict, Optional, AsyncGenerator, List
 from datetime import datetime
 import logging
-from src.utils.redis_cache import RedisCache
+from src.utils.redis_cache import RedisCache, get_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ class StreamManager:
         # 按照原始顺序发送消息(redis lrange返回顺序与原始插入顺序相反)
         for msg in reversed(messages):
             await self.send_message(chat_id, json.loads(msg), True)
-            await asyncio.sleep(0.1) 
+            await asyncio.sleep(0.1)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题

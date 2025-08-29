@@ -180,9 +180,11 @@ class AgentEngine:
             tool_names = ", ".join(self.tools.keys())
             tools_desc = []
 
-            for tool in self.tools.values():
-                # 直接使用工具的full_description，该描述已在node_config.py中按照新格式构建
-                tools_desc.append(tool.full_description)
+            # 按工具名称排序并为每个工具描述前添加序号，便于阅读
+            for i, tool in enumerate(
+                sorted(self.tools.values(), key=lambda x: x.name), 1
+            ):
+                tools_desc.append(f"{i}. {tool.full_description}")
 
             return "\n".join(tools_desc), tool_names
 
@@ -486,7 +488,11 @@ class AgentEngine:
 
         # 将当前迭代的思考和执行过程保存为ScratchpadItem对象
         scratchpad_item = ScratchpadItem(
-            thought=thought, action=action, observation=observation
+            thought=thought,
+            action=action,
+            observation=observation,
+            tool_execution_id="",
+            role_type="",
         )
         return None, scratchpad_item, observation
 
@@ -505,7 +511,12 @@ class AgentEngine:
             raise ValueError(f"No pending user input request for node {node_id}")
 
     async def wait_for_user_input(
-        self, node_id: str, prompt: str, chat_id: str, input_type: str
+        self,
+        node_id: str,
+        prompt: str,
+        chat_id: str,
+        input_type: str,
+        agent_id: str = None,
     ) -> Any:
         """等待用户输入
 
@@ -513,13 +524,19 @@ class AgentEngine:
             node_id: 节点ID
             prompt: 提示信息
             chat_id: 聊天会话ID
+            agent_id: 智能体ID（可选），用于在事件中标识来源agent
 
         Returns:
             Any: 用户输入值
         """
-        # 创建用户输入请求事件
+        # 创建用户输入请求事件，使用关键字参数明确传递，确保 agent_id 不会被位置参数错位丢失
         if self.stream_manager:
-            event = await create_user_input_required_event(node_id, prompt, input_type)
+            event = await create_user_input_required_event(
+                node_id=node_id,
+                prompt=prompt,
+                input_type=input_type,
+                agent_id=agent_id,
+            )
             await self.stream_manager.send_message(chat_id, event)
 
         # 设置等待状态
@@ -620,7 +637,11 @@ class AgentEngine:
                     logger.error(f"[{chat_id}] {error_msg}")
                     # 错误情况下添加一个错误项
                     error_item = ScratchpadItem(
-                        thought=error_msg, action="", observation=error_msg
+                        thought=error_msg,
+                        action="",
+                        observation=error_msg,
+                        tool_execution_id="",
+                        role_type="",
                     )
                     scratchpad_items.append(error_item)
                     await asyncio.sleep(self.iteration_retry_delay)

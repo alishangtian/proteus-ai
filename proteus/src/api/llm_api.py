@@ -42,7 +42,6 @@ async def call_llm_api(
     temperature: float = 0.1,
     output_json: bool = False,
     model_name: str = None,
-    lang_context_model: str = None,
 ) -> Tuple[str, Dict]:
     """
     调用llm API服务，支持自动重试
@@ -76,11 +75,25 @@ async def call_llm_api(
     except Exception as e:
         logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
-    # Use same optimized session configuration as streaming
-    conn = aiohttp.TCPConnector()
-    client_timeout = aiohttp.ClientTimeout(total=120)
+    # 优化连接配置，提高稳定性
+    conn = aiohttp.TCPConnector(
+        limit=10,  # 连接池大小
+        limit_per_host=5,  # 每个主机的连接数
+        ttl_dns_cache=300,  # DNS缓存时间
+        use_dns_cache=True,
+        keepalive_timeout=30,  # 保持连接时间
+        enable_cleanup_closed=True,  # 自动清理关闭的连接
+    )
+    client_timeout = aiohttp.ClientTimeout(
+        total=120,  # 总超时时间
+        connect=10,  # 连接超时时间
+        sock_read=60,  # 读取超时时间
+    )
     async with aiohttp.ClientSession(
-        connector=conn, timeout=client_timeout, read_bufsize=2**17  # 128KB buffer size
+        connector=conn,
+        timeout=client_timeout,
+        read_bufsize=2**17,  # 128KB buffer size
+        headers={"Connection": "keep-alive"},  # 保持连接
     ) as session:
         # 根据模型类型构建不同请求
         if model_type == "gemini":
@@ -124,7 +137,6 @@ async def call_llm_api(
                 url,
                 headers=headers,
                 json=data,
-                chunked=True,
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
@@ -156,6 +168,24 @@ async def call_llm_api(
             error_msg = "API调用超时"
             logger.error(f"[{request_id}] {error_msg}")
             raise ValueError(error_msg)
+        except aiohttp.ClientConnectionError as e:
+            error_msg = f"连接错误: {str(e)}"
+            logger.error(f"[{request_id}] {error_msg}")
+            raise ConnectionError(error_msg)
+        except aiohttp.ServerDisconnectedError as e:
+            error_msg = f"服务器连接中断: {str(e)}"
+            logger.error(f"[{request_id}] {error_msg}")
+            raise ConnectionError(error_msg)
+        except aiohttp.ClientError as e:
+            error_msg = f"客户端错误: {str(e)}"
+            logger.error(f"[{request_id}] {error_msg}")
+            raise ConnectionError(error_msg)
         except Exception as e:
             logger.error(f"[{request_id}] API调用异常: {str(e)}")
+            # 对于网络相关的异常，转换为ConnectionError以便重试
+            if any(
+                keyword in str(e).lower()
+                for keyword in ["disconnected", "connection", "network", "timeout"]
+            ):
+                raise ConnectionError(f"网络连接异常: {str(e)}")
             raise

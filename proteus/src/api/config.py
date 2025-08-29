@@ -5,6 +5,7 @@
 
 import os
 import time
+import asyncio
 from functools import wraps
 from typing import Any, Callable, Dict, TypeVar, Optional
 from pydantic import BaseModel, Field
@@ -115,25 +116,61 @@ def retry_on_error(
         async def wrapper(*args: Any, **kwargs: Any) -> T:
             retries = max_retries or API_CONFIG["max_retries"]
             last_error = None
+            base_sleep = sleep or 1.0
 
             for attempt in range(retries):
                 try:
                     return await func(*args, **kwargs)
                 except exceptions as e:
                     last_error = e
+
+                    # 判断错误类型，决定是否值得重试
+                    error_str = str(e).lower()
+                    is_retryable = any(
+                        keyword in error_str
+                        for keyword in [
+                            "server disconnected",
+                            "connection",
+                            "network",
+                            "timeout",
+                            "temporary failure",
+                            "service unavailable",
+                            "bad gateway",
+                            "gateway timeout",
+                            "too many requests",
+                        ]
+                    )
+
                     if logger:
-                        logger.error(
-                            f"第{attempt + 1}次重试失败: {str(e)}, "
-                            f"剩余重试次数: {retries - attempt - 1}"
-                        )
+                        if is_retryable:
+                            logger.warning(
+                                f"第{attempt + 1}次重试失败 (可重试错误): {str(e)}, "
+                                f"剩余重试次数: {retries - attempt - 1}"
+                            )
+                        else:
+                            logger.error(
+                                f"第{attempt + 1}次重试失败 (不可重试错误): {str(e)}, "
+                                f"剩余重试次数: {retries - attempt - 1}"
+                            )
+
                     if attempt == retries - 1:
                         if logger:
                             logger.error(
                                 f"达到最大重试次数({retries}), 最后错误: {str(e)}"
                             )
                         raise last_error
-                    if sleep is not None:
-                        time.sleep(sleep)
+
+                    # 对于网络相关错误，使用指数退避策略
+                    if is_retryable:
+                        sleep_time = base_sleep * (2**attempt)  # 指数退避
+                        sleep_time = min(sleep_time, 30)  # 最大等待30秒
+                        if logger:
+                            logger.info(f"等待 {sleep_time:.1f} 秒后重试...")
+                        await asyncio.sleep(sleep_time)
+                    else:
+                        # 非网络错误，短暂等待后重试
+                        await asyncio.sleep(base_sleep)
+
             return None  # 类型检查需要
 
         return wrapper

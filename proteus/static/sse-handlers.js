@@ -137,12 +137,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             const workflow = JSON.parse(event.data);
             const workflowDiv = document.createElement('div');
             workflowDiv.className = 'workflow-info collapsed';
+            // 使用 Markdown 渲染工作流 JSON，便于美观显示并支持折叠样式
+            const workflowMd = "```json\n" + JSON.stringify(workflow, null, 2) + "\n```";
             workflowDiv.innerHTML = `
                 <div class="workflow-header">
                     <span>工作流已生成: ${(workflow.nodes && workflow.nodes.length) || 0} 个节点</span>
                 </div>
                 <div class="workflow-content">
-                    <pre>${JSON.stringify(workflow, null, 2)}</pre>
+                    ${marked.parse(workflowMd)}
                 </div>
             `;
             if (answerElement) {
@@ -265,21 +267,22 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             `;
             switch (data.input_type) {
                 case 'geolocation':
+                    // 将 agent_id 放到隐藏 input 的 dataset 中，便于 submitUserInput 从 input 上读取到 agent_id
                     inputHtml += `
                         <div class="geolocation-input" style="display:none">
-                            <input type="hidden" class="input-field" id="user-input-${data.node_id}">
+                            <input type="hidden" class="input-field" id="user-input-${data.node_id}" ${data.agent_id ? `data-agent-id="${data.agent_id}"` : ''}>
                             <div class="geolocation-status">正在获取位置信息...</div>
                         </div>
                     `;
                     setTimeout(() => {
                         // submitUserInput 在 main.js 中，触发它需要 main.js 将函数传入 ctx（可选）
-                        if (typeof ctx.submitUserInput === 'function') ctx.submitUserInput(data.node_id, 'geolocation');
+                        if (typeof ctx.submitUserInput === 'function') ctx.submitUserInput(data.node_id, 'geolocation', data.prompt, data.agent_id);
                     }, 100);
                     break;
                 case 'local_browser':
                     inputHtml += `
                         <div class="local-browser-input">
-                            <input type="number" class="input-field" id="user-input-${data.node_id}"
+                            <input type="number" class="input-field" id="user-input-${data.node_id}" ${data.agent_id ? `data-agent-id="${data.agent_id}"` : ''}
                                 placeholder="输入本地浏览器应用端口号"
                                 min="1024"
                                 max="65535"
@@ -290,7 +293,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     break;
                 case 'password':
                     inputHtml += `
-                        <input type="password" class="input-field" id="user-input-${data.node_id}"
+                        <input type="password" class="input-field" id="user-input-${data.node_id}" ${data.agent_id ? `data-agent-id="${data.agent_id}"` : ''}
                             value="${data.default_value || ''}"
                             ${data.validation && data.validation.required ? 'required' : ''}
                             ${data.validation && data.validation.pattern ? `pattern="${data.validation.pattern}"` : ''}
@@ -301,7 +304,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     break;
                 default:
                     inputHtml += `
-                        <input type="text" class="input-field" id="user-input-${data.node_id}"
+                        <input type="text" class="input-field" id="user-input-${data.node_id}" ${data.agent_id ? `data-agent-id="${data.agent_id}"` : ''}
                             value="${data.default_value || ''}"
                             ${data.validation && data.validation.required ? 'required' : ''}
                             ${data.validation && data.validation.pattern ? `pattern="${data.validation.pattern}"` : ''}
@@ -311,8 +314,9 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     `;
             }
 
+            // 将 agent_id 放到 submit 按钮的 dataset 中，便于前端提交时回传
             inputHtml += `
-                    <button class="submit-input" data-node-id="${data.node_id}" data-input-type="${data.input_type}" data-prompt="${data.prompt}">提交</button>
+                    <button class="submit-input" data-node-id="${data.node_id}" data-input-type="${data.input_type}" data-prompt="${data.prompt}" ${data.agent_id ? `data-agent-id="${data.agent_id}"` : ''}>提交</button>
                 </div>
             `;
 
@@ -326,7 +330,9 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         const nodeId = submitButton.getAttribute('data-node-id');
                         const inputType = submitButton.getAttribute('data-input-type');
                         const prompt = submitButton.getAttribute('data-prompt');
-                        ctx.submitUserInput(nodeId, inputType, prompt);
+                        // 优先从按钮 dataset 读取 agentId，fallback 使用事件 data.agent_id（如果存在）
+                        const agentId = submitButton.dataset && submitButton.dataset.agentId ? submitButton.dataset.agentId : (data.agent_id || undefined);
+                        ctx.submitUserInput(nodeId, inputType, prompt, agentId);
                     }
                 });
             }
@@ -442,6 +448,9 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         `;
                     }
                     if (detailsContent) {
+                        // 将参数和结果通过 Markdown 渲染，提升可读性（JSON 使用 code fence）
+                        const paramsMd = "```json\n" + JSON.stringify(execution.input, null, 2) + "\n```";
+                        const renderedParams = marked.parse(paramsMd);
                         detailsContent.innerHTML = `
                             <div class="tool-params-section">
                                 <div class="tool-param">
@@ -450,7 +459,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 </div>
                                 <div class="tool-param">
                                     <div class="tool-param-label">参数</div>
-                                    <div class="tool-param-value"><pre>${JSON.stringify(execution.input, null, 2)}</pre></div>
+                                    <div class="tool-param-value">${renderedParams}</div>
                                 </div>
                             </div>
                             <div class="tool-result-section">
@@ -510,9 +519,16 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 }
                 const detailsEl = actionGroup.querySelector('.tool-details');
                 if (detailsEl) {
+                    // 使用 Markdown 渲染结果（若为字符串则将其视为 Markdown，否则以 JSON code fence 展示）
+                    let renderedResult = '';
+                    if (typeof data.result === 'string') {
+                        renderedResult = marked.parse(data.result);
+                    } else {
+                        renderedResult = marked.parse("```json\n" + JSON.stringify(data.result, null, 2) + "\n```");
+                    }
                     detailsEl.innerHTML = `
                         <div class="tool-result">
-                            <pre>${typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)}</pre>
+                            ${renderedResult}
                         </div>
                         <div class="tool-metrics">
                             <div>执行时间: ${toolExecutions[actionId]?.duration || 0}ms</div>
@@ -527,7 +543,12 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 if (detailsContent) {
                     const resultValue = detailsContent.querySelector('.result-value');
                     if (resultValue) {
-                        resultValue.innerHTML = `<pre>${typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2)}</pre>`;
+                        // 同上：优先当作 Markdown 渲染字符串，否则以 json code fence 渲染
+                        if (typeof data.result === 'string') {
+                            resultValue.innerHTML = marked.parse(data.result);
+                        } else {
+                            resultValue.innerHTML = marked.parse("```json\n" + JSON.stringify(data.result, null, 2) + "\n```");
+                        }
                     }
                 }
             }

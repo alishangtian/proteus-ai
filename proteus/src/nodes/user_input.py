@@ -4,11 +4,14 @@
 支持同步和异步操作模式，可以通过普通执行或Agent执行两种方式获取用户输入。
 """
 
+import logging
 from typing import Any, Dict
 from .base import BaseNode
 from ..core.enums import NodeStatus
 from ..agent.agent_engine import AgentEngine
 from ..api.events import create_user_input_required_event
+
+logger = logging.getLogger(__name__)
 
 
 class UserInputNode(BaseNode):
@@ -91,13 +94,16 @@ class UserInputNode(BaseNode):
             node_id = params["node_id"]
             prompt = params["prompt"]
             input_type = params["input_type"]
+            agent_id = params["agent_id"]
             agent = params["agent"]
             if not agent:
                 raise ValueError("No active agent found")
 
+            logger.info(f"Waiting for user input from agent {agent_id}")
+
             # 等待用户输入
             value = await agent.wait_for_user_input(
-                node_id, prompt, chat_id, input_type
+                node_id, prompt, chat_id, input_type, agent_id
             )
 
             return {"result": value}

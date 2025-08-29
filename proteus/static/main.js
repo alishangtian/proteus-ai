@@ -44,9 +44,12 @@ let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
 const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
 // 提交用户输入的全局函数
-async function submitUserInput(nodeId, inputType, prompt) {
+async function submitUserInput(nodeId, inputType, prompt, agentId = undefined) {
     const inputField = document.getElementById(`user-input-${nodeId}`);
     if (!inputField) return;
+
+    // 尝试获取同层的 submit 按钮（用于读取 data-agent-id 作为回退）
+    let submitButton = inputField.parentElement ? inputField.parentElement.querySelector('.submit-input') : null;
 
     let value = inputField.value;
     if (!currentChatId) {
@@ -57,6 +60,25 @@ async function submitUserInput(nodeId, inputType, prompt) {
         inputField.parentElement.appendChild(errorDiv);
         return;
     }
+
+    // 辅助：构建要发送的 payload（会在发送处使用）
+    const buildPayload = (node_id, val) => {
+        const payload = {
+            node_id,
+            value: val,
+            chat_id: currentChatId
+        };
+        // 优先使用显式传入的 agentId，其次尝试从 inputField 的 dataset 中读取，再尝试 submitButton 的 dataset
+        // 注意：显式传入的 agentId 可能为 '' 或 0 等，只有当其不为 null/undefined 时视为有效（以避免无意忽略显式值）
+        if (agentId !== undefined && agentId !== null) {
+            payload.agent_id = agentId;
+        } else if (inputField && inputField.dataset && inputField.dataset.agentId) {
+            payload.agent_id = inputField.dataset.agentId;
+        } else if (submitButton && submitButton.dataset && submitButton.dataset.agentId) {
+            payload.agent_id = submitButton.dataset.agentId;
+        }
+        return payload;
+    };
 
     // 根据输入类型转换值
     try {
@@ -74,7 +96,6 @@ async function submitUserInput(nodeId, inputType, prompt) {
             case 'local_browser':
                 // 对于 local_browser 类型，发送请求到本地服务
                 const port = value;
-                const submitButton = inputField.parentElement.querySelector('.submit-input');
 
                 // 立即禁用输入框和提交按钮
                 inputField.disabled = true;
@@ -98,17 +119,13 @@ async function submitUserInput(nodeId, inputType, prompt) {
                     }
                     const browser_result = await response.json();
                     console.log(browser_result);
-                    // 发送结果到后端
+                    // 发送结果到后端（包含 agent_id 如果可用）
                     fetch('/user_input', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({
-                            node_id: nodeId,
-                            value: browser_result['result'],
-                            chat_id: currentChatId
-                        })
+                        body: JSON.stringify(buildPayload(nodeId, browser_result['result']))
                     }).then(response => {
                         if (!response.ok) {
                             throw new Error('提交失败');
@@ -150,7 +167,6 @@ async function submitUserInput(nodeId, inputType, prompt) {
                     }
                     return;
                 }
-                break;
             case 'geolocation':
                 // 对于 geolocation 类型，自动获取位置信息
                 if (navigator.geolocation) {
@@ -192,35 +208,31 @@ async function submitUserInput(nodeId, inputType, prompt) {
                                         </div>
                                     `;
                                     // 移除提交按钮
-                                    const submitButton = container.nextElementSibling;
-                                    if (submitButton) {
-                                        submitButton.remove();
+                                    const submitButtonEl = container.nextElementSibling;
+                                    if (submitButtonEl) {
+                                        submitButtonEl.remove();
                                     }
                                 }
                             }
 
-                            // 自动发送位置数据到后端
+                            // 自动发送位置数据到后端（包含 agent_id 如果可用）
                             fetch('/user_input', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
                                 },
-                                body: JSON.stringify({
-                                    node_id: nodeId,
-                                    value: locationData,
-                                    chat_id: currentChatId
-                                })
+                                body: JSON.stringify(buildPayload(nodeId, locationData))
                             }).then(response => {
                                 if (!response.ok) {
                                     throw new Error('提交失败');
                                 }
                                 // 提交成功后禁用输入框和提交按钮
                                 inputField.disabled = true;
-                                const submitButton = inputField.parentElement.querySelector('.submit-input');
-                                if (submitButton) {
-                                    submitButton.disabled = true;
-                                    submitButton.classList.add('submitted');
-                                    submitButton.textContent = '已提交';
+                                const submitBtn = inputField.parentElement.querySelector('.submit-input');
+                                if (submitBtn) {
+                                    submitBtn.disabled = true;
+                                    submitBtn.classList.add('submitted');
+                                    submitBtn.textContent = '已提交';
                                 }
                             }).catch(error => {
                                 console.error('提交位置信息失败:', error);
@@ -242,29 +254,26 @@ async function submitUserInput(nodeId, inputType, prompt) {
                 } else {
                     throw new Error('浏览器不支持地理位置功能');
                 }
+            default:
                 break;
         }
 
-        // 发送用户输入到后端
+        // 发送用户输入到后端（包含 agent_id 如果可用）
         fetch('/user_input', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                node_id: nodeId,
-                value: value,
-                chat_id: currentChatId
-            })
+            body: JSON.stringify(buildPayload(nodeId, value))
         }).then(response => {
             if (!response.ok) {
                 throw new Error('提交失败');
             }
             // 提交成功后禁用输入框和提交按钮
             inputField.disabled = true;
-            const submitButton = inputField.parentElement.querySelector('.submit-input');
-            if (submitButton) {
-                submitButton.disabled = true;
+            const submitBtn = inputField.parentElement.querySelector('.submit-input');
+            if (submitBtn) {
+                submitBtn.disabled = true;
             }
         }).catch(error => {
             console.error('提交用户输入失败:', error);

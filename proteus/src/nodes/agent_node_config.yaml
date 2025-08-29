@@ -2,7 +2,7 @@ PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
   name: "Python/Shell代码执行"
-  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时可以使用 shell 脚本安装，python 代码最终需要将结构 print 出来才能接收到"
+  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时先使用python 代码进行依赖的安装，python 代码最终需要将结果 print 出来才能接收到，请在代码中使用 logger.info进行重要日志输出"
   output:
     result: "执行结果（标准输出）"
     stdout: "标准输出内容"
@@ -236,14 +236,14 @@ SerperWebCrawlerNode:
       required: true
       description: "需要抓取的网页的URL链接,一次只支持一个链接的爬取"
       example: "https://example.com"
-    # need_summary:
-    #   type: "bool"
-    #   required: true
-    #   description: "当为true时返回智能总结内容,false返回原始内容"
-    # include_markdown:
-    #   type: "bool"
-    #   required: true
-    #   description: "是否需要返回markdown格式内容"
+    need_summary:
+      type: "bool"
+      required: true
+      description: "当为true时返回智能总结内容,false返回原始内容"
+    include_markdown:
+      type: "bool"
+      required: true
+      description: "是否需要返回markdown格式内容"
 
 WeatherForecastNode:
   type: "weather_forecast"

@@ -11,7 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 SANDBOX_HOST = os.getenv("SANDBOX_HOST", "http://127.0.0.1")
-SANDBOX_PORT = os.getenv("SANDBOX_PORT", "8000")
+SANDBOX_PORT = int(os.getenv("SANDBOX_PORT", "8000"))
+SANDBOX_ERQUEST_TIMEOUT = float(os.getenv("SANDBOX_ERQUEST_TIMEOUT", 3600))
 SANDBOX_API_KEY = os.getenv(
     "SANDBOX_API_KEY", "El0/osJhMJnaQMCYiyOAOD4WGgJb4vbiMhQgf7g1DXgHxz10KuWodvQr"
 )
@@ -38,14 +39,11 @@ class PythonExecuteNode(BaseNode):
         enable_network = params.get("enable_network", True)
 
         # 格式化代码
-        try:
-            code = black.format_str(code, mode=black.FileMode())
-        except Exception as e:
-            # 如果格式化失败，记录错误但继续使用原始代码
-            stderr_capture = io.StringIO()
-            logger.info(f"代码格式化警告: {str(e)}", file=stderr_capture)
-            stderr = stderr_capture.getvalue()
-            logger.info(f"Code formatting warning: {stderr}", file=sys.stderr)
+        # try:
+        #     code = black.format_str(code, mode=black.FileMode())
+        # except Exception as e:
+        #     # 如果格式化失败，记录错误但继续使用原始代码
+        #     logger.warning(f"代码格式化警告: {str(e)}")
 
         # 获取变量参数（函数执行参数）
         variables = params.get("variables", {})
@@ -64,26 +62,33 @@ class PythonExecuteNode(BaseNode):
                 var_code = "\n".join([f"{k} = {repr(v)}" for k, v in variables.items()])
                 # 将变量定义添加到原始代码前面
                 code = f"{var_code}\n{code}"
-            
+
+            logger.info(f"虚拟环境API请求参数code: {code}")
+
             # 调用虚拟环境API执行代码
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {SANDBOX_API_KEY}",
             }
-            
+
             payload = {
                 "code": code,
                 "language": language,
                 "enable_network": enable_network,
             }
 
+            logger.info(f"虚拟环境API请求参数payload: {payload}")
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    SANDBOX_API_URL, headers=headers, json=payload, timeout=30
+                    SANDBOX_API_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=SANDBOX_ERQUEST_TIMEOUT,
                 )
+                logger.info(f"虚拟环境API返回结果: {response.json()}")
                 response.raise_for_status()
                 api_result = response.json()
-                logger.info(f"虚拟环境API返回结果: {api_result}")
 
             # 处理API返回结果
             if api_result.get("code") != 0:
