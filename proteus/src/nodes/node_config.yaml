@@ -32,6 +32,20 @@ PythonExecuteNode:
       default: {}
       description: "传递给代码的变量字典（仅Python3有效）"
 
+BrowserAgentNode:
+  type: "browser_agent"
+  class: "src.nodes.browser_agent.BrowserAgentNode"
+  name: "浏览器自动化"
+  description: "基于现代浏览器内核的自动化解决方案，支持：1. 多维度网页数据捕获（文本/截图/网络请求）2. 拟人化交互行为模拟（点击/滚动/表单）3. 智能反检测机制（指纹伪装/流量伪装）4. 多场景应用支持（电商/政务/社交平台）"
+  output:
+    result: "浏览器自动化执行结果"
+  params:
+    task:
+      type: "str"
+      required: true
+      description: "要执行的浏览器自动化任务描述"
+      example: "打开百度并搜索'人工智能'"
+
 ChatNode:
   type: "chat"
   class: "src.nodes.chat.ChatNode"
@@ -207,6 +221,43 @@ DbExecuteNode:
       default: true
       description: "是否自动提交"
 
+MysqlNode:
+  type: "mysql_node"
+  class: "src.nodes.mysql_node.MysqlNode"
+  name: "MySQL数据库操作节点"
+  description: "MySQL数据库操作节点，支持三种主要功能：1. 获取表schema结构信息 2. 直接执行SQL语句 3. 自然语言查询转换为SQL并执行。通过operation参数指定操作类型，适用于数据库结构查询、数据操作和智能查询等场景。"
+  output:
+    result: "执行结果，包含操作类型、执行状态、数据结果等信息"
+  params:
+    operation:
+      type: "str"
+      required: false
+      default: "nlp_query"
+      description: "操作类型，支持三种模式：
+        - get_schema: 获取表结构信息
+        - execute_sql: 直接执行SQL语句
+        - nlp_query: 自然语言查询（默认，保持向后兼容）"
+    question:
+      type: "str"
+      required: false
+      description: "自然语言查询问题（当operation为nlp_query时必需），节点将把该问题转换为SQL并执行"
+    sql:
+      type: "str"
+      required: false
+      description: "要执行的SQL语句（当operation为execute_sql时必需）"
+    table_name:
+      type: "str"
+      required: false
+      description: "指定表名（当operation为get_schema时可选），如果不提供则返回所有表的schema"
+    top_k:
+      type: "int"
+      required: false
+      default: 50
+      description: "查询结果的最大返回行数，适用于SELECT语句"
+    database:
+      type: "str"
+      required: false
+      description: "可选：指定数据库名称以覆盖环境变量配置"
 LoopNode:
   type: "loop_node"
   class: "src.nodes.loop_node.LoopNode"
@@ -282,7 +333,7 @@ SerperWebCrawlerNode:
   type: "web_crawler"
   class: "src.nodes.web_crawler.SerperWebCrawlerNode"
   name: "网络爬虫"
-  description: "接收URL并返回网页正文内容的节点"
+  description: "可以根据提供的网页链接爬取网页内容并返回"
   output:
     success: "执行状态"
     error: "错误信息"
@@ -291,7 +342,7 @@ SerperWebCrawlerNode:
     url:
       type: "str"
       required: true
-      description: "需要抓取的网页URL"
+      description: "需要抓取的网页链接"
 
 WeatherForecastNode:
   type: "weather_forecast"

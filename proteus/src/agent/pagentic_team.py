@@ -23,6 +23,7 @@ class PagenticTeam:
         team_rules: str = None,
         start_role: TeamRole = TeamRole.TEAM_LEADER,
         conversation_id: str = None,
+        conversation_round: int = 5,
     ):
         """
         初始化五个角色的agent
@@ -49,6 +50,7 @@ class PagenticTeam:
         self._initialize_agents(tools_config or {})
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
+        self.conversation_round = conversation_round
 
     @langfuse_wrapper.observe_decorator(
         name="_initialize_agents", capture_input=True, capture_output=True
@@ -86,6 +88,7 @@ class PagenticTeam:
                 max_iterations=getattr(config, "max_iterations", None),
                 llm_timeout=getattr(config, "llm_timeout", None),
                 conversation_id=self.conversation_id,  # 传递会话ID
+                conversation_round=self.conversation_round,
                 role_type=role,
                 scratchpad_items=getattr(config, "historical_scratchpad_items", None),
             )

@@ -581,7 +581,7 @@ body {
     transform: translateX(-50%);
     width: 100%;
     /* 缩窄聊天框最大宽度，视觉上更协调 */
-    max-width: 720px;
+    max-width: 1000px;
     padding: 18px;
     background: #f5f5f5;
     z-index: 100;
@@ -715,6 +715,22 @@ body {
     transition: opacity 0.18s ease, visibility 0.18s ease;
 }
 
+#conversation_count-container {
+    /* 与 model-select 并排显示，放入同一定位容器 */
+    margin-left: 8px;
+    padding: 4px 8px;
+    background: #f0f0f0;
+    border-radius: 8px;
+    /* 默认可见（恢复原始行为），并与模型选择并列 */
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+
 /* 兼容：若需要隐藏，可以使用 .hidden 类 */
 #itecount-container.hidden {
     visibility: hidden;
@@ -747,6 +763,17 @@ body {
     color: #333;
     background: white;
 }
+
+#conversation_count {
+    width: 60px;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    color: #333;
+    background: white;
+}
+
 
 #itecount:focus {
     outline: none;
@@ -2484,7 +2511,7 @@ body {
     transform: translateX(-50%) !important;
     width: 100% !important;
     /* 保持此前缩窄的最大宽度以避免过宽 */
-    max-width: 720px !important;
+    max-width: 1000px !important;
     padding: 16px !important;
 }
 

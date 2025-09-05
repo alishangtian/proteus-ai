@@ -91,7 +91,7 @@ class BrowserAgentNode(BaseNode):
                 llm=llm,
                 browser=browser,
                 save_conversation_path=os.getenv("BROSWER_SAVE_CONVERSATION_PATH", ""),
-                generate_gif=bool(os.getenv("BROSWER_GENERATE_GIF", "false"))
+                generate_gif=bool(os.getenv("BROSWER_GENERATE_GIF", "false")),
             )
             result = await agent.run()
 

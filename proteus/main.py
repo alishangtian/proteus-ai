@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.react_prompt import REACT_PROMPT
+from src.agent.prompt.light_react_prompt import LIGHT_REACT_PROMPT
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -361,6 +362,7 @@ async def create_chat(
     agentid: str = Body(None, embed=True),
     team_name: str = Body(None, embed=True),
     conversation_id: str = Body(None, embed=True),
+    conversation_round: int = Body(5, embed=True),
 ):
     """创建新的聊天会话
 
@@ -388,6 +390,7 @@ async def create_chat(
                 team_name=team_name,
                 conversation_id=conversation_id,
                 model_name=model_name,
+                conversation_round=conversation_round,
             )
         )
     else:
@@ -697,6 +700,7 @@ async def process_agent(
     team_name: str = None,
     conversation_id: str = None,
     model_name: str = None,
+    conversation_round: int = 5,
 ):
     """处理Agent请求的异步函数
 
@@ -794,6 +798,7 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
+                conversation_round=conversation_round,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -829,6 +834,7 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 include_fields=include_fields,
+                conversation_round=conversation_round,
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -848,14 +854,21 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
+                conversation_round=conversation_round,
             )
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
-            agent = Agent(
-                tools=["browser_agent"],
+            agent = ReactAgent(
+                tools=[
+                    "browser_agent",
+                    "python_execute",
+                    "user_input",
+                    "serper_search",
+                    "web_crawler",
+                ],
                 instruction="",
                 stream_manager=stream_manager,
                 max_iterations=itecount,
@@ -864,6 +877,7 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
+                conversation_round=conversation_round,
             )
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
@@ -872,10 +886,10 @@ async def process_agent(
             # 获取基础工具集合 - 延迟初始化node_manager
             # all_tools = NodeConfigManager.get_instance().get_tools()
             # 创建详细的instruction
-            instruction = (
-                "你是一个擅长使用工具的智能体，特别是使用搜索引擎搜索最新信息时，要记得使用爬虫爬取关联度较高的链接内容",
-                "python代码工具可以让你执行一些复杂的计算任务，调用金融工具获取金融相关的信息",
-            )
+            # instruction = (
+            #     "你是一个擅长使用工具的智能体，特别是使用搜索引擎搜索最新信息时，要记得使用爬虫爬取关联度较高的链接内容",
+            #     "python代码工具可以让你执行一些复杂的计算任务，调用金融工具获取金融相关的信息",
+            # )
             all_tools = [
                 "python_execute",
                 "user_input",
@@ -884,12 +898,14 @@ async def process_agent(
                 "serper_search",
                 "web_crawler",
                 "weather_forecast",
+                "mysql_node",
             ]
-            prompt_template = REACT_PROMPT
+            prompt_template = LIGHT_REACT_PROMPT
             # 获取基础工具集合 - 延迟初始化node_manager
+            include_fields = [IncludeFields.ACTION, IncludeFields.OBSERVATION]
             agent = ReactAgent(
                 tools=all_tools,
-                instruction=instruction,
+                instruction="",
                 stream_manager=stream_manager,
                 max_iterations=itecount,
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
@@ -897,6 +913,8 @@ async def process_agent(
                 prompt_template=prompt_template,
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
+                conversation_round=conversation_round,
+                include_fields=include_fields,
             )
 
             # 调用Agent的run方法，启用stream功能

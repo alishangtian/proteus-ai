@@ -217,7 +217,6 @@ class ReactAgent:
     - 处理对话历史
     - 检查终止条件
     - 处理事件流
-
     属性:
         _agent_cache: 类级别的agent缓存 {chat_id: [agent_list]}
         _cache_lock: 缓存访问锁
@@ -305,6 +304,7 @@ class ReactAgent:
         scratchpad_items: List[ScratchpadItem] = None,  # 临时存储项
         termination_conditions: List[TerminationCondition] = None,  # 终止条件列表
         conversation_id: str = None,  # 会话ID
+        conversation_round: int = 5,
         include_fields: List[IncludeFields] = None,  # agent 组装 prompt 时要选择的字段
     ):
         """初始化ReactAgent
@@ -342,6 +342,7 @@ class ReactAgent:
         self._response_cache = Cache[str](maxsize=cache_size, ttl=cache_ttl)
         self.metrics = Metrics()
         self.conversation_id = conversation_id
+        self.conversation_round = conversation_round
 
         self.scratchpad_items = scratchpad_items if scratchpad_items else []
 
@@ -728,17 +729,11 @@ class ReactAgent:
         name="_load_conversation_history", capture_input=True, capture_output=True
     )
     def _load_conversation_history(
-        self, conversation_id: str, size: int = 5, expire_hours: int = 12
-    ) -> str:
-        """从Redis list中加载完整的对话历史记录
+        self, conversation_id: str, expire_hours: int = 12
+    ) -> List[Dict[str, str]]:
+        """从Redis list中加载完整的对话历史记录，返回数组格式: [{"role":"user"|"assistant","content":"..."}]
 
-        Args:
-            conversation_id: 会话ID
-            size: 要获取的对话轮次数
-            expire_hours: 过期时间(小时)
-
-        Returns:
-            str: 格式化的对话历史记录字符串
+        保持原有逻辑：按时间顺序返回最近 size 轮（每轮包含 user 和 assistant 各一条，存储层为 list）
         """
         try:
             redis_cache = get_redis_connection()
@@ -748,15 +743,15 @@ class ReactAgent:
             # 检查key是否存在
             if not redis_cache.exists(redis_key):
                 logger.info(f"未找到对话历史 (conversation_id: {conversation_id})")
-                return ""
+                return []
 
             # 获取list长度
             total_count = redis_cache.llen(redis_key)
             if total_count == 0:
-                return ""
+                return []
 
-            # 计算要获取的记录数量：size*2条记录(每轮对话包含用户和助手各一条)
-            records_to_get = min(size * 2, total_count)
+            # 计算要获取的记录数量：conversation_round*2条记录(每轮对话包含用户和助手各一条)
+            records_to_get = min(self.conversation_round * 2, total_count)
 
             # 从list右端获取最新的records_to_get条记录
             start_index = max(0, total_count - records_to_get)
@@ -765,8 +760,8 @@ class ReactAgent:
             # 获取历史记录
             history_data = redis_cache.lrange(redis_key, start_index, end_index)
 
-            # 格式化对话历史并过滤过期数据
-            conversation_history = []
+            # 解析并过滤过期数据，构造返回数组
+            conversation_history: List[Dict[str, str]] = []
             current_time = time.time()
             expire_timestamp = current_time - (expire_hours * 3600)
 
@@ -782,9 +777,13 @@ class ReactAgent:
                     content = item.get("content", "")
 
                     if item_type == "user":
-                        conversation_history.append(f"User: {content}")
+                        conversation_history.append(
+                            {"role": "user", "content": content}
+                        )
                     elif item_type == "assistant":
-                        conversation_history.append(f"Assistant: {content}")
+                        conversation_history.append(
+                            {"role": "assistant", "content": content}
+                        )
                 except (json.JSONDecodeError, Exception) as e:
                     logger.warning(f"解析对话历史失败: {e}")
                     continue
@@ -793,12 +792,11 @@ class ReactAgent:
                 logger.info(
                     f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {conversation_id})"
                 )
-                return "\n".join(conversation_history)
-            return ""
+            return conversation_history
 
         except Exception as e:
             logger.error(f"加载对话历史失败: {e}")
-            return ""
+            return []
 
     @langfuse_wrapper.observe_decorator(
         name="_construct_prompt", capture_input=True, capture_output=True
@@ -829,10 +827,10 @@ class ReactAgent:
                 ):
                     # 在工具描述前加上编号，格式：[编号] 工具描述
                     if hasattr(tool, "full_description") and tool.full_description:
-                        tool_desc = f"[{i:02d}] {tool.full_description}"
+                        tool_desc = f"{tool.full_description}"
                     else:
                         # 如果没有full_description，则构建基本描述
-                        tool_desc = f"[{i:02d}] {tool.name}"
+                        tool_desc = f"{tool.name}"
                         if hasattr(tool, "description") and tool.description:
                             tool_desc += f" - {tool.description}"
                     tools_desc.append(tool_desc)
@@ -883,14 +881,14 @@ class ReactAgent:
             "tools": tools_list,
             "tool_names": tool_names,
             "query": query_value,
-            "agent_scratchpad": agent_scratchpad,
-            "context": context or "",
-            "instructions": self.instruction,
-            "conversations": (
-                self._load_conversation_history(self.conversation_id)
-                if hasattr(self, "conversation_id") and self.conversation_id
-                else ""
-            ),
+            "agent_scratchpad": agent_scratchpad or "暂无",
+            "context": context or "暂无",
+            "instructions": self.instruction or "",
+            # "conversations": (
+            #     self._load_conversation_history(self.conversation_id)
+            #     if hasattr(self, "conversation_id") and self.conversation_id
+            #     else ""
+            # ),
             "max_iterations": self.max_iterations,
             "current_iteration": current_iteration,
         }
@@ -899,9 +897,20 @@ class ReactAgent:
         return agent_prompt
 
     async def _call_model(self, prompt: str, chat_id: str, model_name: str) -> str:
+        # 确保从会话历史加载到的 messages 永远是一个列表，防止为 None 或其他非列表类型导致后续错误
+        messages = self._load_conversation_history(self.conversation_id)
+        if messages is None:
+            messages = []
+        elif not isinstance(messages, list):
+            try:
+                messages = list(messages)
+            except Exception:
+                messages = []
+        # 确保每个消息是一个 dict 并且包含 role/content
+        messages.append({"role": "user", "content": prompt})
+
         if not langfuse_wrapper.is_enabled():
             # 如果Langfuse未启用，则直接调用LLM
-            messages = [{"role": "user", "content": prompt}]
             resp = await call_llm_api(messages, model_name=model_name)
             # 兼容 llm_api 可能返回 (text, usage) 或 直接返回 text
             if isinstance(resp, tuple) and len(resp) == 2:
@@ -922,7 +931,6 @@ class ReactAgent:
                     metadata={"chat_id": chat_id},
                 ) as generation:
                     start_time = time.time()
-                    messages = [{"role": "user", "content": prompt}]
                     resp = await call_llm_api(messages, model_name=model_name)
                     # 兼容返回 (text, usage) 或 text
                     if isinstance(resp, tuple) and len(resp) == 2:
@@ -1361,11 +1369,12 @@ class ReactAgent:
                         # 只有非结果事件才清空上下文，结果事件需要保留scratchpad中的结果信息
                         self.clear_context()
                     result_value = await self.run(
-                        task_text,
-                        chat_id,
+                        query=task_text,
+                        chat_id=chat_id,
                         stream=True,
                         is_result=is_result,  # 保持原始的is_result标志
                         context=payload.get("context"),
+                        include_fields=self.include_fields,
                     )
                 except Exception as e:
                     logger.error(f"执行角色队列事件任务失败: {e}", exc_info=True)
@@ -1679,11 +1688,6 @@ class ReactAgent:
                         ),
                     )
                 )
-                # 保存用户查询到对话历史
-                if self.conversation_id:
-                    self._save_conversation_to_redis(
-                        self.conversation_id, user_query=query
-                    )
 
             if stream and self.stream_manager:
                 event = await create_agent_start_event(query)
@@ -1701,6 +1705,9 @@ class ReactAgent:
             if stream and self.stream_manager and result:
                 event = await create_agent_complete_event(result)
                 await self.stream_manager.send_message(chat_id, event)
+            # 保存用户查询到对话历史
+            if self.conversation_id:
+                self._save_conversation_to_redis(self.conversation_id, user_query=query)
             # 保存结果到对话历史
             if self.conversation_id:
                 self._save_conversation_to_redis(

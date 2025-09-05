@@ -382,25 +382,17 @@ class Agent:
     @observe(name="_load_conversation_history", capture_input=True, capture_output=True)
     def _load_conversation_history(
         self, conversation_id: str, size: int = 5, expire_hours: int = 12
-    ) -> str:
-        """从Redis中加载完整的对话历史记录
+    ) -> List[Dict[str, str]]:
+        """从Redis中加载完整的对话历史记录，返回数组格式: [{"role":"user"|"assistant","content":"..."}]
 
-        Args:
-            conversation_id: 会话ID
-            size: 要获取的对话轮次数
-            expire_hours: 过期时间(小时)
-
-        Returns:
-            str: 格式化的对话历史记录字符串
+        保持原有逻辑：按时间顺序返回最近 size 轮（每轮包含 user 和 assistant 各一条，存储层为有序集合）
         """
         try:
             redis_cache = get_redis_connection()
             redis_key = f"conversation_history:{conversation_id}"
 
-            # 计算过期时间戳
+            # 计算过期时间戳并删除过期数据
             expire_timestamp = time.time() - (expire_hours * 60 * 60)
-
-            # 删除过期数据
             redis_cache.zremrangebyscore(redis_key, 0, expire_timestamp)
 
             # 获取总数量
@@ -409,9 +401,9 @@ class Agent:
                 logger.info(
                     f"未找到{expire_hours}小时内的对话历史 (conversation_id: {conversation_id})"
                 )
-                return ""
+                return []
 
-            # 计算起始位置：获取最新的size*2条记录(每轮对话包含用户和助手各一条)
+            # 计算起始位置：获取最新的 size*2 条记录(每轮包含 user 和 assistant 各一条)
             if total_count <= size * 2:
                 start_index = 0
                 end_index = total_count - 1
@@ -419,18 +411,22 @@ class Agent:
                 start_index = total_count - size * 2
                 end_index = total_count - 1
 
-            # 获取历史记录
+            # 获取历史记录（按时间升序）
             history_data = redis_cache.zrange(redis_key, start_index, end_index)
 
-            # 格式化对话历史
-            conversation_history = []
+            # 解析并构造返回数组
+            conversation_history: List[Dict[str, str]] = []
             for item_json in history_data:
                 try:
                     item = json.loads(item_json)
                     if "user" in item:
-                        conversation_history.append(f"User: {item['user']}")
+                        conversation_history.append(
+                            {"role": "user", "content": item.get("user", "")}
+                        )
                     elif "assistant" in item:
-                        conversation_history.append(f"Assistant: {item['assistant']}")
+                        conversation_history.append(
+                            {"role": "assistant", "content": item.get("assistant", "")}
+                        )
                 except (json.JSONDecodeError, Exception) as e:
                     logger.warning(f"解析对话历史失败: {e}")
                     continue
@@ -439,12 +435,11 @@ class Agent:
                 logger.info(
                     f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {conversation_id})"
                 )
-                return "\n".join(conversation_history)
-            return ""
+            return conversation_history
 
         except Exception as e:
             logger.error(f"加载对话历史失败: {e}")
-            return ""
+            return []
 
     @observe(name="_construct_prompt", capture_input=True, capture_output=True)
     def _construct_prompt(self, context: str = None, query: str = None) -> str:

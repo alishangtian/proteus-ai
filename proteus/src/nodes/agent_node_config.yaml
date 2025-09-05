@@ -413,13 +413,13 @@ HandoffNode:
     task:
       type: "str"
       required: true
-      description: "需要转交的任务描述"
+      description: "需要转交的任务"
       example: "完成市场分析报告"
     context:
-      type: "dict"
+      type: "str"
       required: false
-      default: {}
-      description: "任务上下文信息"
+      default: ""
+      description: "任务上下文信息，当前任务的相关参考信息"
     target_role:
       type: "str"
       required: true
@@ -428,8 +428,8 @@ HandoffNode:
     description:
       type: "str"
       required: false
-      description: "任务详细说明"
-      example: "需要包含竞品分析和SWOT分析"
+      description: "任务的简单描述，不是任务的规划"
+      example: "需要使用搜索引擎搜索相关信息"
 
 WorkflowGenerateNode:
   type: "workflow_generate"
@@ -561,3 +561,47 @@ PlannerNode:
      required: false
      default: 0.3
      description: "生成规划步骤的随机性控制，值越低越确定"
+
+MysqlNode:
+  type: "mysql_node"
+  class: "src.nodes.mysql_node.MysqlNode"
+  name: "MySQL数据库操作节点"
+  description: "MySQL数据库操作节点，支持三种主要功能：1. 获取表schema结构信息 2. 直接执行SQL语句 3. 自然语言查询转换为SQL并执行。通过operation参数指定操作类型，适用于数据库结构查询、数据操作和智能查询等场景。"
+  output:
+    result: "执行结果，包含操作类型、执行状态、数据结果等信息"
+  params:
+    operation:
+      type: "str"
+      required: false
+      default: "nlp_query"
+      description: "操作类型，支持三种模式：
+        - get_schema: 获取表结构信息
+        - execute_sql: 直接执行SQL语句
+        - nlp_query: 自然语言查询（默认，保持向后兼容）"
+      example: "get_schema"
+    question:
+      type: "str"
+      required: false
+      description: "自然语言查询问题（当operation为nlp_query时必需），节点将把该问题转换为SQL并执行"
+      example: "查询所有年龄大于25岁的用户"
+    sql:
+      type: "str"
+      required: false
+      description: "要执行的SQL语句（当operation为execute_sql时必需）"
+      example: "SELECT * FROM users WHERE age > 25 LIMIT 10"
+    table_name:
+      type: "str"
+      required: false
+      description: "指定表名（当operation为get_schema时可选），如果不提供则返回所有表的schema"
+      example: "users"
+    top_k:
+      type: "int"
+      required: false
+      default: 50
+      description: "查询结果的最大返回行数，适用于SELECT语句"
+      example: 100
+    database:
+      type: "str"
+      required: false
+      description: "可选：指定数据库名称以覆盖环境变量配置"
+      example: "test_db"

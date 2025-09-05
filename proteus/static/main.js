@@ -908,7 +908,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         model: selectedModel,
                         model_name: selectedModelName,
                         conversation_id: currentConversationId,
-                        itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined
+                        itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined,
+                        conversation_count: parseInt(document.getElementById('conversation_count').value) || 5
                     })
                 });
             }
