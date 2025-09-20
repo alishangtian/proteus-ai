@@ -8,6 +8,7 @@ from typing import List, Dict, Union, AsyncGenerator, Tuple
 
 from .config import API_CONFIG, retry_on_error
 from .model_manager import ModelManager
+from ..utils.langfuse_wrapper import langfuse_wrapper
 
 # 配置日志记录
 logger = logging.getLogger(__name__)
@@ -119,6 +120,7 @@ async def call_llm_api(
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
+                "X-Title": "proteus-ai",
             }
 
             data = {

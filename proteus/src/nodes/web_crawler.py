@@ -133,7 +133,7 @@ class SerperWebCrawlerNode(BaseNode):
 
                 # 下载PDF文件
                 self.rate_limiter.acquire()
-                response = requests.get(url, timeout=120)
+                response = requests.get(url, timeout=3600)
                 response.raise_for_status()
 
                 # 保存到临时文件
@@ -225,6 +225,7 @@ class SerperWebCrawlerNode(BaseNode):
                         ],
                         model_name="gpt-5-nano",
                     )
+                    text = text[0]
                 else:
                     text = await call_llm_api(
                         messages=[
@@ -243,36 +244,37 @@ class SerperWebCrawlerNode(BaseNode):
                         ],
                         model_name="gpt-5-nano",
                     )
+                    text = text[0]
 
             end_time = time.time()
             execution_time = end_time - start_time
-            content_length = len(text[0])
+            content_length = len(text)
             logger.info(
                 f"爬取成功: {url}, 内容长度: {content_length} 字符, 耗时: {execution_time:.2f} 秒"
             )
 
-            return {"success": True, "error": None, "content": text[0]}
+            return {"success": True, "error": None, "content": text}
 
         except requests.Timeout:
             end_time = time.time()
             execution_time = end_time - start_time
             error_msg = f"请求超时: {url}"
             logger.error(f"{error_msg}, 耗时: {execution_time:.2f} 秒")
-            return {"success": True}
+            return {"success": False, "error": error_msg}
 
         except requests.RequestException as e:
             end_time = time.time()
             execution_time = end_time - start_time
             error_msg = f"请求错误: {str(e)}"
             logger.error(f"{error_msg}, URL: {url}, 耗时: {execution_time:.2f} 秒")
-            return {"success": True}
+            return {"success": False, "error": error_msg}
 
         except Exception as e:
             end_time = time.time()
             execution_time = end_time - start_time
             error_msg = f"未知错误: {str(e)}"
             logger.error(f"{error_msg}, URL: {url}, 耗时: {execution_time:.2f} 秒")
-            return {"success": True}
+            return {"success": False, "error": error_msg}
 
     async def agent_execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         execution_result = await self.execute(params)

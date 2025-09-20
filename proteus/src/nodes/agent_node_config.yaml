@@ -188,7 +188,7 @@ SerperSearchNode:
     query:
       type: "str"
       required: true
-      description: "搜索关键词"
+      description: "搜索关键词或者短语，需要精确的且明确的词语，不要一次搜索多个关键词"
       example: "人工智能最新进展"
     country:
       type: "str"
@@ -548,7 +548,7 @@ PlannerNode:
  type: "planner"
  class: "src.nodes.planner.PlannerNode"
  name: "任务规划"
- description: "将用户问题分解为多个可执行的步骤"
+ description: "将用户问题分解为多个可执行的步骤，当用户任务复杂度较高时，可以使用此工具先进行任务规划，只有当不存在任务规划或者任务规划不合理时才调用此工具进行任务规划"
  output:
    steps: "规划后的步骤列表"
  params:

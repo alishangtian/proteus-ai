@@ -137,6 +137,24 @@ FileWriteNode:
       default: "utf-8"
       description: "文件编码"
 
+PlannerNode:
+ type: "planner"
+ class: "src.nodes.planner.PlannerNode"
+ name: "任务规划"
+ description: "将用户问题分解为多个可执行的步骤，当用户任务复杂度较高时，可以使用此工具先进行任务规划，只有当不存在任务规划或者任务规划不合理时才调用此工具进行任务规划"
+ output:
+   steps: "规划后的步骤列表"
+ params:
+   user_question:
+     type: "str"
+     required: true
+     description: "用户输入的问题"
+   temperature:
+     type: "float"
+     required: false
+     default: 0.3
+     description: "生成规划步骤的随机性控制，值越低越确定"
+
 DbQueryNode:
   type: "db_query"
   class: "src.nodes.db_query.DbQueryNode"
@@ -236,7 +254,7 @@ MysqlNode:
       description: "操作类型，支持三种模式：
         - get_schema: 获取表结构信息
         - execute_sql: 直接执行SQL语句
-        - nlp_query: 自然语言查询（默认，保持向后兼容）"
+        - nlp_query: 自然语言查询"
     question:
       type: "str"
       required: false
@@ -245,10 +263,6 @@ MysqlNode:
       type: "str"
       required: false
       description: "要执行的SQL语句（当operation为execute_sql时必需）"
-    table_name:
-      type: "str"
-      required: false
-      description: "指定表名（当operation为get_schema时可选），如果不提供则返回所有表的schema"
     top_k:
       type: "int"
       required: false
@@ -258,6 +272,7 @@ MysqlNode:
       type: "str"
       required: false
       description: "可选：指定数据库名称以覆盖环境变量配置"
+      
 LoopNode:
   type: "loop_node"
   class: "src.nodes.loop_node.LoopNode"
@@ -296,7 +311,7 @@ SerperSearchNode:
     query:
       type: "str"
       required: true
-      description: "搜索关键词"
+      description: "搜索关键词或者短语，需要精确的且明确的词语，不要一次搜索多个关键词"
     country:
       type: "str"
       required: false

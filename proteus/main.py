@@ -19,28 +19,22 @@ from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.react_prompt import REACT_PROMPT
-from src.agent.prompt.light_react_prompt import LIGHT_REACT_PROMPT
+from src.agent.prompt.react_prompt_v3 import REACT_PROMPT_V3
+from src.agent.prompt.react_prompt_v2 import REACT_PROMPT_V2
+from src.agent.prompt.react_prompt_v4 import REACT_PROMPT_V4
+from src.agent.prompt.react_prompt_v5 import REACT_PROMPT_V5
+from src.agent.prompt.react_prompt_v6 import REACT_PROMPT_V6
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.paper import PAPER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
 from src.agent.agent import Agent
 from src.agent.react_agent import ReactAgent
 from src.agent.common.configuration import AgentConfiguration
 from src.agent.base_agent import IncludeFields
-
 from src.manager.multi_agent_manager import get_multi_agent_manager
-
-
 from src.utils.langfuse_wrapper import langfuse_wrapper
-
 from src.api.events import (
     create_complete_event,
 )
@@ -899,10 +893,10 @@ async def process_agent(
                 "web_crawler",
                 "weather_forecast",
                 "mysql_node",
+                "planner",
             ]
-            prompt_template = LIGHT_REACT_PROMPT
+            prompt_template = REACT_PROMPT
             # 获取基础工具集合 - 延迟初始化node_manager
-            include_fields = [IncludeFields.ACTION, IncludeFields.OBSERVATION]
             agent = ReactAgent(
                 tools=all_tools,
                 instruction="",
@@ -914,7 +908,6 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
-                include_fields=include_fields,
             )
 
             # 调用Agent的run方法，启用stream功能

@@ -191,10 +191,17 @@ class AgentEngine:
         tools_list, tool_names = get_tools_description()
         agent_prompt = None
 
-        # 将scratchpad_items列表中的对象拼接成Markdown列表格式的字符串
-        agent_scratchpad = ""
+        # 将scratchpad_items列表转换为单个Markdown表格（历史推理链）
+        table_lines: List[str] = []
         for i, item in enumerate(scratchpad_items, 1):
-            agent_scratchpad += item.to_string(index=i)
+            tbl = item.to_react_context_table(index=i)
+            lines = [ln for ln in tbl.strip().splitlines() if ln.strip() != ""]
+            if i == 1:
+                table_lines.extend(lines)
+            else:
+                # 只追加数据行（最后一行）
+                table_lines.append(lines[-1])
+        agent_scratchpad = "\n".join(table_lines) + ("\n" if table_lines else "")
 
         if self.agentmodel == "mcp-agent":
             mcp_tools = get_mcp_manager().get_tools_formated_prompt()

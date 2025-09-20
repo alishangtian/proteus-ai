@@ -6,10 +6,6 @@ import { registerSSEHandlers } from './sse-handlers.js';
 
 // 临时存储历史对话数据 {model: htmlContent}
 const historyStorage = {};
-// 临时存储工具调用数据 {model: toolExecutions}
-const toolExecutionsStorage = {};
-// 工具执行数据存储
-const toolExecutions = {};
 // 存储每个模型的conversation_id {model: conversationId}
 const conversationIdStorage = {};
 // 菜单栏收起/展开功能
@@ -291,34 +287,38 @@ async function submitUserInput(nodeId, inputType, prompt, agentId = undefined) {
     }
 }
 
-// 使用事件委托处理复制按钮点击
 document.addEventListener('click', function (e) {
-    if (e.target.closest('.copy-btn')) {
-        const copyBtn = e.target.closest('.copy-btn');
-        const container = copyBtn.closest('.question, .tool-result, .result-value');
+    const copyBtn = e.target.closest('.copy-btn');
+    if (copyBtn) {
+        // 找到最接近的容器
+        const container = copyBtn.closest('.question') || copyBtn.closest('.action-group-item-details');
 
-        // 获取要复制的文本
         let textToCopy = '';
-        if (container.classList.contains('result-value')) {
-            // 处理工具结果区域的复制
-            const resultContent = container.querySelector('pre') || container;
-            // 获取结果内容div中的文本
-            const contentDiv = container.querySelector('.result-content');
-            textToCopy = contentDiv ? contentDiv.textContent.trim() : '';
-        } else {
-            // 处理问题和普通结果的复制
-            textToCopy = Array.from(container.childNodes)
-                .filter(node => node.nodeType === Node.TEXT_NODE)
-                .map(node => node.textContent.trim())
-                .join(' ').trim();
+        if (container) {
+            // 如果是问题，复制其内部的文本内容（不包含复制按钮本身）
+            if (container.classList.contains('question')) {
+                // 复制原始的用户输入文本，而不是渲染后的HTML
+                const questionTextElement = container.querySelector('.question-text'); // 假设问题文本在一个特定的元素中
+                textToCopy = questionTextElement ? questionTextElement.textContent.trim() : '';
+            } else if (container.classList.contains('action-group-item-details')) {
+                // 如果是工具执行结果，复制 pre 标签内的文本
+                const preElement = container.querySelector('pre');
+                textToCopy = preElement ? preElement.textContent.trim() : '';
+            }
         }
+
+        if (!textToCopy) return;
 
         navigator.clipboard.writeText(textToCopy).then(() => {
             const tooltip = copyBtn.querySelector('.copy-tooltip');
-            tooltip.textContent = '复制成功';
-            setTimeout(() => {
-                tooltip.textContent = '复制';
-            }, 2000);
+            if (tooltip) {
+                tooltip.textContent = '已复制!';
+                setTimeout(() => {
+                    tooltip.textContent = '复制';
+                }, 2000);
+            }
+        }).catch(err => {
+            console.error('复制失败:', err);
         });
     }
 });
@@ -490,126 +490,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 0. 隐藏工具执行详情弹框
-            const detailsContainer = document.querySelector('.tool-details-container');
-            if (detailsContainer) {
-                detailsContainer.classList.remove('visible');
-            }
-
             // 1. 存储当前对话历史
             const conversationHistory = document.getElementById('conversation-history');
             if (currentModel && conversationHistory.children.length > 0) {
                 historyStorage[currentModel] = conversationHistory.innerHTML;
             }
 
-            // 2. 存储当前工具调用信息
-            const toolsListElement = document.querySelector('.tools-list');
-            const toolsListHTML = toolsListElement.innerHTML;
-            if (currentModel) {
-                toolExecutionsStorage[currentModel] = toolsListHTML;
-            }
-
-            // 3. 存储当前模型的conversation_id
+            // 2. 存储当前模型的conversation_id
             if (currentModel && currentConversationId) {
                 conversationIdStorage[currentModel] = currentConversationId;
             }
 
-            // 4. 清空当前对话历史
+            // 3. 清空当前对话历史
             conversationHistory.innerHTML = '';
 
-            // 5. 清空当前工具调用信息
-            toolsListElement.innerHTML = '';
-
-            // 重置工具数量
-            const toolsCountSpan = document.querySelector('.tools-count');
-            toolsCountSpan.textContent = 0;
-
-            // 6. 恢复新模型的对话历史(如果存在)
+            // 4. 恢复新模型的对话历史(如果存在)
             if (historyStorage[newModel]) {
                 conversationHistory.innerHTML = historyStorage[newModel];
             }
 
-            // 7. 恢复新模型的工具调用信息(如果存在)
-            if (toolExecutionsStorage[newModel]) {
-                const toolsContent = toolExecutionsStorage[newModel];
-                toolsListElement.innerHTML = toolsContent;
-                const tool_count = toolsListElement.querySelectorAll('.tool-item').length;
-                toolsCountSpan.textContent = tool_count;
-                // 重新绑定工具列表项点击事件
-                document.querySelectorAll('.tool-item').forEach(item => {
-                    const actionId = item.getAttribute('data-action-id');
-                    item.querySelector('.view-details-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const detailsContainer = document.querySelector('.tool-details-container');
-                        detailsContainer.classList.add('visible');
-
-                        const detailsContent = document.querySelector('.tool-details-content');
-                        const execution = toolExecutions[actionId];
-
-                        // 实时构建详情内容，与action_start中保持一致
-                        let resultContent = '执行中...';
-                        let metricsContent = `
-                            <div class="metric">
-                                <span class="metric-label">开始时间:</span>
-                                <span class="metric-value">${new Date(execution.startTime).toLocaleTimeString()}</span>
-                            </div>
-                        `;
-
-                        if (execution.status === 'completed') {
-                            resultContent = `<pre>${typeof execution.result === 'string' ?
-                                execution.result : JSON.stringify(execution.result, null, 2)}</pre>`;
-                            metricsContent += `
-                                <div class="metric">
-                                    <span class="metric-label">结束时间:</span>
-                                    <span class="metric-value">${new Date(execution.endTime).toLocaleTimeString()}</span>
-                                </div>
-                                <div class="metric">
-                                    <span class="metric-label">执行耗时:</span>
-                                    <span class="metric-value">${(execution.duration).toFixed(2)}ms</span>
-                                </div>
-                            `;
-                        } else {
-                            metricsContent += `
-                                <div class="metric">
-                                    <span class="metric-label">已执行:</span>
-                                    <span class="metric-value">${Date.now() - execution.startTime}ms</span>
-                                </div>
-                            `;
-                        }
-
-                        detailsContent.innerHTML = `
-                            <div class="tool-params-section">
-                                <div class="tool-param">
-                                    <div class="tool-param-label">工具名称</div>
-                                    <div class="tool-param-value">${execution.action}</div>
-                                </div>
-                                <div class="tool-param">
-                                    <div class="tool-param-label">参数</div>
-                                    <div class="tool-param-value"><pre>${JSON.stringify(execution.input, null, 2)}</pre></div>
-                                </div>
-                            </div>
-                            <div class="tool-result-section">
-                                <div class="tool-result">
-                                    <div class="result-label">执行结果</div>
-                                    <div class="result-value">
-                                        <div class="result-content">${resultContent}</div>
-                                    </div>
-                                </div>
-                                <div class="tool-metrics">
-                                    ${metricsContent}
-                                </div>
-                            </div>
-                        `;
-
-                        // 关闭按钮事件
-                        detailsContainer.querySelector('.close-details').addEventListener('click', () => {
-                            detailsContainer.classList.remove('visible');
-                        });
-                    });
-                });
-            }
-
-            // 8. 恢复或生成新模型的conversation_id
+            // 5. 恢复或生成新模型的conversation_id
             if (conversationIdStorage[newModel]) {
                 currentConversationId = conversationIdStorage[newModel];
             } else {
@@ -660,7 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
         headerIds: false,
         headerPrefix: '',
         langPrefix: 'hljs ', // 调整语言前缀匹配highlight.js
-        sanitize: false,     // 保留原始HTML
+        sanitize: false,     // 这里仍让 marked 输出 HTML，由我们在渲染前进行安全过滤
         highlight: (code, lang) => {
             try {
                 return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
@@ -671,6 +571,49 @@ document.addEventListener('DOMContentLoaded', () => {
         baseUrl: null,
         listItemIndent: '1' // 规范列表缩进
     });
+
+    // 简单安全清理：移除 <script> 和 <style>，并删除所有 on* 事件属性与 javascript: 协议的 href/src
+    function sanitizeHTML(html) {
+        const template = document.createElement('template');
+        template.innerHTML = html;
+        const treeWalker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT, null, false);
+        const toRemove = [];
+        while (treeWalker.nextNode()) {
+            const el = treeWalker.currentNode;
+            const tag = el.tagName && el.tagName.toLowerCase();
+            if (tag === 'script' || tag === 'style') {
+                toRemove.push(el);
+                continue;
+            }
+            // 删除事件处理器属性和危险属性值
+            Array.from(el.attributes).forEach(attr => {
+                const name = attr.name.toLowerCase();
+                const val = (attr.value || '').toLowerCase();
+                if (name.startsWith('on')) {
+                    el.removeAttribute(attr.name);
+                } else if ((name === 'href' || name === 'src' || name === 'xlink:href') && val.startsWith('javascript:')) {
+                    el.removeAttribute(attr.name);
+                } else if (name === 'style') {
+                    // 可根据需要对 style 做更严格白名单，这里简单移除内联 style 以减少风险
+                    el.removeAttribute('style');
+                }
+            });
+        }
+        toRemove.forEach(n => n.remove());
+        return template.innerHTML;
+    }
+
+    // 将 Markdown 渲染为 HTML 并通过 sanitizeHTML 过滤后返回安全的 HTML
+    function renderMarkdownSafe(mdText) {
+        try {
+            const raw = marked.parse(mdText || '');
+            return sanitizeHTML(raw);
+        } catch (e) {
+            console.warn('Markdown 渲染失败，回退为纯文本显示', e);
+            const esc = (mdText || '').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+            return `<pre>${esc}</pre>`;
+        }
+    }
 
     // wrapper -> 调用 ui 模块的 scrollToBottom，传入 conversationHistory
     function scrollToBottom() {
@@ -829,27 +772,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const qaContainer = document.createElement('div');
         qaContainer.className = 'qa-container';
 
-        // 添加问题
+        // 添加问题（使用 Markdown 渲染，且做安全过滤）
         const questionDiv = document.createElement('div');
         questionDiv.className = 'question';
-        questionDiv.textContent = text;
+        // 添加复制按钮到左侧
+        const copyBtn = document.createElement('button'); // 使用 button 元素
+        copyBtn.className = 'copy-btn small'; // 添加 small 类以匹配工具结果的复制按钮样式
+        copyBtn.innerHTML = `
+            <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+                <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"></path>
+            </svg>
+            <span class="copy-tooltip">复制</span>
+        `;
+        questionDiv.appendChild(copyBtn); // 将复制按钮添加到 questionDiv 内部
+
+        // 添加问题文本（使用 Markdown 渲染，且做安全过滤）
+        const questionTextDiv = document.createElement('div');
+        questionTextDiv.className = 'question-text'; // 新增一个 div 来包裹问题文本
+        questionTextDiv.innerHTML = renderMarkdownSafe(text);
+        questionDiv.appendChild(questionTextDiv); // 将问题文本添加到 questionDiv 内部
+
         qaContainer.appendChild(questionDiv);
 
         // 添加回答容器
         const answerElement = document.createElement('div');
         answerElement.className = 'answer';
         qaContainer.appendChild(answerElement);
-
-        // 添加复制按钮到左侧
-        const copyBtn = document.createElement('div');
-        copyBtn.className = 'copy-btn';
-        copyBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" width="16" height="16" class="copy-icon">
-                <path fill="currentColor" d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/>
-            </svg>
-            <span class="copy-tooltip">复制</span>
-        `;
-        questionDiv.insertBefore(copyBtn, questionDiv.firstChild);
 
         // 将qa-container添加到history-item
         questionElement.appendChild(qaContainer);
@@ -929,6 +878,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 将 SSE 事件处理委托到 sse-handlers 模块
             try {
+                // 临时存储工具调用数据，因为工具详情将直接显示在聊天流中
+                const toolExecutions = {};
                 registerSSEHandlers(eventSource, {
                     answerElement: answerElement,
                     toolExecutions: toolExecutions,

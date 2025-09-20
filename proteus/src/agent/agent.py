@@ -471,8 +471,17 @@ class Agent:
         execution_items = [
             item for item in self.scratchpad_items if not item.is_origin_query
         ]
+        # 将 execution_items 转为单个 Markdown 表格（历史推理链）
+        table_lines: List[str] = []
         for i, item in enumerate(execution_items, 1):
-            agent_scratchpad += item.to_react_context(index=i)
+            tbl = item.to_react_context_table(index=i)
+            lines = [ln for ln in tbl.strip().splitlines() if ln.strip() != ""]
+            if i == 1:
+                table_lines.extend(lines)
+            else:
+                # 只追加数据行（最后一行）
+                table_lines.append(lines[-1])
+        agent_scratchpad = "\n".join(table_lines) + ("\n" if table_lines else "")
         if context is not None:
             agent_scratchpad += f"{context}"
 

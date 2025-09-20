@@ -93,26 +93,6 @@
     </div>
 
     <div class="main-container">
-        <!-- 工具展示区域 -->
-        <div class="tools-container">
-            <div class="tools-header">
-                <h3>工具调用</h3>
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <span class="tools-count">0</span>
-                </div>
-            </div>
-            <div class="tools-list"></div>
-        </div>
-
-        <!-- 工具详情区域 -->
-        <div class="tool-details-container">
-            <div class="tool-details-header">
-                <h3>工具详情</h3>
-                <button class="close-details">×</button>
-            </div>
-            <div class="tool-details-content"></div>
-        </div>
-
         <div id="conversation-history"></div>
         <div class="input-container">
             <div class="input-wrapper">
@@ -130,7 +110,7 @@
                         <div id="itecount-container" class="itecount-wrapper" aria-hidden="false"
                             style="display:flex;align-items:center;gap:8px;">
                             <label for="itecount" class="itecount-label" style="font-size:13px;color:#333">迭代</label>
-                            <input type="number" id="itecount" class="select-control ite-input" min="1" value="10"
+                            <input type="number" id="itecount" class="select-control ite-input" min="1" value="25"
                                 placeholder="轮次" />
                         </div>
 
@@ -150,6 +130,30 @@
                             发送
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 工具结果弹框 -->
+    <div id="toolResultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">工具执行结果</h3>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-result-content"></div>
+                <div class="modal-actions">
+                    <button class="copy-btn" data-copy-target=".modal-result-content pre">
+                        <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+                            <path
+                                d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z">
+                            </path>
+                        </svg>
+                        <span class="copy-tooltip">复制原始结果</span>
+                    </button>
                 </div>
             </div>
         </div>

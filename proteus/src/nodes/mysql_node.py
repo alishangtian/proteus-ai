@@ -41,7 +41,7 @@ class MysqlNode(BaseNode):
 
         return config
 
-    async def _get_table_schema(self, pool, table_hint: Optional[str] = None) -> str:
+    async def _get_table_schema(self, pool) -> str:
         """获取数据库表结构信息 - 优化版本，自动获取所有相关表信息
 
         Args:
@@ -60,16 +60,6 @@ class MysqlNode(BaseNode):
                 tables = await cursor.fetchall()
 
                 table_list = [table[0] for table in tables]
-
-                # 如果有表名提示，优先处理匹配的表
-                if table_hint:
-                    matching_tables = [
-                        t for t in table_list if table_hint.lower() in t.lower()
-                    ]
-                    if matching_tables:
-                        table_list = matching_tables + [
-                            t for t in table_list if t not in matching_tables
-                        ]
 
                 for table_name in table_list:
                     await cursor.execute(f"DESCRIBE `{table_name}`")
@@ -264,6 +254,8 @@ SQL：SELECT * FROM `users` WHERE `name` LIKE '%张%' LIMIT 50;
             )
 
         pool = None
+        sql = None
+        execution_result = None
         try:
             # 创建数据库连接池
             pool = await aiomysql.create_pool(
@@ -301,8 +293,8 @@ SQL：SELECT * FROM `users` WHERE `name` LIKE '%张%' LIMIT 50;
             error_result = {
                 "operation": "nlp_query",
                 "question": question,
-                "generated_sql": None,
-                "execution_result": None,
+                "generated_sql": sql,
+                "execution_result": execution_result,
                 "success": False,
                 "error": str(e),
             }

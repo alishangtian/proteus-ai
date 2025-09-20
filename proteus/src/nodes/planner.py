@@ -36,7 +36,7 @@ class PlannerNode(BaseNode):
         try:
             response = await call_llm_api(messages, temperature=temperature)
             # Parse numbered steps from response
-            steps = [line.strip() for line in response.split("\n") if line.strip()]
+            steps = [line.strip() for line in response[0].split("\n") if line.strip()]
             return {"steps": steps}
         except Exception as e:
             raise ValueError(f"Planning failed: {str(e)}")

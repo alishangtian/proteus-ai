@@ -226,28 +226,11 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 toolExecutions[actionId].progress = data.progress;
             }
 
-            const toolItem = document.querySelector(`.tool-item[data-action-id="${actionId}"]`);
             const actionGroup = document.querySelector(`.action-group[data-action-id="${actionId}"]`);
 
-            if (toolItem) {
-                const statusEl = toolItem.querySelector('.tool-status');
-                if (statusEl) {
-                    statusEl.textContent = `执行中 (${data.progress || 0}%)`;
-                    statusEl.className = 'tool-status running';
-                }
-            }
             if (actionGroup) {
-                const statusEl = actionGroup.querySelector('.tool-status');
+                const statusEl = actionGroup.querySelector('.action-group-item-status.running');
                 if (statusEl) statusEl.textContent = `执行中 (${data.progress || 0}%)`;
-            }
-
-            const detailsContainer = document.querySelector('.tool-details-container.visible');
-            if (detailsContainer && detailsContainer.querySelector(`[data-action-id="${actionId}"]`)) {
-                const detailsContent = document.querySelector('.tool-details-content');
-                if (detailsContent) {
-                    const resultValue = detailsContent.querySelector('.result-value');
-                    if (resultValue) resultValue.textContent = `执行中... (${data.progress || 0}%)`;
-                }
             }
         } catch (error) {
             console.error('解析工具进度失败:', error);
@@ -395,90 +378,48 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 endTime: null
             };
 
-            // 创建工具列表项
-            const toolItem = document.createElement('div');
-            toolItem.className = 'tool-item';
-            toolItem.setAttribute('data-action-id', actionId);
-            toolItem.innerHTML = `
-                <span class="tool-name">${data.action}</span>
-                <span class="tool-status running">执行中 (0%)</span>
-                <button class="view-details-btn">
-                    <span class="btn-text">查看详情</span>
-                    ${Icons && Icons.detail ? Icons.detail : ''}
-                </button>
-            `;
-            const toolsList = document.querySelector('.tools-list');
-            if (toolsList) toolsList.appendChild(toolItem);
-            const toolsCount = document.querySelector('.tools-count');
-            if (toolsCount) toolsCount.textContent = toolsList.children.length;
-
-            const viewBtn = toolItem.querySelector('.view-details-btn');
-            if (viewBtn) {
-                viewBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const detailsContainer = document.querySelector('.tool-details-container');
-                    if (detailsContainer) detailsContainer.classList.add('visible');
-                    const detailsContent = document.querySelector('.tool-details-content');
-                    const execution = toolExecutions[actionId];
-                    let resultContent = '执行中...';
-                    let metricsContent = `
-                        <div class="metric">
-                            <span class="metric-label">开始时间:</span>
-                            <span class="metric-value">${new Date(execution.startTime).toLocaleTimeString()}</span>
+            // 创建工具调用展示在聊天流中，默认折叠
+            const actionGroup = document.createElement('div');
+            actionGroup.className = 'action-group collapsed'; // 默认添加 collapsed 类
+            actionGroup.setAttribute('data-action-id', actionId);
+            actionGroup.innerHTML = `
+                <div class="action-group-header">
+                    <div class="action-group-title">
+                        <span class="tool-icon">${Icons && Icons[data.action] ? Icons[data.action] : '🛠️'}</span>
+                        ${data.action}
+                    </div>
+                    <div class="action-group-meta">
+                        <span class="action-group-status running">执行中</span>
+                    </div>
+                </div>
+                <div class="action-group-content">
+                    <div class="action-group-item running">
+                        <div class="action-group-item-header">
+                            <span class="action-group-item-name">参数</span>
                         </div>
-                    `;
-                    if (execution.status === 'completed') {
-                        resultContent = `<pre>${typeof execution.result === 'string' ? execution.result : JSON.stringify(execution.result, null, 2)}</pre>`;
-                        metricsContent += `
-                            <div class="metric">
-                                <span class="metric-label">结束时间:</span>
-                                <span class="metric-value">${new Date(execution.endTime).toLocaleTimeString()}</span>
+                        <div class="action-group-item-details">
+                            <pre>${JSON.stringify(data.input, null, 2)}</pre>
+                        </div>
+                        <div class="action-group-item-metrics">
+                            <div class="action-group-item-metric">
+                                <span class="action-group-item-metric-label">开始时间:</span>
+                                <span class="action-group-item-metric-value">${new Date(toolExecutions[actionId].startTime).toLocaleTimeString()}</span>
                             </div>
-                            <div class="metric">
-                                <span class="metric-label">执行耗时:</span>
-                                <span class="metric-value">${(execution.duration).toFixed(2)}ms</span>
-                            </div>
-                        `;
-                    } else {
-                        metricsContent += `
-                            <div class="metric">
-                                <span class="metric-label">已执行:</span>
-                                <span class="metric-value">${Date.now() - execution.startTime}ms</span>
-                            </div>
-                        `;
-                    }
-                    if (detailsContent) {
-                        // 将参数和结果通过 Markdown 渲染，提升可读性（JSON 使用 code fence）
-                        const paramsMd = "```json\n" + JSON.stringify(execution.input, null, 2) + "\n```";
-                        const renderedParams = marked.parse(paramsMd);
-                        detailsContent.innerHTML = `
-                            <div class="tool-params-section">
-                                <div class="tool-param">
-                                    <div class="tool-param-label">工具名称</div>
-                                    <div class="tool-param-value">${execution.action}</div>
-                                </div>
-                                <div class="tool-param">
-                                    <div class="tool-param-label">参数</div>
-                                    <div class="tool-param-value">${renderedParams}</div>
-                                </div>
-                            </div>
-                            <div class="tool-result-section">
-                                <div class="tool-result">
-                                    <div class="result-label">执行结果</div>
-                                    <div class="result-value">
-                                        ${resultContent}
-                                    </div>
-                                </div>
-                                <div class="tool-metrics">
-                                    ${metricsContent}
-                                </div>
-                            </div>
-                        `;
-                        const closer = detailsContainer.querySelector('.close-details');
-                        if (closer) closer.addEventListener('click', () => detailsContainer.classList.remove('visible'));
-                    }
-                });
+                        </div>
+                    </div>
+                </div>
+            `;
+            if (answerElement) {
+                answerElement.appendChild(actionGroup);
+                // 为 header 添加点击事件，切换 collapsed 类
+                const actionGroupHeader = actionGroup.querySelector('.action-group-header');
+                if (actionGroupHeader) {
+                    actionGroupHeader.addEventListener('click', () => {
+                        actionGroup.classList.toggle('collapsed');
+                    });
+                }
             }
+
         } catch (error) {
             console.error('解析action开始事件失败:', error);
         }
@@ -501,55 +442,149 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 if (currentActionIdRef) currentActionIdRef.value = actionId;
             }
 
-            const toolItem = document.querySelector(`.tool-item[data-action-id="${actionId}"]`);
             const actionGroup = document.querySelector(`.action-group[data-action-id="${actionId}"]`);
 
-            if (toolItem) {
-                const statusEl = toolItem.querySelector('.tool-status');
-                if (statusEl) {
-                    statusEl.textContent = '完成';
-                    statusEl.className = 'tool-status success';
-                }
-            }
             if (actionGroup) {
-                const statusEl = actionGroup.querySelector('.tool-status');
-                if (statusEl) {
-                    statusEl.textContent = '完成';
-                    statusEl.className = 'tool-status success';
+                // 更新 header 中的状态
+                const headerStatusEl = actionGroup.querySelector('.action-group-status');
+                if (headerStatusEl) {
+                    headerStatusEl.textContent = '完成';
+                    headerStatusEl.classList.remove('running');
+                    headerStatusEl.classList.add('success');
                 }
-                const detailsEl = actionGroup.querySelector('.tool-details');
-                if (detailsEl) {
-                    // 使用 Markdown 渲染结果（若为字符串则将其视为 Markdown，否则以 JSON code fence 展示）
-                    let renderedResult = '';
-                    if (typeof data.result === 'string') {
-                        renderedResult = marked.parse(data.result);
-                    } else {
-                        renderedResult = marked.parse("```json\n" + JSON.stringify(data.result, null, 2) + "\n```");
-                    }
-                    detailsEl.innerHTML = `
-                        <div class="tool-result">
-                            ${renderedResult}
-                        </div>
-                        <div class="tool-metrics">
-                            <div>执行时间: ${toolExecutions[actionId]?.duration || 0}ms</div>
-                        </div>
-                    `;
-                }
-            }
 
-            const visibleDetails = document.querySelector('.tool-details-container.visible');
-            if (visibleDetails && visibleDetails.querySelector(`[data-action-id="${actionId}"]`)) {
-                const detailsContent = document.querySelector('.tool-details-content');
-                if (detailsContent) {
-                    const resultValue = detailsContent.querySelector('.result-value');
-                    if (resultValue) {
-                        // 同上：优先当作 Markdown 渲染字符串，否则以 json code fence 渲染
-                        if (typeof data.result === 'string') {
-                            resultValue.innerHTML = marked.parse(data.result);
-                        } else {
-                            resultValue.innerHTML = marked.parse("```json\n" + JSON.stringify(data.result, null, 2) + "\n```");
-                        }
+                // 将最近的 .agent-thinking 中的 .thinking-indicator 从 running 变为 completed
+                const lastThinkingIndicator = answerElement.querySelector('.agent-thinking:last-of-type .thinking-indicator.running');
+                if (lastThinkingIndicator) {
+                    lastThinkingIndicator.classList.remove('running');
+                    lastThinkingIndicator.classList.add('completed');
+                }
+
+                const itemDetails = actionGroup.querySelector('.action-group-item.running');
+                if (itemDetails) {
+                    itemDetails.classList.remove('running');
+                    itemDetails.classList.add('success');
+                    const statusEl = itemDetails.querySelector('.action-group-item-status');
+                    if (statusEl) {
+                        statusEl.textContent = '完成';
+                        statusEl.className = 'action-group-item-status success';
                     }
+                    const metricsEl = itemDetails.querySelector('.action-group-item-metrics');
+                    if (metricsEl) {
+                        metricsEl.innerHTML += `
+                            <div class="action-group-item-metric">
+                                <span class="action-group-item-metric-label">结束时间:</span>
+                                <span class="action-group-item-metric-value">${new Date(toolExecutions[actionId].endTime).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="action-group-item-metric">
+                                <span class="action-group-item-metric-label">执行耗时:</span>
+                                <span class="action-group-item-metric-value">${(toolExecutions[actionId].duration).toFixed(2)}ms</span>
+                            </div>
+                        `;
+                    }
+                }
+
+                // 添加结果部分
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'action-group-item success';
+                let renderedResult = '';
+                if (typeof data.result === 'string') {
+                    renderedResult = marked.parse(data.result);
+                } else {
+                    renderedResult = marked.parse("```json\n" + JSON.stringify(data.result, null, 2) + "\n```");
+                }
+                resultDiv.innerHTML = `
+                    <div class="action-group-item-header">
+                        <span class="action-group-item-name">执行结果</span>
+                        <div class="action-group-item-actions">
+                            <button class="copy-btn small" data-copy-target=".action-group-item-details pre">
+                                <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+                                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"></path>
+                                </svg>
+                                <span class="copy-tooltip">复制</span>
+                            </button>
+                            <button class="view-details-btn small">
+                                <svg class="view-icon" fill="currentColor" viewBox="0 0 24 24" width="16" height="16">
+                                    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="action-group-item-details">
+                        ${renderedResult}
+                    </div>
+                `;
+                actionGroup.querySelector('.action-group-content').appendChild(resultDiv);
+
+                // 为新的复制按钮添加事件监听器
+                const copyButton = resultDiv.querySelector('.copy-btn');
+                if (copyButton) {
+                    copyButton.addEventListener('click', (e) => {
+                        const targetSelector = copyButton.dataset.copyTarget;
+                        const targetElement = resultDiv.querySelector(targetSelector);
+                        if (targetElement) {
+                            const textToCopy = targetElement.textContent || targetElement.innerText;
+                            navigator.clipboard.writeText(textToCopy).then(() => {
+                                const tooltip = copyButton.querySelector('.copy-tooltip');
+                                if (tooltip) {
+                                    tooltip.textContent = '已复制!';
+                                    setTimeout(() => {
+                                        tooltip.textContent = '复制';
+                                    }, 2000);
+                                }
+                            }).catch(err => {
+                                console.error('复制失败:', err);
+                            });
+                        }
+                    });
+                }
+
+                // 为新的弹框展示按钮添加事件监听器
+                const viewDetailsButton = resultDiv.querySelector('.view-details-btn');
+                if (viewDetailsButton) {
+                    viewDetailsButton.addEventListener('click', () => {
+                        const modal = document.getElementById('toolResultModal');
+                        const modalContent = modal.querySelector('.modal-result-content');
+                        const closeBtn = modal.querySelector('.close-modal-btn');
+                        const modalCopyBtn = modal.querySelector('.modal-actions .copy-btn');
+
+                        // 渲染原始结果到弹框
+                        modalContent.innerHTML = marked.parse(data.result);
+                        modal.classList.add('visible');
+
+                        // 弹框内的复制按钮逻辑
+                        if (modalCopyBtn) {
+                            modalCopyBtn.onclick = () => {
+                                const originalResultText = data.result; // 复制原始结果
+                                navigator.clipboard.writeText(originalResultText).then(() => {
+                                    const tooltip = modalCopyBtn.querySelector('.copy-tooltip');
+                                    if (tooltip) {
+                                        tooltip.textContent = '已复制!';
+                                        setTimeout(() => {
+                                            tooltip.textContent = '复制原始结果';
+                                        }, 2000);
+                                    }
+                                }).catch(err => {
+                                    console.error('复制失败:', err);
+                                });
+                            };
+                        }
+
+                        // 关闭弹框逻辑
+                        closeBtn.onclick = () => {
+                            modal.classList.remove('visible');
+                            modalContent.innerHTML = ''; // 清空内容
+                        };
+
+                        // 点击外部关闭弹框
+                        window.onclick = (event) => {
+                            if (event.target === modal) {
+                                modal.classList.remove('visible');
+                                modalContent.innerHTML = '';
+                            }
+                        };
+                    });
                 }
             }
         } catch (error) {
@@ -565,7 +600,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             thinkingDiv.className = 'agent-thinking';
             thinkingDiv.innerHTML = `
                 <div class="thinking-info">
-                    <span class="thinking-indicator"></span>
+                    <span class="thinking-indicator running"></span>
                     <span class="thinking-content">${data.thought}</span>
                     <span class="thinking-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
                 </div>
@@ -646,7 +681,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             const data = JSON.parse(event.data);
             const content = data.result;
             const completeDiv = document.createElement('div');
-            completeDiv.className = 'agent-complete';
+            completeDiv.className = 'agent-complete-final';
             completeDiv.innerHTML = `
                 <div class="complete-info">
                     <div class="action_complete">${marked.parse(content || '')}</div>
@@ -661,6 +696,11 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     // complete
     eventSource.addEventListener('complete', event => {
         eventSource.close();
+        // 在会话完成时，将所有 .agent-thinking 中的 .thinking-indicator 从 running 变为 completed
+        document.querySelectorAll('.agent-thinking .thinking-indicator.running').forEach(indicator => {
+            indicator.classList.remove('running');
+            indicator.classList.add('completed');
+        });
         if (typeof ctx.onComplete === 'function') ctx.onComplete();
     });
 

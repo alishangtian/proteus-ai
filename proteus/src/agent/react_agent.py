@@ -3,6 +3,7 @@ import re
 from typing import List, Dict, Any
 import asyncio
 import logging
+from pydantic import BaseModel, Field
 import time
 import uuid
 import threading
@@ -41,6 +42,7 @@ from ..manager.multi_agent_manager import TeamRole
 from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache, get_redis_connection
 from ..utils.langfuse_wrapper import langfuse_wrapper
+from src.agent.prompt.tool_extract_prompt import TOOL_EXTRACT_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +208,17 @@ def log_execution_time(func):
             raise
 
     return wrapper
+
+
+class ToolCall(BaseModel):
+    """
+    Represents a tool call with its name and parameters.
+    """
+
+    tool_name: str = Field(..., description="The name of the tool to call.")
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict, description="The parameters for the tool call."
+    )
 
 
 class ReactAgent:
@@ -858,8 +871,12 @@ class ReactAgent:
             # 无conversation_id时使用本地内存中的scratchpad_items
             historical_items = self.scratchpad_items
 
+        planner = ""
         for i, item in enumerate(historical_items, 1):
             # 使用完整的observation而不是摘要
+            if item.action == "planner":
+                planner = item.observation
+                continue
             agent_scratchpad += (
                 item.to_react_context(
                     index=i,
@@ -876,11 +893,17 @@ class ReactAgent:
         # 统一提示模板构造
         # query赋值优化：只有当query为None时，才从scratchpad_items中查找is_origin_query为true的item，否则直接使用query
         query_value = query
+        if planner:
+            # planner是数组结构的字符串，需要格式化为列表结构
+            # 示例['1. Access the GitHub repository at https://github.com/humanlayer/12-factor-agents using a web browser or API client.', "2. Review the repository's README.md file to understand its purpose, goals, and key features.", '3. Examine the repository structure, including directories and key files, to infer the architecture and components.', '4. Check the documentation or wiki (if available) for detailed usage instructions, setup, and examples.', '5. Look for contribution guidelines (e.g., CONTRIBUTING.md) to understand how to contribute, including code standards, pull request processes, and issue reporting.', '6. Summarize the findings into a concise overview covering: what it is, goals, usage, architecture, and contribution process.']
+            planner = "\n".join(planner)
+            planner = f"## task plan \n {planner} \n"
         all_values = {
             "CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "tools": tools_list,
             "tool_names": tool_names,
             "query": query_value,
+            "planner": planner,
             "agent_scratchpad": agent_scratchpad or "暂无",
             "context": context or "暂无",
             "instructions": self.instruction or "",
@@ -896,6 +919,9 @@ class ReactAgent:
         agent_prompt = Template(self.prompt_template).safe_substitute(all_values)
         return agent_prompt
 
+    @langfuse_wrapper.observe_decorator(
+        name="_call_model", capture_input=True, capture_output=True
+    )
     async def _call_model(self, prompt: str, chat_id: str, model_name: str) -> str:
         # 确保从会话历史加载到的 messages 永远是一个列表，防止为 None 或其他非列表类型导致后续错误
         messages = self._load_conversation_history(self.conversation_id)
@@ -988,108 +1014,311 @@ class ReactAgent:
 
             raise LLMAPIError(f"LLM API call failed: {str(e)}")
 
-    # 类级别预编译正则表达式，提升性能
-    _THOUGHT_PATTERN = re.compile(
-        r"Thought\s*[:：]\s*(.*?)(?=\nAction\s*[:：]|\nAnswer\s*[:：]|$)", re.DOTALL
-    )
-    _ACTION_PATTERN = re.compile(
-        r"Action\s*[:：]\s*(.*?)(?=\nAction Input\s*[:：]|$)", re.DOTALL
-    )
-    _ACTION_INPUT_PATTERN = re.compile(
-        r"Action Input\s*[:：]\s*(.*?)(?=\nThought\s*[:：]|\nAction\s*[:：]|\nAnswer\s*[:：]|$)",
-        re.DOTALL,
-    )
-    _ANSWER_PATTERN = re.compile(r"Answer\s*[:：]\s*(.*)", re.DOTALL)
-
     @langfuse_wrapper.observe_decorator(
         name="_parse_action", capture_input=True, capture_output=True
     )
-    async def _parse_action(
-        self, response_text: str, chat_id: str, query: str = None
-    ) -> Dict[str, Any]:
-        """解析LLM响应为格式化字符串，支持纯文本解析（Action格式和Answer格式）
+    async def _parse_action(self, response_text: str) -> Dict[str, Any]:
+        """从输入文本中提取结构化 JSON 数据
 
-        优化后返回以下两种格式之一：
-        1. 工具调用格式：
-           Thought: [推理过程]
-           Action: [工具名称]
-           Action Input: {JSON参数}
+        功能：
+        - 从输入文本中提取结构化的 JSON 数据
+        - 支持两种输入格式：
+          1. Thought + Action + Action Input 格式
+          2. Thought + Answer 格式
 
-        2. 最终答案格式：
-           Thought: [最终推理结论]
-           Answer: [最终答案]
+        Args:
+            response_text: 输入的响应文本
+
+        Returns:
+            Dict[str, Any]: 结构化的 JSON 数据，格式为：
+            {
+                "thinking": "思考过程",
+                "tool": {
+                    "name": "工具名称",
+                    "params": "参数"
+                }
+            }
         """
         try:
-            # 预处理：移除包裹文本的```标记
-            if response_text.startswith("```") and response_text.endswith("```"):
-                response_text = response_text[3:-3].strip()
+            # 首先尝试直接解析为JSON（如果输入已经是JSON格式）
+            try:
+                parsed_json = json.loads(response_text.strip())
+                if (
+                    isinstance(parsed_json, dict)
+                    and "thinking" in parsed_json
+                    and "tool" in parsed_json
+                ):
+                    return parsed_json
+            except json.JSONDecodeError:
+                pass
 
-            # Use pre-compiled patterns
-            thought_match = self._THOUGHT_PATTERN.search(response_text)
-            action_match = self._ACTION_PATTERN.search(response_text)
-            action_input_match = self._ACTION_INPUT_PATTERN.search(response_text)
+            # 优先使用正则表达式解析
+            regex_result = self._parse_with_regex(response_text)
 
-            # 处理Action格式响应
-            if thought_match and action_match and action_input_match:
-                thought = thought_match.group(1).strip()
-                action = action_match.group(1).strip()
-                action_input_str = action_input_match.group(1).strip()
+            # 如果正则表达式解析成功，直接返回结果
+            if regex_result and regex_result.get("tool", {}).get("name"):
+                logger.debug("正则表达式解析成功")
+                return regex_result
 
-                # 尝试将 action_input 解析为 JSON，解析成功则直接作为 params（dict/list）
-                params = None
-                logger.info(f"action_input_str: {action_input_str}")
-                try:
-                    params = json.loads(action_input_str)
-                except json.JSONDecodeError:
-                    # 有时候模型会使用单引号或其他轻微格式问题，尝试替换单引号再解析
-                    try:
-                        safe_str = action_input_str.replace("'", '"')
-                        params = json.loads(safe_str)
-                    except Exception:
-                        params = None
-                return {
-                    "thinking": thought,
-                    "tool": {
-                        "name": action,
-                        "params": params,
-                    },
-                }
-
-            # 处理Answer格式响应
-            answer_match = self._ANSWER_PATTERN.search(response_text)
-            if answer_match:
-                thought = (
-                    thought_match.group(1).strip()
-                    if thought_match
-                    else "基于以上分析，我可以提供最终答案"
-                )
-                answer = answer_match.group(1).strip()
-                return {
-                    "thinking": thought,
-                    "tool": {
-                        "name": "final_answer",
-                        "params": answer,
-                    },
-                }
-
-            # 默认返回整个响应作为最终答案
-            return {
-                "thinking": "基于当前信息提供答案",
-                "tool": {
-                    "name": "final_answer",
-                    "params": response_text,
-                },
-            }
+            # 当正则表达式解析失败时，使用LLM进行结构化提取
+            logger.info("正则表达式解析失败，尝试使用LLM进行解析")
+            return await self.extract_from_response(response_text)
 
         except Exception as e:
-            logger.error(f"解析响应文本失败: {str(e)}\n响应内容: {response_text[:200]}")
+            logger.error(f"解析action失败: {e}")
+            # 返回默认的错误处理结果
             return {
-                "thinking": "解析响应时发生错误",
+                "thinking": f"解析错误: {str(e)}",
                 "tool": {
                     "name": "final_answer",
                     "params": "解析失败，无法提供有效答案",
                 },
             }
+
+    @langfuse_wrapper.observe_decorator(
+        name="extract_from_response", capture_input=True, capture_output=True
+    )
+    async def extract_from_response(self, response_text: str) -> str:
+        try:
+            # 构建优化的提示词
+            extraction_prompt = self._build_extraction_prompt(response_text)
+
+            # 调用LLM进行提取
+            if self.reasoner_model_name:
+                model_response = await call_llm_api(
+                    [{"role": "user", "content": extraction_prompt}],
+                    model_name=self.reasoner_model_name,
+                )
+            else:
+                model_response = await call_llm_api(
+                    [{"role": "user", "content": extraction_prompt}],
+                    model_name=self.model_name,
+                )
+
+            # 处理返回值（可能是tuple或直接是字符串）
+            if isinstance(model_response, tuple) and len(model_response) == 2:
+                extracted_text = model_response[0]
+            else:
+                extracted_text = model_response
+
+            # 解析提取的JSON
+            try:
+                result = json.loads(extracted_text.strip())
+                if isinstance(result, dict) and result:
+                    logger.info("LLM解析成功")
+                    return result
+            except json.JSONDecodeError:
+                logger.warning(f"LLM提取的内容不是有效JSON: {extracted_text}")
+            return {}
+        except Exception as e:
+            logger.warning(f"使用LLM提取结构化数据失败: {e}")
+            return {}
+
+    def _build_extraction_prompt(self, response_text: str) -> str:
+        """构建优化的LLM提取提示词
+
+        Args:
+            response_text: 原始响应文本
+
+        Returns:
+            str: 优化后的提示词
+        """
+        return f"""你是一个专业的文本解析器，专门从AI助手的响应中提取结构化信息。
+
+请从以下文本中提取思考过程和工具调用信息，并严格按照JSON格式输出。
+
+## 输出格式要求：
+
+### 格式一：工具调用模式
+如果文本包含 "Action:" 和 "Action Input:"，请输出：
+{{
+    "thinking": "Thought后面的思考内容",
+    "tool": {{
+        "name": "Action后面的工具名称",
+        "params": Action Input后面的参数（保持原始格式，如果是JSON则解析为对象，否则为字符串）
+    }}
+}}
+
+### 格式二：最终答案模式
+如果文本包含 "Answer:"，请输出：
+{{
+    "thinking": "Thought后面的思考内容",
+    "tool": {{
+        "name": "final_answer",
+        "params": "Answer后面的完整答案内容"
+    }}
+}}
+
+### 格式三：无法解析
+如果文本中没有明确的结构化信息，请输出：
+{{}}
+
+## 解析规则：
+1. 提取 "Thought:" 后面的内容作为 thinking
+2. 如果有 "Action:" 和 "Action Input:"，提取对应内容
+3. 如果有 "Answer:"，将工具名设为 "final_answer"，参数为答案内容
+4. Action Input 如果是JSON格式，请解析为对象；否则保持字符串格式
+5. 只输出JSON，不要包含任何解释文字
+
+## 待解析文本：
+{response_text}
+
+请输出解析结果："""
+
+    @langfuse_wrapper.observe_decorator(
+        name="_parse_with_regex", capture_input=True, capture_output=True
+    )
+    def _parse_with_regex(self, response_text: str) -> Dict[str, Any]:
+        """使用正则表达式解析响应文本
+
+        Args:
+            response_text: 输入的响应文本
+
+        Returns:
+            Dict[str, Any]: 解析后的结构化数据
+        """
+        try:
+            # 清理文本
+            text = response_text.strip()
+
+            # 初始化变量
+            thinking = ""
+            tool_name = ""
+            tool_params = ""
+
+            # 优化的正则表达式模式，支持多行内容提取
+            # 使用非贪婪匹配和更精确的边界检测
+            thought_pattern = r"Thought:\s*(.*?)(?=\n(?:Action|Answer):|$)"
+            action_pattern = r"Action:\s*(.*?)(?=\nAction Input:|$)"
+            action_input_pattern = (
+                r"Action Input:\s*(.*?)(?=\n(?:Thought|Action|Answer):|$)"
+            )
+            answer_pattern = r"Answer:\s*(.*?)(?=\n(?:Thought|Action):|$)"
+
+            # 提取 Thought - 支持多行内容
+            thought_match = re.search(thought_pattern, text, re.DOTALL | re.IGNORECASE)
+            if thought_match:
+                thinking = thought_match.group(1).strip()
+
+            # 检查是否包含 Answer（最终答案模式）- 提取所有后续内容
+            answer_match = re.search(answer_pattern, text, re.DOTALL | re.IGNORECASE)
+            if answer_match:
+                tool_name = "final_answer"
+                # 提取Answer后的所有内容，包括换行
+                tool_params = answer_match.group(1).strip()
+            else:
+                # 新增：支持方括号格式的Action模式
+                # 格式：Action: tool_name[param1=value1, param2=value2, ...]
+                action_bracket_pattern = r"Action:\s*([^[\s]+)\[([^\]]*)\]"
+
+                # 首先尝试方括号格式的Action
+                bracket_action_match = re.search(
+                    action_bracket_pattern, text, re.IGNORECASE
+                )
+                if bracket_action_match:
+                    tool_name = bracket_action_match.group(1).strip()
+                    params_str = bracket_action_match.group(2).strip()
+
+                    # 解析方括号中的参数
+                    tool_params = self._parse_bracket_params(params_str)
+                else:
+                    # 提取标准格式的 Action 和 Action Input
+                    action_match = re.search(
+                        action_pattern, text, re.DOTALL | re.IGNORECASE
+                    )
+                    if action_match:
+                        tool_name = action_match.group(1).strip()
+
+                    action_input_match = re.search(
+                        action_input_pattern, text, re.DOTALL | re.IGNORECASE
+                    )
+                    if action_input_match:
+                        # 提取Action Input后的所有内容，包括换行
+                        action_input_text = action_input_match.group(1).strip()
+
+                        # 尝试解析 Action Input 为 JSON
+                        try:
+                            tool_params = json.loads(action_input_text)
+                        except json.JSONDecodeError:
+                            # 如果不是有效的JSON，直接使用字符串（保持换行）
+                            tool_params = action_input_text
+                    else:
+                        tool_params = ""
+
+            # 如果没有找到有效的工具名称，尝试更宽松的匹配
+            if not tool_name:
+                # 尝试更宽松的模式匹配，处理可能的格式变化
+                loose_answer_pattern = r"(?:Answer|答案|回答)[:：]\s*(.*)"
+                loose_answer_match = re.search(
+                    loose_answer_pattern, text, re.DOTALL | re.IGNORECASE
+                )
+                if loose_answer_match:
+                    tool_name = "final_answer"
+                    tool_params = loose_answer_match.group(1).strip()
+                else:
+                    logger.warning(f"无法从文本中提取有效的工具调用: {text}")
+                    return {}
+
+            return {
+                "thinking": thinking,
+                "tool": {"name": tool_name, "params": tool_params},
+            }
+
+        except Exception as e:
+            logger.error(f"正则表达式解析失败: {e}")
+            return {
+                "thinking": f"解析错误: {str(e)}",
+                "tool": {
+                    "name": "final_answer",
+                    "params": "解析失败，无法提供有效答案",
+                },
+            }
+
+    def _parse_bracket_params(self, params_str: str) -> Dict[str, Any]:
+        """解析方括号中的参数字符串
+
+        Args:
+            params_str: 参数字符串，格式如 "query=通义 DeepResearch, language=zh, max_results=5"
+
+        Returns:
+            Dict[str, Any]: 解析后的参数字典
+        """
+        try:
+            if not params_str.strip():
+                return {}
+
+            params = {}
+            # 使用正则表达式分割参数，支持包含逗号的值
+            # 匹配 key=value 格式，value可以包含空格和特殊字符
+            param_pattern = r"([^=,]+)=([^,]*?)(?=,\s*[^=,]+=|$)"
+
+            matches = re.findall(param_pattern, params_str)
+
+            for key, value in matches:
+                key = key.strip()
+                value = value.strip()
+
+                # 尝试转换数值类型
+                if value.isdigit():
+                    params[key] = int(value)
+                elif value.lower() in ("true", "false"):
+                    params[key] = value.lower() == "true"
+                elif value.replace(".", "", 1).isdigit():
+                    params[key] = float(value)
+                else:
+                    # 移除可能的引号
+                    if (value.startswith('"') and value.endswith('"')) or (
+                        value.startswith("'") and value.endswith("'")
+                    ):
+                        value = value[1:-1]
+                    params[key] = value
+
+            return params
+
+        except Exception as e:
+            logger.warning(f"解析方括号参数失败: {e}, 原始字符串: {params_str}")
+            # 如果解析失败，返回原始字符串
+            return params_str
 
     @langfuse_wrapper.observe_decorator(
         name="set_user_input", capture_input=True, capture_output=True
@@ -1475,7 +1704,7 @@ class ReactAgent:
             )
 
         logger.info(f"Iteration LLM Response: {model_response}")
-        result_dict = await self._parse_action(model_response, chat_id, query)
+        result_dict = await self._parse_action(model_response)
 
         # 解析格式化字符串，提取 Thought、Action 和 Action Input
         # result_dict = self._parse_formatted_response(parsed_response)
@@ -1700,7 +1929,7 @@ class ReactAgent:
                 context,
                 stream,
                 span,
-                include_fields=include_fields,
+                include_fields=self.include_fields,
             )
             if stream and self.stream_manager and result:
                 event = await create_agent_complete_event(result)
@@ -1919,10 +2148,21 @@ class ReactAgent:
                 logger.error(
                     f"[{chat_id}] 工具未找到 (迭代 {iteration_count}): {last_error}"
                 )
-
-                # 对于工具未找到错误，直接终止而不是重试
-                final_answer = f"工具执行错误: {last_error}"
-                break
+                # 对于工具未找到错误
+                error_item = ScratchpadItem(
+                    thought=f"工具执行失败: {last_error}",
+                    action="",
+                    observation=last_error,
+                    action_input=last_error,
+                    tool_execution_id="",
+                    role_type=(
+                        self.role_type.value
+                        if hasattr(self.role_type, "value")
+                        else str(self.role_type)
+                    ),
+                )
+                self.scratchpad_items.append(error_item)
+                await asyncio.sleep(self.iteration_retry_delay)
             except ToolExecutionError as e:
                 last_error = str(e)
                 logger.error(

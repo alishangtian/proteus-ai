@@ -4,7 +4,11 @@ from enum import Enum
 from dataclasses import dataclass, field
 import time
 import uuid
+import logging
 from functools import lru_cache
+import json
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -241,37 +245,150 @@ class ScratchpadItem:
         use_summary: bool = False,
         include_fields: List[IncludeFields] = None,
     ) -> str:
-        """将对象转换为字符串表示，以紧凑的Markdown格式
+        """将对象转换为 ReAct 上下文行，格式参考：
 
-        Args:
-            index: 步骤索引
-            use_summary: 保留参数向后兼容，但始终使用完整的observation
-            include_fields: 要包含的字段列表，例如 [IncludeFields.THOUGHT, IncludeFields.ACTION, IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
-                            如果为 None，则包含所有字段。
+        Thought {n}: ...
+        Action {n}: ToolName[param1=val1, param2=val2]
+        Observation {n}: ...
+
+        说明：
+        - 优先尝试将 action_input 解析为 JSON（dict/list），解析成功则以紧凑形式展示参数；
+        - 若无法解析为 JSON，则直接使用字符串形式的 action_input；
+        - 若没有 action_input，则显示空的方括号 [] 以保持格式一致性。
         """
-        if include_fields is None:
-            include_fields = [
-                IncludeFields.THOUGHT,
-                IncludeFields.ACTION,
-                IncludeFields.ACTION_INPUT,
-                IncludeFields.OBSERVATION,
-            ]
+        step_number = index if index is not None else 1
 
-        parts = []
-        if IncludeFields.THOUGHT in include_fields and self.thought:
-            parts.append(f"Thought :{self.thought}")
+        # Thought 行
+        thought_line = f"Thought {step_number}: {self.thought}"
 
-        if IncludeFields.ACTION in include_fields and self.action:
-            parts.append(f"Action :{self.action}")
+        # Action 行，合并工具名与参数
+        action_name = self.action or ""
+        action_params_str = ""
+        if self.action_input:
+            raw = str(self.action_input).strip()
+            # 尝试解析为 JSON
+            parsed = None
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = None
 
-        if IncludeFields.ACTION_INPUT in include_fields and self.action_input:
-            parts.append(f"Action Input :{self.action_input}")
+            if isinstance(parsed, dict):
+                # 格式化为 key=value, 保持简洁
+                pairs = []
+                for k, v in parsed.items():
+                    # 简单将值转换为单行字符串
+                    if isinstance(v, (dict, list)):
+                        pairs.append(f"{k}={json.dumps(v, ensure_ascii=False)}")
+                    else:
+                        pairs.append(f"{k}={v}")
+                action_params_str = ", ".join(pairs)
+            elif isinstance(parsed, list):
+                action_params_str = ", ".join(str(x) for x in parsed)
+            else:
+                # 不是 JSON，直接使用原始字符串（单行）
+                # 去掉换行并压缩空白使其更紧凑
+                action_params_str = " ".join(raw.split())
+        else:
+            action_params_str = ""
 
-        if IncludeFields.OBSERVATION in include_fields and self.observation:
-            formatted_observation = self._format_markdown_observation(self.observation)
-            parts.append(f"Observation :\n    {formatted_observation}")
+        # 保证括号展示，即使没有参数也显示 []
+        if action_params_str:
+            action_line = f"Action {step_number}: {action_name}[{action_params_str}]"
+        else:
+            action_line = f"Action {step_number}: {action_name}[]"
 
-        return "\n".join(parts) + "\n" if parts else ""
+        # Observation 行，使用已有的 markdown 格式化方法（保持多行内容）
+        formatted_observation = self._format_markdown_observation(self.observation)
+        # 把 observation 的多行首尾空白修正为单行或多行块
+        observation_line = f"Observation {step_number}: {formatted_observation}"
+
+        return "\n".join([thought_line, action_line, observation_line]) + "\n"
+
+    def to_react_context_table(
+        self,
+        index: int = None,
+        use_summary: bool = False,
+        include_fields: List[IncludeFields] = None,
+    ) -> str:
+        """
+        将对象转换为 ReAct 上下文的 Markdown 表格格式，输出示例：
+
+        | Step | Thought | Action | Observation |
+        |---|---:|---|---|
+        | 1 | ... | ToolName[param=val] | observation 内容（支持换行） |
+
+        说明：
+        - 优先尝试将 action_input 解析为 JSON（dict/list），解析成功则以紧凑形式展示参数；
+        - 若无法解析为 JSON，则直接使用字符串形式的 action_input（压缩空白、去除换行）；
+        - Observation 中的换行会被转换为 `<br>` 以保持表格内换行显示，表内的 `|` 会被转义为 `\|`。
+        """
+        step_number = index if index is not None else 1
+
+        def _collapse(s: str) -> str:
+            return " ".join(s.split()) if s is not None else ""
+
+        def _esc_pipe(s: str) -> str:
+            return s.replace("|", "\\|") if s is not None else ""
+
+        # Thought 列
+        thought_text = _collapse(self.thought or "")
+
+        # Action 列，合并工具名与参数
+        action_name = self.action or ""
+        action_params_str = ""
+        if self.action_input:
+            raw = str(self.action_input).strip()
+            parsed = None
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = None
+
+            if isinstance(parsed, dict):
+                pairs = []
+                for k, v in parsed.items():
+                    if isinstance(v, (dict, list)):
+                        pairs.append(f"{k}={json.dumps(v, ensure_ascii=False)}")
+                    else:
+                        pairs.append(f"{k}={v}")
+                action_params_str = ", ".join(pairs)
+            elif isinstance(parsed, list):
+                action_params_str = ", ".join(str(x) for x in parsed)
+            else:
+                action_params_str = _collapse(raw)
+        else:
+            action_params_str = ""
+
+        if action_params_str:
+            action_display = f"{action_name}[{action_params_str}]"
+        else:
+            action_display = f"{action_name}[]"
+
+        # Observation 列，保留 markdown 结构但在表格单元格内使用 <br> 换行
+        formatted_observation = self._format_markdown_observation(
+            self.observation or ""
+        )
+        # 去掉每行前导空白并过滤空行
+        obs_lines = [
+            line.strip()
+            for line in formatted_observation.splitlines()
+            if line.strip() != ""
+        ]
+        observation_cell = "<br>".join(obs_lines) if obs_lines else ""
+
+        # 转义可能破坏表格的竖线
+        thought_cell = _esc_pipe(thought_text)
+        action_cell = _esc_pipe(action_display)
+        observation_cell = _esc_pipe(observation_cell)
+
+        # 构造 Markdown 表格（单行）
+        table_lines = [
+            "| Step | Thought | Action | Observation |",
+            "|---|---|---|---|",
+            f"| {step_number} | {thought_cell} | {action_cell} | {observation_cell} |",
+        ]
+        return "\n".join(table_lines) + "\n"
 
     def _format_markdown_observation(self, text: str) -> str:
         """格式化markdown格式的observation内容
