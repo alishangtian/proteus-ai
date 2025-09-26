@@ -312,6 +312,81 @@ body {
     z-index: 100;
 }
 
+/* 已上传文件列表容器样式 */
+.uploaded-files-container {
+    position: absolute;
+    bottom: 100%;
+    /* 浮在 input-container 上方 */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 1000px;
+    /* 与 input-container 保持一致的最大宽度 */
+    padding: 8px 20px;
+    margin-bottom: 10px;
+    /* 与输入框保持一定距离 */
+    background: #f8f9fa;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    display: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    z-index: 99;
+    /* 略低于 input-container */
+    box-sizing: border-box;
+}
+
+/* 已上传文件项样式 */
+.uploaded-file-item {
+    display: flex;
+    align-items: center;
+    background: #e9ecef;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #343a40;
+    gap: 6px;
+}
+
+.uploaded-file-item.has-image-analysis {
+    cursor: pointer;
+    /* 提示可点击 */
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.uploaded-file-item.has-image-analysis:hover {
+    background-color: #e0e0e0;
+    /* 悬停时背景变色 */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    /* 悬停时增加阴影 */
+}
+
+.uploaded-file-item .image-analysis-preview {
+    font-size: 11px;
+    color: #007bff;
+    /* 蓝色，更像链接 */
+    cursor: pointer;
+    /* 提示可点击 */
+    text-decoration: underline;
+    /* 下划线 */
+    font-weight: 500;
+}
+
+/* 删除按钮样式 */
+.delete-file-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.2s ease;
+}
+
+.delete-file-btn:hover {
+    color: #c82333;
+}
+
 .input-wrapper {
     position: relative;
     background: #fff;
@@ -680,6 +755,8 @@ body {
     border-radius: 16px;
     width: 100%;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    word-wrap: break-word; /* 允许长单词或 URL 在容器边界处换行 */
+    word-break: break-all; /* 强制在任意字符处换行，以防止溢出 */
 }
 
 /* 确保工作流信息和其他内容在问答之外全宽显示 */
@@ -1727,9 +1804,15 @@ body {
 .workflow-content h2,
 .result-value h2,
 .explanation h2,
-.answer h2 {
+.answer h2,
+.node-content h3,
+.workflow-content h3,
+.result-value h3,
+.explanation h3,
+.answer h3 {
     color: #0f172a;
-    margin: 8px 0;
+    margin: 16px 0 8px 0;
+    /* 增加顶部和底部外边距 */
     font-weight: 700;
 }
 
@@ -1744,7 +1827,8 @@ body {
 .explanation ol,
 .answer ul,
 .answer ol {
-    margin: 8px 0 12px 20px;
+    margin: 8px 0 16px 20px;
+    /* 增加底部外边距 */
     color: #374151;
 }
 
@@ -1790,7 +1874,8 @@ body {
     font-size: 13px;
     color: #0b1220;
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
-    margin: 12px 0;
+    margin: 16px 0;
+    /* 增加顶部和底部外边距 */
 }
 
 /* 高亮语言标签（如果 marked 输出了 <code class="language-xxx">） */
@@ -1810,7 +1895,8 @@ body {
 .answer table {
     width: 100%;
     border-collapse: collapse;
-    margin: 12px 0;
+    margin: 16px 0;
+    /* 增加顶部和底部外边距 */
     font-size: 13px;
 }
 
@@ -1843,7 +1929,8 @@ body {
     max-width: 100%;
     border-radius: 8px;
     display: block;
-    margin: 8px 0;
+    margin: 12px auto;
+    /* 增加顶部和底部外边距，并居中 */
 }
 
 /* 强化 node / workflow 卡片的内边距与背景，区分不同类型 */
@@ -2034,8 +2121,13 @@ body {
 .modal-result-content {
     /* 继承 Markdown 渲染样式 */
     color: #111827;
-    font-size: 14px;
-    line-height: 1.7;
+    font-size: 15px;
+    /* 稍微增大字体 */
+    line-height: 1.8;
+    /* 增加行高 */
+    padding: 15px;
+    /* 增加内边距 */
+    /* 增加内边距 */
 }
 
 .modal-result-content pre {
@@ -2087,4 +2179,84 @@ body {
     .modal-body {
         padding-right: 5px;
     }
+}
+
+/* 上传中的文件项样式 */
+.uploaded-file-item.uploading {
+    background: #f0f8ff;
+    /* 淡蓝色背景 */
+    border: 1px solid #a3bffa;
+    /* 浅蓝色边框 */
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+/* 加载动画 */
+.loading-spinner {
+    border: 3px solid rgba(0, 123, 255, 0.2);
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* 删除按钮样式优化 */
+.uploaded-file-item .delete-file-btn {
+    background: #6c757d;
+    /* 深灰色背景 */
+    color: white;
+    border-radius: 50%;
+    /* 圆形 */
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1;
+    /* 确保 'x' 居中 */
+    padding: 0;
+    margin-left: 8px;
+    transition: background-color 0.2s ease;
+}
+
+.uploaded-file-item .delete-file-btn:hover {
+    background: #dc3545;
+    /* 悬停时变为红色 */
+    color: white;
+}
+
+/* 上传失败的文件项样式 */
+.uploaded-file-item.failed {
+    background: #fee2e2;
+    /* 浅红色背景 */
+    border: 1px solid #ef4444;
+    /* 红色边框 */
+    color: #991b1b;
+}
+
+/* 删除中的文件项样式 */
+.uploaded-file-item.deleting {
+    background: #fff3cd;
+    /* 浅黄色背景 */
+    border: 1px solid #ffeeba;
+    /* 黄色边框 */
+    color: #856404;
 }

@@ -7,6 +7,7 @@
     <title>询问任何问题</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
     <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="/static/card-styles.css">
     <script src="/static/marked.min.js"></script>
     <script src="/static/main.js" type="module"></script>
@@ -95,6 +96,9 @@
     <div class="main-container">
         <div id="conversation-history"></div>
         <div class="input-container">
+            <div id="uploaded-files-container" class="uploaded-files-container">
+                <!-- 已上传文件将在这里显示 -->
+            </div>
             <div class="input-wrapper">
                 <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
 
@@ -126,6 +130,10 @@
                     <div style="flex:1"></div>
 
                     <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
+                        <input type="file" id="file-upload" style="display: none;" multiple>
+                        <button id="upload-button" type="button" aria-label="上传文件">
+                            📎
+                        </button>
                         <button id="send-button" type="button" aria-label="发送">
                             发送
                         </button>

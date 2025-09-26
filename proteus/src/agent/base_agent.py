@@ -185,6 +185,7 @@ class ScratchpadItem:
     is_origin_query: bool = False
     tool_execution_id: str = ""
     role_type: str = ""
+    report: str = ""
 
     def __post_init__(self):
         # 确保 action_input 为字符串并限制长度不超过200
@@ -217,6 +218,7 @@ class ScratchpadItem:
             "is_origin_query": self.is_origin_query,
             "tool_execution_id": self.tool_execution_id,
             "role_type": self.role_type,
+            "report": self.report,
         }
 
     def to_string(self, index: int = None) -> str:

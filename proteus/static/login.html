@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,7 +14,7 @@
             box-sizing: border-box;
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
         }
-        
+
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -22,38 +23,44 @@
             align-items: center;
             padding: 20px;
         }
-        
+
         .login-container {
             width: 100%;
             max-width: 450px;
         }
-        
+
         .login-box {
             background: white;
             border-radius: 10px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            /* 更柔和的阴影 */
             padding: 40px;
             text-align: center;
         }
-        
+
         .login-title {
-            color: #333;
+            color: #2c3e50;
+            /* 更深的颜色 */
             margin-bottom: 30px;
-            font-weight: 600;
+            font-size: 28px;
+            /* 调整字体大小 */
+            font-weight: 700;
+            /* 更粗的字体 */
         }
-        
+
         .form-group {
             margin-bottom: 20px;
             text-align: left;
         }
-        
+
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
-            color: #555;
+            color: #34495e;
+            /* 更深的颜色 */
         }
-        
+
         .login-input {
             width: 100%;
             padding: 12px 15px;
@@ -62,13 +69,15 @@
             font-size: 16px;
             transition: all 0.3s;
         }
-        
+
         .login-input:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+            border-color: #5a67d8;
+            /* 更深的焦点边框颜色 */
+            box-shadow: 0 0 0 4px rgba(90, 103, 216, 0.3);
+            /* 更明显的焦点阴影 */
             outline: none;
         }
-        
+
         .login-btn {
             width: 100%;
             padding: 12px;
@@ -82,80 +91,125 @@
             transition: all 0.3s;
             margin-top: 10px;
         }
-        
+
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 7px 14px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            /* 更明显的悬停阴影 */
         }
-        
+
+        .login-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+            background: linear-gradient(to right, #5a67d8, #6b46c1);
+            /* 按下时的颜色变化 */
+        }
+
         .login-btn:disabled {
             background: #cccccc;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
         }
-        
+
         .error-message {
             color: #dc3545;
             margin-bottom: 15px;
             text-align: center;
         }
-        
+
         .register-link {
             color: #667eea;
             text-decoration: none;
             font-weight: 500;
         }
-        
+
         .register-link:hover {
             text-decoration: underline;
         }
-        
+
         .shake {
             animation: shake 0.5s;
         }
-        
+
         @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-            20%, 40%, 60%, 80% { transform: translateX(5px); }
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            10%,
+            30%,
+            50%,
+            70%,
+            90% {
+                transform: translateX(-5px);
+            }
+
+            20%,
+            40%,
+            60%,
+            80% {
+                transform: translateX(5px);
+            }
         }
-        
+
         .spinner {
             display: inline-block;
             width: 16px;
             height: 16px;
-            border: 2px solid rgba(255,255,255,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             border-top-color: white;
             animation: spin 1s ease-in-out infinite;
         }
-        
+
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
-        
+
         @media (max-width: 480px) {
             .login-box {
                 padding: 30px 20px;
             }
         }
+
+        .login-logo {
+            margin-bottom: 20px;
+        }
+
+        .login-logo img {
+            width: 80px;
+            /* 调整 Logo 大小 */
+            height: 80px;
+            border-radius: 50%;
+            /* 使 Logo 呈圆形 */
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            /* Logo 阴影 */
+        }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <div class="login-box">
+            <div class="login-logo">
+                <img src="/static/icon/proteus.png" alt="Proteus Logo">
+            </div>
             <h2 class="login-title">欢迎登录Proteus</h2>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">用户名</label>
-                    <input type="text" id="username" placeholder="请输入用户名" required
-                           class="login-input" autocomplete="username">
+                    <input type="text" id="username" placeholder="请输入用户名" required class="login-input"
+                        autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="password">密码</label>
-                    <input type="password" id="password" placeholder="请输入密码" required
-                           class="login-input" autocomplete="current-password">
+                    <input type="password" id="password" placeholder="请输入密码" required class="login-input"
+                        autocomplete="current-password">
                 </div>
                 <div id="errorMsg" class="error-message" style="display:none;"></div>
                 <button type="submit" class="login-btn" id="submitBtn">
@@ -178,7 +232,7 @@
 
         async function handleLogin(e) {
             e.preventDefault();
-            
+
             // 显示加载状态
             btnText.textContent = '登录中...';
             spinner.style.display = 'inline-block';
@@ -220,7 +274,7 @@
         function showError(message) {
             errorMsg.textContent = message;
             errorMsg.style.display = 'block';
-            
+
             // 添加抖动动画
             loginForm.classList.add('shake');
             setTimeout(() => {
@@ -232,14 +286,15 @@
 
         // 输入框获取焦点时添加效果
         document.querySelectorAll('.login-input').forEach(input => {
-            input.addEventListener('focus', function() {
+            input.addEventListener('focus', function () {
                 this.parentElement.classList.add('focused');
             });
-            
-            input.addEventListener('blur', function() {
+
+            input.addEventListener('blur', function () {
                 this.parentElement.classList.remove('focused');
             });
         });
     </script>
 </body>
+
 </html>

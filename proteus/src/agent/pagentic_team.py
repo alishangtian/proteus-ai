@@ -47,10 +47,10 @@ class PagenticTeam:
         self.agents: Dict[TeamRole, ReactAgent] = {}
         self.team_rules = team_rules or "默认团队规范"
         self.conversation_id = conversation_id
+        self.conversation_round = conversation_round
         self._initialize_agents(tools_config or {})
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
-        self.conversation_round = conversation_round
 
     @langfuse_wrapper.observe_decorator(
         name="_initialize_agents", capture_input=True, capture_output=True

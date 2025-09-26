@@ -2,6 +2,10 @@
 export let isScrolling = false;
 let scrollTimeout = null;
 
+// 用于存储当前正在流式输出的文本内容，以便在后续块到达时追加
+let currentStreamedContent = '';
+let streamingInterval = null; // 用于控制流式输出的定时器
+
 export function scrollToBottom(conversationHistory) {
     if (isScrolling) return;
     isScrolling = true;
@@ -22,7 +26,51 @@ export function resetUI(userInput, sendButton) {
     sendButton.disabled = false;
     sendButton.textContent = '发送';
     sendButton.classList.remove('stop');
+    // 重置流式输出状态
+    currentStreamedContent = '';
+    if (streamingInterval) {
+        clearInterval(streamingInterval);
+        streamingInterval = null;
+    }
 }
+
+/**
+ * 假流式输出文本内容到指定元素
+ * @param {HTMLElement} element 要输出到的 DOM 元素
+ * @param {string} text 要流式输出的文本
+ * @param {number} delay 每个字符之间的延迟 (毫秒)
+ * @param {Function} onComplete 流式输出完成后的回调
+ */
+export function streamTextContent(element, text, delay = 10, onComplete = () => { }) {
+    // 清除之前的流式输出定时器，确保只有一个在运行
+    if (streamingInterval) {
+        clearInterval(streamingInterval);
+        streamingInterval = null;
+    }
+
+    element.textContent = ''; // 清空现有内容
+
+    if (!text || text.length === 0) {
+        onComplete();
+        scrollToBottom(element.closest('#conversation-history')); // 确保在空内容时也滚动到底部
+        return;
+    }
+
+    let i = 0;
+    streamingInterval = setInterval(() => {
+        if (i < text.length) {
+            element.textContent += text.charAt(i);
+            i++;
+            scrollToBottom(element.closest('#conversation-history')); // 确保滚动到底部
+        } else {
+            clearInterval(streamingInterval);
+            streamingInterval = null;
+            onComplete();
+        }
+    }, delay);
+    scrollToBottom(element.closest('#conversation-history')); // 确保在流式输出开始时也滚动到底部
+}
+
 
 export function renderNodeResult(data, container, currentIteration = 1) {
     // 优化：所有节点结果尽量以 Markdown 渲染
@@ -153,15 +201,29 @@ export function renderExplanation(content, container) {
     explanationDiv.innerHTML = htmlContent;
 }
 
-export function renderAnswer(content, container) {
+export function renderAnswer(content, container, isFinal = false) {
     let answerDiv = container.querySelector('.answer:last-child');
     if (!answerDiv) {
         answerDiv = document.createElement('div');
         answerDiv.className = 'answer';
         container.appendChild(answerDiv);
     }
-    const htmlContent = marked.parse(content);
-    answerDiv.innerHTML = htmlContent;
+
+    // 累积内容
+    currentStreamedContent += content;
+
+    // 如果是最终块，则进行 Markdown 渲染并替换内容
+    if (isFinal) {
+        if (streamingInterval) {
+            clearInterval(streamingInterval);
+            streamingInterval = null;
+        }
+        answerDiv.innerHTML = marked.parse(currentStreamedContent);
+        currentStreamedContent = ''; // 重置累积内容
+    } else {
+        // 否则，进行流式输出
+        streamTextContent(answerDiv, currentStreamedContent);
+    }
 }
 
 export function createQuestionElement(text, currentModel) {

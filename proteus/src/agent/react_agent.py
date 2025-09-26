@@ -1,6 +1,6 @@
 from datetime import datetime
 import re
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 import asyncio
 import logging
 from pydantic import BaseModel, Field
@@ -533,6 +533,7 @@ class ReactAgent:
                         is_origin_query=item_dict.get("is_origin_query", False),
                         tool_execution_id=item_dict.get("tool_execution_id", ""),
                         role_type=item_dict.get("role_type", "") or "",
+                        report=item_dict.get("report", "")
                     )
 
                     # 添加其他可能的属性
@@ -914,6 +915,11 @@ class ReactAgent:
             # ),
             "max_iterations": self.max_iterations,
             "current_iteration": current_iteration,
+            "report": (
+                self.scratchpad_items[-1].report
+                if self.scratchpad_items and hasattr(self.scratchpad_items[-1], "report")
+                else ""
+            ),
         }
 
         agent_prompt = Template(self.prompt_template).safe_substitute(all_values)
@@ -922,22 +928,27 @@ class ReactAgent:
     @langfuse_wrapper.observe_decorator(
         name="_call_model", capture_input=True, capture_output=True
     )
-    async def _call_model(self, prompt: str, chat_id: str, model_name: str) -> str:
+    async def _call_model(
+        self, messages: Union[str, List[Dict[str, str]]], chat_id: str, model_name: str
+    ) -> str:
+        # 如果 messages 是字符串，则转换为列表
+        if isinstance(messages, str):
+            messages = [{"role": "user", "content": messages}]
         # 确保从会话历史加载到的 messages 永远是一个列表，防止为 None 或其他非列表类型导致后续错误
-        messages = self._load_conversation_history(self.conversation_id)
-        if messages is None:
-            messages = []
-        elif not isinstance(messages, list):
+        conversation_history = self._load_conversation_history(self.conversation_id)
+        if conversation_history is None:
+            conversation_history = []
+        elif not isinstance(conversation_history, list):
             try:
-                messages = list(messages)
+                conversation_history = list(conversation_history)
             except Exception:
-                messages = []
-        # 确保每个消息是一个 dict 并且包含 role/content
-        messages.append({"role": "user", "content": prompt})
+                conversation_history = []
+        # 将当前消息添加到会话历史中
+        full_messages = conversation_history + messages
 
         if not langfuse_wrapper.is_enabled():
             # 如果Langfuse未启用，则直接调用LLM
-            resp = await call_llm_api(messages, model_name=model_name)
+            resp = await call_llm_api(full_messages, model_name=model_name)
             # 兼容 llm_api 可能返回 (text, usage) 或 直接返回 text
             if isinstance(resp, tuple) and len(resp) == 2:
                 return resp[0]
@@ -952,12 +963,12 @@ class ReactAgent:
                 with span.start_as_current_generation(
                     name="generate-response",
                     model=model_name,
-                    input={"prompt": prompt},
+                    input={"prompt": full_messages},
                     model_parameters={"temperature": 0.7},  # 可以从配置获取实际参数
                     metadata={"chat_id": chat_id},
                 ) as generation:
                     start_time = time.time()
-                    resp = await call_llm_api(messages, model_name=model_name)
+                    resp = await call_llm_api(full_messages, model_name=model_name)
                     # 兼容返回 (text, usage) 或 text
                     if isinstance(resp, tuple) and len(resp) == 2:
                         response_text, usage = resp
@@ -970,7 +981,7 @@ class ReactAgent:
                     usage_details = {
                         "input_tokens": usage.get("prompt_tokens")
                         or usage.get("input_tokens")
-                        or len(prompt.split()),
+                        or len(json.dumps(full_messages).split()),
                         "output_tokens": usage.get("completion_tokens")
                         or usage.get("output_tokens")
                         or len(response_text.split()),
@@ -979,7 +990,10 @@ class ReactAgent:
                             usage.get("prompt_tokens", 0)
                             + usage.get("completion_tokens", 0)
                         )
-                        or (len(prompt.split()) + len(response_text.split())),
+                        or (
+                            len(json.dumps(full_messages).split())
+                            + len(response_text.split())
+                        ),
                     }
 
                     generation.update(
@@ -1168,6 +1182,14 @@ class ReactAgent:
     @langfuse_wrapper.observe_decorator(
         name="_parse_with_regex", capture_input=True, capture_output=True
     )
+    def _is_json(self, text: str) -> bool:
+        """判断字符串是否是有效的JSON"""
+        try:
+            json.loads(text)
+            return True
+        except json.JSONDecodeError:
+            return False
+
     def _parse_with_regex(self, response_text: str) -> Dict[str, Any]:
         """使用正则表达式解析响应文本
 
@@ -1237,9 +1259,13 @@ class ReactAgent:
                         action_input_text = action_input_match.group(1).strip()
 
                         # 尝试解析 Action Input 为 JSON
-                        try:
-                            tool_params = json.loads(action_input_text)
-                        except json.JSONDecodeError:
+                        if self._is_json(action_input_text):
+                            try:
+                                tool_params = json.loads(action_input_text)
+                            except json.JSONDecodeError:
+                                # 如果解析失败，回退到字符串
+                                tool_params = action_input_text
+                        else:
                             # 如果不是有效的JSON，直接使用字符串（保持换行）
                             tool_params = action_input_text
                     else:
@@ -1286,6 +1312,9 @@ class ReactAgent:
         try:
             if not params_str.strip():
                 return {}
+
+            if self._is_json(params_str):
+                return json.loads(params_str)
 
             params = {}
             # 使用正则表达式分割参数，支持包含逗号的值
@@ -1694,19 +1723,25 @@ class ReactAgent:
         model_response = None
         if self.reasoner_model_name:
             model_response = await asyncio.wait_for(
-                self._call_model(prompt, chat_id, self.reasoner_model_name),
+                self._call_model(
+                    [{"role": "user", "content": prompt}],
+                    chat_id,
+                    self.reasoner_model_name,
+                ),
                 timeout=self.llm_timeout,
             )
         else:
             model_response = await asyncio.wait_for(
-                self._call_model(prompt, chat_id, self.model_name),
+                self._call_model(
+                    [{"role": "user", "content": prompt}], chat_id, self.model_name
+                ),
                 timeout=self.llm_timeout,
             )
 
         logger.info(f"Iteration LLM Response: {model_response}")
         result_dict = await self._parse_action(model_response)
 
-        # 解析格式化字符串，提取 Thought、Action 和 Action Input
+        # 解析格式化字符串，提取 Thought、Action 和 Action Input.
         # result_dict = self._parse_formatted_response(parsed_response)
         return result_dict
 
@@ -2115,6 +2150,23 @@ class ReactAgent:
                 self.scratchpad_items.append(new_item)
                 observations.append(observation)
 
+                # 获取上一步的报告
+                last_report = (
+                    self.scratchpad_items[-2].report
+                    if len(self.scratchpad_items) >= 2
+                    else ""
+                )
+
+                # 生成新的报告
+                current_report = await self._generate_report(
+                    last_report=last_report,
+                    tool_result=observation,
+                    chat_id=chat_id,
+                    model_name=self.model_name or self.reasoner_model_name,
+                    query=query,
+                )
+                new_item.report = current_report
+
                 # 每次工具执行后立即保存到Redis
                 if self.conversation_id:
                     try:
@@ -2227,6 +2279,47 @@ class ReactAgent:
                 self.scratchpad_items.append(error_item)
                 await asyncio.sleep(self.iteration_retry_delay)
         return final_answer
+
+    @langfuse_wrapper.observe_decorator(
+        name="_generate_report", capture_input=True, capture_output=True
+    )
+    async def _generate_report(
+        self,
+        last_report: str,
+        tool_result: str,
+        chat_id: str,
+        model_name: str,
+        query: str,
+    ) -> str:
+        """
+        基于上一步的报告和新的工具结果生成新的报告。
+        """
+        system_prompt = Template(
+            """你是一个专业的报告生成器。基于上一步的报告和最新的工具调用结果，
+            生成一个针对原始问题（${query}）的新报告。
+            只提取有效信息，忽略不相关信息。
+            如果上一步报告为空，则直接基于工具结果生成报告。
+            
+            上一步报告:
+            ${last_report}
+            
+            新的工具调用结果:
+            ${tool_result}
+            
+            请生成新的报告："""
+        ).safe_substitute(
+            query=query,
+            last_report=last_report if last_report else "无",
+            tool_result=tool_result,
+        )
+
+        messages = [{"role": "user", "content": system_prompt}]
+        try:
+            report_content = await self._call_model(messages, chat_id, model_name)
+            return report_content
+        except Exception as e:
+            logger.error(f"生成报告失败: {e}")
+            return f"报告生成失败: {str(e)}"
 
     @langfuse_wrapper.observe_decorator(
         name="_check_termination", capture_input=True, capture_output=True

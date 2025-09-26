@@ -206,7 +206,9 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             const response = JSON.parse(event.data);
             if (response.success && response.data) {
                 if (typeof renderAnswer === 'function') {
-                    renderAnswer(response.data, answerElement);
+                    // 检查是否是最终块，通过 response.is_final 字段判断
+                    const isFinal = response.is_final === true;
+                    renderAnswer(response.data, answerElement, isFinal);
                 }
             } else if (!response.success) {
                 if (answerElement) answerElement.innerHTML += `<div class="error">${response.error || '解析回答失败'}</div>`;
@@ -596,16 +598,25 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_thinking', event => {
         try {
             const data = JSON.parse(event.data);
+            console.log('Received agent_thinking event:', data); // 添加日志
             const thinkingDiv = document.createElement('div');
             thinkingDiv.className = 'agent-thinking';
             thinkingDiv.innerHTML = `
                 <div class="thinking-info">
                     <span class="thinking-indicator running"></span>
-                    <span class="thinking-content">${data.thought}</span>
+                    <span class="thinking-content"></span> <!-- 内容将直接填充 -->
                     <span class="thinking-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
                 </div>
             `;
-            if (answerElement) answerElement.appendChild(thinkingDiv);
+            if (answerElement) {
+                answerElement.appendChild(thinkingDiv);
+                const thinkingContentSpan = thinkingDiv.querySelector('.thinking-content');
+                const thoughtContent = data.thought || '智能体正在思考...'; // 提供默认文本
+                // 暂时禁用流式输出，直接设置文本内容
+                if (thinkingContentSpan) {
+                    thinkingContentSpan.textContent = thoughtContent;
+                }
+            }
         } catch (error) {
             console.error('解析agent思考事件失败:', error);
         }
@@ -679,15 +690,24 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_complete', event => {
         try {
             const data = JSON.parse(event.data);
+            console.log('Received agent_complete event:', data); // 添加日志
             const content = data.result;
             const completeDiv = document.createElement('div');
             completeDiv.className = 'agent-complete-final';
             completeDiv.innerHTML = `
                 <div class="complete-info">
-                    <div class="action_complete">${marked.parse(content || '')}</div>
+                    <div class="action_complete"></div> <!-- 内容将直接填充 -->
                 </div>
             `;
-            if (answerElement) answerElement.appendChild(completeDiv);
+            if (answerElement) {
+                answerElement.appendChild(completeDiv);
+                const actionCompleteDiv = completeDiv.querySelector('.action_complete');
+                const completeContent = content || '智能体已完成任务。'; // 提供默认文本
+                // 暂时禁用流式输出，直接进行 Markdown 渲染
+                if (actionCompleteDiv) {
+                    actionCompleteDiv.innerHTML = marked.parse(completeContent);
+                }
+            }
         } catch (error) {
             console.error('解析agent完成事件失败:', error);
         }

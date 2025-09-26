@@ -11,7 +11,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360
 
@@ -23,7 +23,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360
 
@@ -35,7 +35,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360
 
@@ -47,7 +47,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360
 
@@ -59,7 +59,7 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["final_answer"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360
 
@@ -71,6 +71,6 @@ roles:
     termination_conditions:
       - type: "ToolTerminationCondition"
         tool_names: ["file_write"]
-    model_name: "gpt-5-mini"
+    model_name: "qwen3-next-80b-a3b-instruct"
     max_iterations: 25
     llm_timeout: 360

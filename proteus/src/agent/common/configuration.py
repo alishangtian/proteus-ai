@@ -29,6 +29,7 @@ class AgentConfiguration:
         max_iterations: int = 50,
         llm_timeout: int = 120,
         conversation_id: str = None,
+        conversation_round: int = 5,
         historical_scratchpad_items: List[ScratchpadItem] = None,
     ):
         """初始化Agent配置
@@ -59,3 +60,4 @@ class AgentConfiguration:
         self.llm_timeout = llm_timeout
         self.conversation_id = conversation_id
         self.historical_scratchpad_items = historical_scratchpad_items or []
+        self.conversation_round = conversation_round

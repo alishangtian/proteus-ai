@@ -5,14 +5,20 @@ import logging
 import json
 import asyncio
 import yaml
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
-from fastapi import FastAPI, HTTPException, Request, Body
+from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
+from src.api.llm_api import call_multimodal_llm_api
+from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
+import uuid  # 导入 uuid 用于生成唯一 ID
+from src.utils.file_parser import parse_file  # 导入文件解析函数
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+import shutil
 from sse_starlette.sse import EventSourceResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -24,9 +30,16 @@ from src.agent.prompt.react_prompt_v2 import REACT_PROMPT_V2
 from src.agent.prompt.react_prompt_v4 import REACT_PROMPT_V4
 from src.agent.prompt.react_prompt_v5 import REACT_PROMPT_V5
 from src.agent.prompt.react_prompt_v6 import REACT_PROMPT_V6
+from src.agent.prompt.react_prompt_v7 import REACT_PROMPT_V7
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.paper import PAPER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
+from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.nodes.node_config import NodeConfigManager
 from src.agent.agent import Agent
@@ -43,7 +56,7 @@ from src.api.events import (
 from dotenv import load_dotenv
 
 load_dotenv()
-
+language = os.getenv("LANGUAGE", "中文")
 # 设置MCP配置文件路径
 os.environ["MCP_CONFIG_PATH"] = os.path.join(
     os.path.dirname(__file__), "proteus_mcp_config.json"
@@ -262,6 +275,10 @@ app.add_middleware(
 static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
+# 文件上传目录
+UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)  # 确保目录存在
+
 
 # 显式添加login.html路由
 @app.get("/login.html", response_class=HTMLResponse)
@@ -273,6 +290,72 @@ async def serve_login_page():
 
 # 创建模板引擎
 templates = Jinja2Templates(directory=static_path)
+
+
+@langfuse_wrapper.observe_decorator(
+    name="uploadfile", capture_input=True, capture_output=True
+)
+@app.post("/uploadfile/")
+async def create_upload_file(file: UploadFile = File(...)):
+    """
+    处理文件上传
+    """
+    try:
+        # 生成唯一的文件 ID
+        file_id = str(uuid.uuid4())
+        # 使用文件 ID 作为存储的文件名，保留原始扩展名
+        file_extension = os.path.splitext(file.filename)[1]
+        stored_filename = f"{file_id}{file_extension}"
+        file_location = os.path.join(UPLOAD_DIRECTORY, stored_filename)
+
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(file.file, file_object)
+        logger.info(
+            f"文件 '{file.filename}' (存储为 '{stored_filename}') 已成功上传到 '{file_location}'"
+        )
+
+        response_data = {
+            "id": file_id,
+            "filename": file.filename,
+            "file_type": file.content_type,
+            "message": "文件上传成功",
+        }
+
+        # 调用通用文件解析函数
+        file_analysis_result = await parse_file(
+            file_path=file_location, file_type=file.content_type, file_id=file_id
+        )
+        if file_analysis_result:
+            response_data["file_analysis"] = file_analysis_result
+            logger.info(
+                f"文件 '{file.filename}' 解析结果: {file_analysis_result[:100]}..."
+            )
+        else:
+            response_data["file_analysis"] = None
+            logger.info(
+                f"文件 '{file.filename}' 类型 '{file.content_type}' 不支持解析或解析失败。"
+            )
+
+        # 将文件 ID、原始文件名、文件类型和解析结果保存到 Redis
+        redis_conn = get_redis_connection()
+        redis_conn.set(
+            f"file_analysis:{file_id}",
+            json.dumps(
+                {
+                    "original_filename": file.filename,
+                    "stored_filename": stored_filename,
+                    "file_type": file.content_type,
+                    "analysis": file_analysis_result,
+                },
+                ensure_ascii=False,
+            ),
+            ex=3600,  # 缓存 1 小时
+        )
+
+        return response_data
+    except Exception as e:
+        logger.error(f"文件上传失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
 
 
 class ApiResponse(BaseModel):
@@ -318,6 +401,50 @@ async def health_check():
     return ApiResponse(event="health_check", success=True, data={"status": "healthy"})
 
 
+@app.delete("/deletefile/{file_id}")
+async def delete_upload_file(file_id: str):
+    """
+    处理文件删除
+    """
+    redis_conn = get_redis_connection()
+    file_data_str = redis_conn.get(f"file_analysis:{file_id}")
+
+    if not file_data_str:
+        raise HTTPException(status_code=404, detail="文件 ID 未找到或已过期")
+
+    file_data = json.loads(file_data_str)
+    original_filename = file_data.get("original_filename")
+    stored_filename = file_data.get("stored_filename")
+
+    if not stored_filename:
+        raise HTTPException(status_code=500, detail="无法从 Redis 获取存储文件名")
+
+    file_location = os.path.join(UPLOAD_DIRECTORY, stored_filename)
+    if not os.path.exists(file_location):
+        # 如果文件不存在，但 Redis 中有记录，则只删除 Redis 记录
+        redis_conn.delete(f"file_analysis:{file_id}")
+        logger.warning(
+            f"文件 '{original_filename}' (存储为 '{stored_filename}') 不存在，但 Redis 中有记录，已删除 Redis 记录"
+        )
+        return {
+            "id": file_id,
+            "filename": original_filename,
+            "message": "文件已从 Redis 删除，本地文件不存在",
+        }
+
+    try:
+        os.remove(file_location)
+        redis_conn.delete(f"file_analysis:{file_id}")  # 同时删除 Redis 记录
+        logger.info(f"文件 '{original_filename}' (ID: {file_id}) 已成功删除")
+        return {"id": file_id, "filename": original_filename, "message": "文件删除成功"}
+    except Exception as e:
+        logger.error(
+            f"文件删除失败 (ID: {file_id}, 文件名: {original_filename}): {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"文件删除失败: {str(e)}")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def get_index(request: Request):
     """返回交互页面"""
@@ -357,6 +484,7 @@ async def create_chat(
     team_name: str = Body(None, embed=True),
     conversation_id: str = Body(None, embed=True),
     conversation_round: int = Body(5, embed=True),
+    file_ids: Optional[List[str]] = Body(None, embed=True),  # 新增文件 ID 列表参数
 ):
     """创建新的聊天会话
 
@@ -385,6 +513,7 @@ async def create_chat(
                 conversation_id=conversation_id,
                 model_name=model_name,
                 conversation_round=conversation_round,
+                file_ids=file_ids,  # 传递文件 ID 列表
             )
         )
     else:
@@ -695,6 +824,7 @@ async def process_agent(
     conversation_id: str = None,
     model_name: str = None,
     conversation_round: int = 5,
+    file_ids: Optional[List[str]] = None,  # 新增文件 ID 列表参数
 ):
     """处理Agent请求的异步函数
 
@@ -709,6 +839,33 @@ async def process_agent(
     team = None
     agent = None
     try:
+        logger.info(f"[{chat_id}] process_agent 接收到的 file_ids: {file_ids}")
+        file_analysis_context = ""
+        if file_ids:
+            redis_conn = get_redis_connection()
+            for file_id in file_ids:
+                file_data_str = redis_conn.get(f"file_analysis:{file_id}")
+                if file_data_str:
+                    file_data = json.loads(file_data_str)
+                    analysis = file_data.get("analysis")
+                    original_filename = file_data.get("original_filename", "未知文件")
+                    file_type = file_data.get("file_type", "未知类型")
+
+                    if analysis:
+                        file_analysis_context += f"\n\n用户上传了文件 '{original_filename}' ({file_type})，其解析内容如下：\n{analysis}"
+                    else:
+                        file_analysis_context += f"\n\n用户上传了文件 '{original_filename}' ({file_type})，该文件不支持解析，只进行了上传。"
+                else:
+                    logger.warning(
+                        f"[{chat_id}] Redis 中未找到 file_id: {file_id} 的文件分析数据。"
+                    )
+            if file_analysis_context:
+                logger.info(
+                    f"[{chat_id}] 已将文件解析内容添加到context中。长度: {len(text)}"
+                )
+            else:
+                logger.info(f"[{chat_id}] 没有文件解析内容需要添加到文本中。")
+
         if agentmodel == "deep-research":
             # 建立 team 和 chatid 的绑定关系
             await _register_team_binding(
@@ -766,6 +923,8 @@ async def process_agent(
                     model_name=config["model_name"],
                     max_iterations=itecount,
                     llm_timeout=config.get("llm_timeout", None),
+                    conversation_id=conversation_id,
+                    conversation_round=conversation_round,
                 )
 
             # 创建团队实例
@@ -773,6 +932,7 @@ async def process_agent(
                 team_rules=team_config["team_rules"],
                 tools_config=tools_config,
                 start_role=getattr(TeamRole, team_config["start_role"]),
+                conversation_round=conversation_round,
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents(chat_id)
@@ -832,7 +992,7 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id)
+            await agent.run(text, chat_id, context=file_analysis_context)
 
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "workflow":
@@ -851,7 +1011,7 @@ async def process_agent(
                 conversation_round=conversation_round,
             )
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id)
+            await agent.run(text, chat_id, context=file_analysis_context)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -895,7 +1055,7 @@ async def process_agent(
                 "mysql_node",
                 "planner",
             ]
-            prompt_template = REACT_PROMPT
+            prompt_template = REACT_PROMPT_V7
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
@@ -911,7 +1071,7 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id)
+            await agent.run(text, chat_id, context=file_analysis_context)
 
             await stream_manager.send_message(chat_id, await create_complete_event())
     except Exception as e:

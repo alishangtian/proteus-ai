@@ -1,6 +1,6 @@
 import Icons from './icons.js';
 import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON } from './utils.js';
-import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement } from './ui.js';
+import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent } from './ui.js';
 import { registerSSEHandlers } from './sse-handlers.js';
 
 
@@ -39,6 +39,107 @@ let isProcessing = false;
 let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
 const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
+
+// 简单安全清理：移除 <script> 和 <style>，并删除所有 on* 事件属性与 javascript: 协议的 href/src
+function sanitizeHTML(html) {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const treeWalker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT, null, false);
+    const toRemove = [];
+    while (treeWalker.nextNode()) {
+        const el = treeWalker.currentNode;
+        const tag = el.tagName && el.tagName.toLowerCase();
+        if (tag === 'script' || tag === 'style') {
+            toRemove.push(el);
+            continue;
+        }
+        // 删除事件处理器属性和危险属性值
+        Array.from(el.attributes).forEach(attr => {
+            const name = attr.name.toLowerCase();
+            const val = (attr.value || '').toLowerCase();
+            if (name.startsWith('on')) {
+                el.removeAttribute(attr.name);
+            } else if ((name === 'href' || name === 'src' || name === 'xlink:href') && val.startsWith('javascript:')) {
+                el.removeAttribute(attr.name);
+            } else if (name === 'style') {
+                // 可根据需要对 style 做更严格白名单，这里简单移除内联 style 以减少风险
+                el.removeAttribute('style');
+            }
+        });
+    }
+    toRemove.forEach(n => n.remove());
+    return template.innerHTML;
+}
+
+// 将 Markdown 渲染为 HTML 并通过 sanitizeHTML 过滤后返回安全的 HTML
+function renderMarkdownSafe(mdText) {
+    try {
+        const raw = marked.parse(mdText || '');
+        return sanitizeHTML(raw);
+    } catch (e) {
+        console.warn('Markdown 渲染失败，回退为纯文本显示', e);
+        const esc = (mdText || '').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
+        return `<pre>${esc}</pre>`;
+    }
+}
+
+// marked 库的配置
+marked.use({
+    gfm: true,
+    tables: true,
+    breaks: false,      // 禁用自动换行转换
+    pedantic: false,
+    smartLists: true,
+    smartypants: false, // 禁用智能标点转换
+    gfm: true,
+    breaks: true,
+    baseUrl: null,
+    xhtml: false,
+    xhtml: true,
+    mangle: false,
+    headerIds: false,
+    headerPrefix: '',
+    langPrefix: 'hljs ', // 调整语言前缀匹配highlight.js
+    sanitize: false,     // 这里仍让 marked 输出 HTML，由我们在渲染前进行安全过滤
+    highlight: (code, lang) => {
+        try {
+            return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
+        } catch (e) {
+            return hljs.highlightAuto(code).value;
+        }
+    },
+    baseUrl: null,
+    listItemIndent: '1' // 规范列表缩进
+});
+
+// 显示文件解析结果的弹框
+function showFileAnalysisModal(filename, content, fileType) {
+    const modal = document.getElementById('toolResultModal');
+    const modalTitle = modal.querySelector('.modal-title');
+    const modalBody = modal.querySelector('.modal-result-content');
+    const closeModalBtn = modal.querySelector('.close-modal-btn');
+
+    modalTitle.textContent = `文件解析结果: ${filename} (${fileType})`;
+    modalBody.innerHTML = renderMarkdownSafe(content); // 使用现有的 Markdown 渲染函数
+
+    modal.style.display = 'block'; // 显示弹框
+
+    // 关闭弹框事件
+    closeModalBtn.onclick = function () {
+        modal.style.display = 'none';
+    };
+
+    // 点击弹框外部关闭
+    window.onclick = function (event) {
+        if (event.target == modal) {
+            modal.style.display = 'none';
+        }
+    };
+}
+
+// 存储已上传文件的全局数组
+const uploadedFiles = [];
+
 // 提交用户输入的全局函数
 async function submitUserInput(nodeId, inputType, prompt, agentId = undefined) {
     const inputField = document.getElementById(`user-input-${nodeId}`);
@@ -532,7 +633,207 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
+    const fileUpload = document.getElementById('file-upload');
+    fileUpload.setAttribute('accept', '*/*'); // 允许所有文件类型
+    const uploadButton = document.getElementById('upload-button');
     const conversationHistory = document.getElementById('conversation-history');
+    const uploadedFilesContainer = document.getElementById('uploaded-files-container');
+
+    // 文件上传逻辑
+    uploadButton.addEventListener('click', () => {
+        fileUpload.click(); // 触发文件输入框的点击事件
+    });
+
+    fileUpload.addEventListener('change', async (event) => {
+        const files = event.target.files;
+        if (files.length === 0) {
+            return;
+        }
+
+        // 禁用输入并切换按钮状态
+        userInput.disabled = true;
+        sendButton.disabled = true;
+        uploadButton.disabled = true;
+        uploadButton.textContent = '上传中...';
+
+        // 为每个文件创建上传中的占位符
+        const filesToUpload = Array.from(files);
+        const tempFileIds = []; // 用于存储临时文件ID，以便后续更新
+        filesToUpload.forEach(file => {
+            const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            tempFileIds.push(tempId);
+            uploadedFiles.push({ id: tempId, name: file.name, type: file.type, status: 'uploading' });
+        });
+        renderUploadedFiles(); // 立即渲染占位符
+
+        const formData = new FormData();
+        for (const file of files) {
+            formData.append('file', file); // 后端期望的字段名是 'file'
+        }
+
+        try {
+            const response = await fetch('/uploadfile/', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('文件上传成功:', result);
+
+            // 找到对应的临时文件并更新其状态和信息
+            // 假设后端返回的 result 包含 id, filename, file_type 和 file_analysis
+            const uploadedFileIndex = uploadedFiles.findIndex(f => f.name === result.filename && f.status === 'uploading');
+            if (uploadedFileIndex > -1) {
+                uploadedFiles[uploadedFileIndex] = {
+                    id: result.id, // 使用后端返回的真实 ID
+                    name: result.filename,
+                    type: result.file_type, // 添加文件类型
+                    fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
+                    status: 'completed'
+                };
+            } else {
+                // 如果没有找到临时文件（例如，多文件上传时只返回一个结果），则作为新文件添加
+                uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
+            }
+            renderUploadedFiles(); // 更新文件列表UI
+
+
+        } catch (error) {
+            console.error('文件上传失败:', error);
+            const errorElement = document.createElement('div');
+            errorElement.className = 'history-item';
+            errorElement.innerHTML = `<div class="qa-container"><div class="answer error">文件上传失败: ${error.message}</div></div>`;
+            conversationHistory.appendChild(errorElement);
+            scrollToBottom();
+
+            // 将所有处于上传中的文件标记为失败
+            tempFileIds.forEach(tempId => {
+                const index = uploadedFiles.findIndex(f => f.id === tempId && f.status === 'uploading');
+                if (index > -1) {
+                    uploadedFiles[index].status = 'failed';
+                }
+            });
+            renderUploadedFiles(); // 更新UI以显示失败状态
+        } finally {
+            // 恢复UI状态
+            userInput.disabled = false;
+            sendButton.disabled = false;
+            uploadButton.disabled = false;
+            uploadButton.textContent = '📎';
+            fileUpload.value = ''; // 清空文件输入，以便再次选择相同文件
+        }
+    });
+
+    // 渲染已上传文件列表
+    function renderUploadedFiles() {
+        uploadedFilesContainer.innerHTML = ''; // 清空现有列表
+
+        // 根据 uploadedFiles 数组的长度来控制容器的显示
+        if (uploadedFiles.length > 0) {
+            uploadedFilesContainer.style.display = 'flex'; // 有文件时显示
+        } else {
+            uploadedFilesContainer.style.display = 'none'; // 无文件时隐藏
+        }
+
+        uploadedFiles.forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'uploaded-file-item';
+            fileItem.dataset.fileId = file.id; // 添加data-file-id以便于查找和更新
+
+            let fileContent = '';
+            if (file.status === 'uploading') {
+                fileItem.classList.add('uploading');
+                fileContent = `
+                    <div class="loading-spinner"></div>
+                    <span>${file.name} (上传中...)</span>
+                `;
+            } else if (file.status === 'failed') {
+                fileItem.classList.add('failed');
+                fileContent = `
+                    <span>${file.name} (上传失败)</span>
+                    <button class="delete-file-btn" data-file-id="${file.id}" data-filename="${file.name}">x</button>
+                `;
+            } else { // completed
+                let analysisSpan = '';
+                if (file.fileAnalysis) {
+                    analysisSpan = `<span class="file-analysis-preview" title="点击查看解析内容"> (已解析)</span>`;
+                    fileItem.classList.add('has-file-analysis'); // 添加类以便于识别和添加事件
+                    fileItem.dataset.fileAnalysis = file.fileAnalysis; // 存储解析内容
+                    fileItem.dataset.fileType = file.type; // 存储文件类型
+                }
+                fileContent = `
+                    <span>${file.name}</span>
+                    ${analysisSpan}
+                    <button class="delete-file-btn" data-file-id="${file.id}" data-filename="${file.name}">x</button>
+                `;
+            }
+            fileItem.innerHTML = fileContent;
+            uploadedFilesContainer.appendChild(fileItem);
+
+            // 为带有文件解析的项添加点击事件
+            if (file.fileAnalysis && file.status === 'completed') {
+                fileItem.addEventListener('click', (event) => {
+                    // 避免点击删除按钮时触发弹框
+                    if (!event.target.classList.contains('delete-file-btn')) {
+                        showFileAnalysisModal(file.name, file.fileAnalysis, file.type);
+                    }
+                });
+            }
+        });
+
+        // 为删除按钮添加事件监听器
+        uploadedFilesContainer.querySelectorAll('.delete-file-btn').forEach(button => {
+            button.addEventListener('click', async (event) => {
+                const fileIdToDelete = event.target.dataset.fileId; // 使用fileId
+                const filenameToDelete = event.target.dataset.filename; // 同时传递filename给后端
+                await deleteFile(fileIdToDelete, filenameToDelete);
+            });
+        });
+    }
+
+    // 删除文件
+    async function deleteFile(fileId, filename) {
+        try {
+            // 立即从UI中移除文件项，并显示加载状态
+            const fileItem = uploadedFilesContainer.querySelector(`[data-file-id="${fileId}"]`);
+            if (fileItem) {
+                fileItem.innerHTML = `<div class="loading-spinner"></div><span>${filename} (删除中...)</span>`;
+                fileItem.classList.add('deleting');
+            }
+
+            const response = await fetch(`/deletefile/${fileId}`, { // 使用 fileId 进行删除
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('文件删除成功:', result);
+
+            // 从 uploadedFiles 数组中移除文件
+            const index = uploadedFiles.findIndex(file => file.id === fileId);
+            if (index > -1) {
+                uploadedFiles.splice(index, 1);
+            }
+            renderUploadedFiles(); // 更新UI
+
+        } catch (error) {
+            console.error('文件删除失败:', error);
+            // 如果删除失败，恢复文件项的显示，并标记为失败
+            const fileItem = uploadedFilesContainer.querySelector(`[data-file-id="${fileId}"]`);
+            if (fileItem) {
+                fileItem.classList.remove('deleting');
+                fileItem.classList.add('failed');
+                fileItem.innerHTML = `<span>${filename} (删除失败)</span><button class="delete-file-btn" data-file-id="${fileId}" data-filename="${filename}">x</button>`;
+            }
+        }
+    }
 
     // 用于存储累积的内容
     let currentExplanation = '';
@@ -544,76 +845,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 自动滚动到底部的函数
     let isScrolling = false;
     let scrollTimeout = null;
-    marked.use({
-        gfm: true,
-        tables: true,
-        breaks: false,      // 禁用自动换行转换
-        pedantic: false,
-        smartLists: true,
-        smartypants: false, // 禁用智能标点转换
-        gfm: true,
-        breaks: true,
-        baseUrl: null,
-        xhtml: false,
-        xhtml: true,
-        mangle: false,
-        headerIds: false,
-        headerPrefix: '',
-        langPrefix: 'hljs ', // 调整语言前缀匹配highlight.js
-        sanitize: false,     // 这里仍让 marked 输出 HTML，由我们在渲染前进行安全过滤
-        highlight: (code, lang) => {
-            try {
-                return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
-            } catch (e) {
-                return hljs.highlightAuto(code).value;
-            }
-        },
-        baseUrl: null,
-        listItemIndent: '1' // 规范列表缩进
-    });
-
-    // 简单安全清理：移除 <script> 和 <style>，并删除所有 on* 事件属性与 javascript: 协议的 href/src
-    function sanitizeHTML(html) {
-        const template = document.createElement('template');
-        template.innerHTML = html;
-        const treeWalker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT, null, false);
-        const toRemove = [];
-        while (treeWalker.nextNode()) {
-            const el = treeWalker.currentNode;
-            const tag = el.tagName && el.tagName.toLowerCase();
-            if (tag === 'script' || tag === 'style') {
-                toRemove.push(el);
-                continue;
-            }
-            // 删除事件处理器属性和危险属性值
-            Array.from(el.attributes).forEach(attr => {
-                const name = attr.name.toLowerCase();
-                const val = (attr.value || '').toLowerCase();
-                if (name.startsWith('on')) {
-                    el.removeAttribute(attr.name);
-                } else if ((name === 'href' || name === 'src' || name === 'xlink:href') && val.startsWith('javascript:')) {
-                    el.removeAttribute(attr.name);
-                } else if (name === 'style') {
-                    // 可根据需要对 style 做更严格白名单，这里简单移除内联 style 以减少风险
-                    el.removeAttribute('style');
-                }
-            });
-        }
-        toRemove.forEach(n => n.remove());
-        return template.innerHTML;
-    }
-
-    // 将 Markdown 渲染为 HTML 并通过 sanitizeHTML 过滤后返回安全的 HTML
-    function renderMarkdownSafe(mdText) {
-        try {
-            const raw = marked.parse(mdText || '');
-            return sanitizeHTML(raw);
-        } catch (e) {
-            console.warn('Markdown 渲染失败，回退为纯文本显示', e);
-            const esc = (mdText || '').replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
-            return `<pre>${esc}</pre>`;
-        }
-    }
 
     // wrapper -> 调用 ui 模块的 scrollToBottom，传入 conversationHistory
     function scrollToBottom() {
@@ -638,6 +869,82 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 sendMessage();
                 scrollToBottom();
+            }
+        }
+    });
+
+    userInput.addEventListener('paste', async (event) => {
+        const items = event.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+                event.preventDefault(); // 阻止默认粘贴行为
+                const file = item.getAsFile();
+                if (file) {
+                    // 禁用输入并切换按钮状态
+                    userInput.disabled = true;
+                    sendButton.disabled = true;
+                    uploadButton.disabled = true;
+                    uploadButton.textContent = '上传中...';
+
+                    // 创建上传中的占位符
+                    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    uploadedFiles.push({ id: tempId, name: file.name || 'pasted_image.png', type: file.type, status: 'uploading' });
+                    renderUploadedFiles(); // 立即渲染占位符
+
+                    const formData = new FormData();
+                    formData.append('file', file, file.name || 'pasted_image.png'); // 后端期望的字段名是 'file'
+
+                    try {
+                        const response = await fetch('/uploadfile/', {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const result = await response.json();
+                        console.log('文件上传成功:', result);
+
+                        // 找到对应的临时文件并更新其状态和信息
+                        const uploadedFileIndex = uploadedFiles.findIndex(f => f.id === tempId && f.status === 'uploading');
+                        if (uploadedFileIndex > -1) {
+                            uploadedFiles[uploadedFileIndex] = {
+                                id: result.id, // 使用后端返回的真实 ID
+                                name: result.filename,
+                                type: result.file_type, // 添加文件类型
+                                fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
+                                status: 'completed'
+                            };
+                        } else {
+                            uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
+                        }
+                        renderUploadedFiles(); // 更新文件列表UI
+
+                    } catch (error) {
+                        console.error('文件上传失败:', error);
+                        const errorElement = document.createElement('div');
+                        errorElement.className = 'history-item';
+                        errorElement.innerHTML = `<div class="qa-container"><div class="answer error">文件上传失败: ${error.message}</div></div>`;
+                        conversationHistory.appendChild(errorElement);
+                        scrollToBottom();
+
+                        // 将临时文件标记为失败
+                        const index = uploadedFiles.findIndex(f => f.id === tempId && f.status === 'uploading');
+                        if (index > -1) {
+                            uploadedFiles[index].status = 'failed';
+                        }
+                        renderUploadedFiles(); // 更新UI以显示失败状态
+                    } finally {
+                        // 恢复UI状态
+                        userInput.disabled = false;
+                        sendButton.disabled = false;
+                        uploadButton.disabled = false;
+                        uploadButton.textContent = '📎';
+                    }
+                }
             }
         }
     });
@@ -752,8 +1059,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const text = userInput.value.trim();
-        if (!text) return;
+        let text = userInput.value.trim();
+        if (!text && uploadedFiles.length === 0) return;
+
+        if (!text && uploadedFiles.length > 0) {
+            text = '请总结文件内容。'; // 更通用的提示
+        }
 
         // 禁用输入并切换按钮状态
         userInput.disabled = true;
@@ -828,6 +1139,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const rawSelectedModelName = selectedModelNameEl ? selectedModelNameEl.value : '';
             const selectedModelName = rawSelectedModelName && rawSelectedModelName.trim() !== '' ? rawSelectedModelName.trim() : undefined;
 
+            console.log('sendMessage: uploadedFiles array:', uploadedFiles); // 添加日志
+
             let response;
             if (selectedModel === 'multi-agent') {
                 // 多智能体模式使用 /agents/route 接口
@@ -842,7 +1155,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         conversation_id: currentConversationId,
                         max_iterations: parseInt(document.getElementById('itecount').value) || 10,
                         stream: true,
-                        model_name: selectedModelName
+                        model_name: selectedModelName,
+                        file_ids: uploadedFiles.map(file => file.id) // 添加文件 ID 列表
                     })
                 });
             } else {
@@ -858,7 +1172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         model_name: selectedModelName,
                         conversation_id: currentConversationId,
                         itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined,
-                        conversation_count: parseInt(document.getElementById('conversation_count').value) || 5
+                        conversation_count: parseInt(document.getElementById('conversation_count').value) || 5,
+                        file_ids: uploadedFiles.map(file => file.id) // 添加文件 ID 列表
                     })
                 });
             }
@@ -891,9 +1206,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     createQuestionElement: createQuestionElement,
                     Icons: Icons,
                     submitUserInput: submitUserInput,
+                    streamTextContent: uiStreamTextContent, // 传递 streamTextContent
                     onComplete: () => { resetUI(); },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });
+
             } catch (e) {
                 console.warn('registerSSEHandlers 调用失败', e);
             }
