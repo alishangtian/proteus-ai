@@ -30,15 +30,40 @@ services:
       - ./volumes/redis/conf/redis.conf:/usr/local/etc/redis/redis.conf
     networks:
       - proteus-network
+      - mysql-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
 
+  # mysql:
+  #   image: mysql:8.0
+  #   container_name: mysql-agent
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: root@123456
+  #     MYSQL_DATABASE: agent
+  #     MYSQL_USER: agent
+  #     MYSQL_PASSWORD: agent@123456
+  #     TZ: Asia/Shanghai
+  #   ports:
+  #     - "3306:3306"
+  #   volumes:
+  #     - ./volumes/mysql/data:/var/lib/mysql
+  #     - ./init:/docker-entrypoint-initdb.d
+  #   command: --default-authentication-plugin=mysql_native_password
+  #   networks:
+  #     - mysql-network
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
   sandbox:
     container_name: sandbox
-    image: proteus-sandbox 
+    image: proteus-sandbox
     ports:
       - "8000:8000"
     volumes:
@@ -73,3 +98,5 @@ services:
 networks:
   proteus-network:
     name: proteus-network
+  mysql-network:
+    name: mysql-network

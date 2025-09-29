@@ -43,6 +43,7 @@ from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache, get_redis_connection
 from ..utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.tool_extract_prompt import TOOL_EXTRACT_PROMPT
+from src.agent.prompt.report_prompt import REPORT_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -533,7 +534,7 @@ class ReactAgent:
                         is_origin_query=item_dict.get("is_origin_query", False),
                         tool_execution_id=item_dict.get("tool_execution_id", ""),
                         role_type=item_dict.get("role_type", "") or "",
-                        report=item_dict.get("report", "")
+                        report=item_dict.get("report", ""),
                     )
 
                     # 添加其他可能的属性
@@ -693,6 +694,7 @@ class ReactAgent:
                                 if hasattr(self.role_type, "value")
                                 else str(self.role_type)
                             ),
+                            "report": item.report,
                         }
                         item_json = json.dumps(item_dict, ensure_ascii=False)
                         items_to_save.append(item_json)
@@ -898,7 +900,7 @@ class ReactAgent:
             # planner是数组结构的字符串，需要格式化为列表结构
             # 示例['1. Access the GitHub repository at https://github.com/humanlayer/12-factor-agents using a web browser or API client.', "2. Review the repository's README.md file to understand its purpose, goals, and key features.", '3. Examine the repository structure, including directories and key files, to infer the architecture and components.', '4. Check the documentation or wiki (if available) for detailed usage instructions, setup, and examples.', '5. Look for contribution guidelines (e.g., CONTRIBUTING.md) to understand how to contribute, including code standards, pull request processes, and issue reporting.', '6. Summarize the findings into a concise overview covering: what it is, goals, usage, architecture, and contribution process.']
             planner = "\n".join(planner)
-            planner = f"## task plan \n {planner} \n"
+            planner = f"# 任务规划，请严格按照此规划执行，并在必要时更调用 planner 工具新此规划 \n{planner}\n"
         all_values = {
             "CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "tools": tools_list,
@@ -917,7 +919,8 @@ class ReactAgent:
             "current_iteration": current_iteration,
             "report": (
                 self.scratchpad_items[-1].report
-                if self.scratchpad_items and hasattr(self.scratchpad_items[-1], "report")
+                if self.scratchpad_items
+                and hasattr(self.scratchpad_items[-1], "report")
                 else ""
             ),
         }
@@ -1200,8 +1203,19 @@ class ReactAgent:
             Dict[str, Any]: 解析后的结构化数据
         """
         try:
-            # 清理文本
-            text = response_text.strip()
+            # 尝试从Markdown代码块中提取内容
+            markdown_code_block_pattern = r"```(?:[a-zA-Z0-9]+\n)?(.*?)```"
+            markdown_match = re.search(
+                markdown_code_block_pattern, response_text, re.DOTALL
+            )
+
+            if markdown_match:
+                # 如果找到Markdown代码块，则使用其内容进行解析
+                text = markdown_match.group(1).strip()
+                logger.debug("从Markdown代码块中提取内容进行解析")
+            else:
+                # 否则，使用原始文本
+                text = response_text.strip()
 
             # 初始化变量
             thinking = ""
@@ -2160,7 +2174,7 @@ class ReactAgent:
                 # 生成新的报告
                 current_report = await self._generate_report(
                     last_report=last_report,
-                    tool_result=observation,
+                    tool_result=new_item.to_react_context(index=-1),
                     chat_id=chat_id,
                     model_name=self.model_name or self.reasoner_model_name,
                     query=query,
@@ -2294,20 +2308,7 @@ class ReactAgent:
         """
         基于上一步的报告和新的工具结果生成新的报告。
         """
-        system_prompt = Template(
-            """你是一个专业的报告生成器。基于上一步的报告和最新的工具调用结果，
-            生成一个针对原始问题（${query}）的新报告。
-            只提取有效信息，忽略不相关信息。
-            如果上一步报告为空，则直接基于工具结果生成报告。
-            
-            上一步报告:
-            ${last_report}
-            
-            新的工具调用结果:
-            ${tool_result}
-            
-            请生成新的报告："""
-        ).safe_substitute(
+        system_prompt = Template(REPORT_PROMPT).safe_substitute(
             query=query,
             last_report=last_report if last_report else "无",
             tool_result=tool_result,

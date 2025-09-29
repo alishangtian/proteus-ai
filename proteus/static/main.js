@@ -666,66 +666,64 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         renderUploadedFiles(); // 立即渲染占位符
 
-        const formData = new FormData();
-        for (const file of files) {
-            formData.append('file', file); // 后端期望的字段名是 'file'
-        }
+        const uploadPromises = filesToUpload.map(async (file, index) => {
+            const tempId = tempFileIds[index]; // 获取对应的临时ID
+            const formData = new FormData();
+            formData.append('file', file);
 
-        try {
-            const response = await fetch('/uploadfile/', {
-                method: 'POST',
-                body: formData,
-            });
+            try {
+                const response = await fetch('/uploadfile/', {
+                    method: 'POST',
+                    body: formData,
+                });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-            const result = await response.json();
-            console.log('文件上传成功:', result);
+                const result = await response.json();
 
-            // 找到对应的临时文件并更新其状态和信息
-            // 假设后端返回的 result 包含 id, filename, file_type 和 file_analysis
-            const uploadedFileIndex = uploadedFiles.findIndex(f => f.name === result.filename && f.status === 'uploading');
-            if (uploadedFileIndex > -1) {
-                uploadedFiles[uploadedFileIndex] = {
-                    id: result.id, // 使用后端返回的真实 ID
-                    name: result.filename,
-                    type: result.file_type, // 添加文件类型
-                    fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
-                    status: 'completed'
-                };
-            } else {
-                // 如果没有找到临时文件（例如，多文件上传时只返回一个结果），则作为新文件添加
-                uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
-            }
-            renderUploadedFiles(); // 更新文件列表UI
+                // 找到对应的临时文件并更新其状态和信息
+                const uploadedFileIndex = uploadedFiles.findIndex(f => f.id === tempId && f.status === 'uploading');
+                if (uploadedFileIndex > -1) {
+                    uploadedFiles[uploadedFileIndex] = {
+                        id: result.id, // 使用后端返回的真实 ID
+                        name: result.filename,
+                        type: result.file_type, // 添加文件类型
+                        fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
+                        status: 'completed'
+                    };
+                } else {
+                    // 如果没有找到临时文件（例如，多文件上传时只返回一个结果），则作为新文件添加
+                    uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
+                }
+                renderUploadedFiles(); // 更新文件列表UI
 
+            } catch (error) {
+                console.error(`文件上传失败 (${file.name}):`, error);
+                const errorElement = document.createElement('div');
+                errorElement.className = 'history-item';
+                errorElement.innerHTML = `<div class="qa-container"><div class="answer error">文件上传失败 (${file.name}): ${error.message}</div></div>`;
+                conversationHistory.appendChild(errorElement);
+                scrollToBottom();
 
-        } catch (error) {
-            console.error('文件上传失败:', error);
-            const errorElement = document.createElement('div');
-            errorElement.className = 'history-item';
-            errorElement.innerHTML = `<div class="qa-container"><div class="answer error">文件上传失败: ${error.message}</div></div>`;
-            conversationHistory.appendChild(errorElement);
-            scrollToBottom();
-
-            // 将所有处于上传中的文件标记为失败
-            tempFileIds.forEach(tempId => {
+                // 将对应的临时文件标记为失败
                 const index = uploadedFiles.findIndex(f => f.id === tempId && f.status === 'uploading');
                 if (index > -1) {
                     uploadedFiles[index].status = 'failed';
                 }
-            });
-            renderUploadedFiles(); // 更新UI以显示失败状态
-        } finally {
+                renderUploadedFiles(); // 更新UI以显示失败状态
+            }
+        });
+
+        await Promise.all(uploadPromises).finally(() => {
             // 恢复UI状态
             userInput.disabled = false;
             sendButton.disabled = false;
             uploadButton.disabled = false;
             uploadButton.textContent = '📎';
             fileUpload.value = ''; // 清空文件输入，以便再次选择相同文件
-        }
+        });
     });
 
     // 渲染已上传文件列表

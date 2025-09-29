@@ -31,6 +31,7 @@ from src.agent.prompt.react_prompt_v4 import REACT_PROMPT_V4
 from src.agent.prompt.react_prompt_v5 import REACT_PROMPT_V5
 from src.agent.prompt.react_prompt_v6 import REACT_PROMPT_V6
 from src.agent.prompt.react_prompt_v7 import REACT_PROMPT_V7
+from src.agent.prompt.react_prompt_v8 import REACT_PROMPT_V8
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -967,7 +968,7 @@ async def process_agent(
                 "user_input",
                 "file_write",
             ]
-            prompt_template = REACT_PROMPT
+            prompt_template = REACT_PROMPT_V8
             include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
 
             # 创建详细的instruction
@@ -1047,15 +1048,13 @@ async def process_agent(
             all_tools = [
                 "python_execute",
                 "user_input",
-                "file_read",
-                "file_write",
                 "serper_search",
                 "web_crawler",
                 "weather_forecast",
                 "mysql_node",
                 "planner",
             ]
-            prompt_template = REACT_PROMPT_V7
+            prompt_template = REACT_PROMPT_V8
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,

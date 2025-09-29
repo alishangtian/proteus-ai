@@ -1,4 +1,4 @@
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 WORKDIR /app
 
 # Install build dependencies
@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install into a virtual environment
-COPY proteus-ai/proteus/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN python -m venv /venv
 ENV VIRTUAL_ENV=/venv
 ENV PATH="/venv/bin:$PATH"
@@ -30,17 +30,17 @@ ENV PATH="/venv/bin:$PATH"
 
 # Create non-root user
 RUN useradd -m proteus && chown -R proteus:proteus /app
-USER proteus
 
 # Copy application code
-COPY proteus-ai/proteus/main.py /app/main.py
-COPY proteus-ai/proteus/proteus_mcp_config.json /app/proteus_mcp_config.json
-COPY proteus-ai/proteus/src /app/src
-COPY proteus-ai/proteus/static /app/static
+COPY main.py /app/main.py
+COPY proteus_mcp_config.json /app/proteus_mcp_config.json
+COPY src /app/src
+COPY static /app/static
 
 # Copy entrypoint script and make executable
-COPY proteus-ai/proteus/entrypoint.sh /app/entrypoint.sh
+COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+USER proteus
 
 # Expose port
 EXPOSE 8000

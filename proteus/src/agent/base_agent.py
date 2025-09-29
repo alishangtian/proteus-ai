@@ -259,6 +259,8 @@ class ScratchpadItem:
         - 若没有 action_input，则显示空的方括号 [] 以保持格式一致性。
         """
         step_number = index if index is not None else 1
+        if step_number < 0:
+            step_number = ""
 
         # Thought 行
         thought_line = f"Thought {step_number}: {self.thought}"

@@ -598,7 +598,6 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_thinking', event => {
         try {
             const data = JSON.parse(event.data);
-            console.log('Received agent_thinking event:', data); // 添加日志
             const thinkingDiv = document.createElement('div');
             thinkingDiv.className = 'agent-thinking';
             thinkingDiv.innerHTML = `
@@ -690,7 +689,6 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_complete', event => {
         try {
             const data = JSON.parse(event.data);
-            console.log('Received agent_complete event:', data); // 添加日志
             const content = data.result;
             const completeDiv = document.createElement('div');
             completeDiv.className = 'agent-complete-final';

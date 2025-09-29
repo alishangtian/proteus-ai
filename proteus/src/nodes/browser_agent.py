@@ -15,7 +15,8 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 from .base import BaseNode
 from browser_use import Agent
-from browser_use.browser.browser import Browser, BrowserConfig
+from browser_use import ChatOpenAI as ChatOpenAIBrowser
+from browser_use import Browser
 
 # 加载环境变量
 load_dotenv()
@@ -69,17 +70,37 @@ class BrowserAgentNode(BaseNode):
             raise ValueError("task参数不能为空")
 
         try:
-            # 获取浏览器路径配置
-            browser_path = os.getenv("BROSWER_PATH")
+            executable_path = params.get(
+                "executable_path",
+                os.getenv(
+                    "BROSWER_EXECUTABLE_PATH",
+                    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                ),
+            )
+            user_data_dir = params.get(
+                "user_data_dir",
+                os.getenv(
+                    "BROSWER_USER_DATA_DIR",
+                    "~/Library/Application Support/Google/Chrome",
+                ),
+            )
+            profile_directory = params.get(
+                "profile_directory", os.getenv("BROSWER_PROFILE_DIRECTORY", "Default")
+            )
 
             # 在独立线程中初始化浏览器
             browser = await self._execute_in_threadpool(
-                Browser, config=BrowserConfig(chrome_instance_path=browser_path)
+                Browser,
+                executable_path=executable_path,
+                user_data_dir=user_data_dir,
+                profile_directory=profile_directory,
             )
 
-            # 初始化LLM
-            llm = ChatOpenAI(
-                model=os.getenv("BROSWER_USE_MODEL", "gpt-4o"),
+            llm_model = params.get(
+                "llm_model", os.getenv("BROSWER_USE_MODEL", "gpt-4o")
+            )
+            llm = ChatOpenAIBrowser(
+                model=llm_model,
                 base_url=os.getenv("BROSWER_BASE_URL", ""),
                 api_key=os.getenv("BROSWER_USE_API_KEY", ""),
                 temperature=0.0,
