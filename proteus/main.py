@@ -965,18 +965,17 @@ async def process_agent(
             # CodeAct Agent模式：只允许使用python_execute和user_input工具
             all_tools = [
                 "python_execute",
-                "user_input",
                 "file_write",
             ]
             prompt_template = REACT_PROMPT_V8
             include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
 
             # 创建详细的instruction
-            instruction = (
-                "你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。"
-                "你可以使用Python代码进行任何计算、数据处理、文件操作等。如果你对用户请求有任何不确定的地方，"
-                "或者需要用户提供额外的信息，请使用user_input工具与用户进行交互。在编写代码时，请确保代码安全且只执行必要的操作。"
-            )
+            instruction = """
+                你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。
+                你可以使用Python代码进行任何计算、数据处理、文件操作等。
+                在编写代码时，请确保代码安全且只执行必要的操作。"""
+
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
@@ -995,24 +994,6 @@ async def process_agent(
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id, context=file_analysis_context)
 
-            await stream_manager.send_message(chat_id, await create_complete_event())
-        elif agentmodel == "workflow":
-            prompt_template = COT_WORKFLOW_PROMPT_TEMPLATES
-            all_tools = NodeConfigManager.get_instance().get_tools(tool_type="workflow")
-            agent = ReactAgent(
-                tools=all_tools,
-                instruction="",
-                stream_manager=stream_manager,
-                max_iterations=itecount,
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name=model_name,
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-            )
-            # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id, context=file_analysis_context)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodel == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -1038,20 +1019,10 @@ async def process_agent(
             await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         else:
-            # 获取基础工具集合 - 延迟初始化node_manager
-            # all_tools = NodeConfigManager.get_instance().get_tools()
-            # 创建详细的instruction
-            # instruction = (
-            #     "你是一个擅长使用工具的智能体，特别是使用搜索引擎搜索最新信息时，要记得使用爬虫爬取关联度较高的链接内容",
-            #     "python代码工具可以让你执行一些复杂的计算任务，调用金融工具获取金融相关的信息",
-            # )
             all_tools = [
                 "python_execute",
-                "user_input",
                 "serper_search",
                 "web_crawler",
-                "weather_forecast",
-                "mysql_node",
                 "planner",
             ]
             prompt_template = REACT_PROMPT_V8

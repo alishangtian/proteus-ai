@@ -68,6 +68,8 @@ services:
       - "8000:8000"
     volumes:
       - ./volumes/sandbox/.env:/app/.env
+      - ./volumes/sandbox/logs:/var/logs/sandbox
+      - ./volumes/sandbox/data:/var/data/sandbox
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Shanghai

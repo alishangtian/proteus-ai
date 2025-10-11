@@ -17,13 +17,14 @@ class Settings(BaseSettings):
     """统一管理应用配置，从环境变量加载"""
 
     API_KEY: str
-    LOG_DIR: str = Field("./logs", description="日志文件存放目录")
+    LOG_DIR: str = Field("/var/logs/sandbox", description="日志文件存放目录")
     LOG_LEVEL: str = Field("INFO", description="日志级别")
     MAX_CODE_LENGTH: int = Field(20000, description="最大允许代码长度")
     MAX_OUTPUT_LENGTH: int = Field(10000, description="最大允许输出长度")
     PYTHON_EXEC_TIMEOUT: int = Field(30, description="Python代码执行超时时间（秒）")
     SHELL_EXEC_TIMEOUT: int = Field(30, description="Shell脚本执行超时时间（秒）")
     MAX_SAFE_TIMEOUT: int = Field(60, description="最大安全超时时间（秒）")
+    DATA_DIR: str = Field("/var/data/sandbox", description="数据文件存放目录")
 
     class Config:
         env_file = ".env"
@@ -166,10 +167,10 @@ async def execute_code_endpoint(request: CodeRequest):
     code_preview = request.code[:100].replace("\n", "\\n")
     if len(request.code) > 100:
         code_preview += "..."
-    logger.debug("[%s] 代码预览: %s", request_id, code_preview)
+    logger.info("[%s] 代码预览: %s", request_id, code_preview)
 
     if request.language not in ("python", "shell"):
-        logger.warning("[%s] 不支持的语言: %s", request_id, request.language)
+        logger.error("[%s] 不支持的语言: %s", request_id, request.language)
         return CodeResponse(
             code=-2,
             stdout="",
@@ -209,15 +210,30 @@ async def execute_code_endpoint(request: CodeRequest):
             len(stderr),
         )
 
+        if stdout:
+            logger.info(
+                "[%s] 执行完成:  stdout_len=%d, stdout=\n%s",
+                request_id,
+                len(stdout),
+                stdout,
+            )
+        if stderr:
+            logger.info(
+                "[%s] 执行完成:  stderr_len=%d, stderr=\n%s",
+                request_id,
+                len(stderr),
+                stderr,
+            )
+
         # 记录详细的执行信息
         if execution_time > 1.0:
-            logger.warning("[%s] 执行时间较长: %.3f秒", request_id, execution_time)
+            logger.info("[%s] 执行时间较长: %.3f秒", request_id, execution_time)
 
         if stderr and len(stderr) > 500:
-            logger.debug("[%s] 截断的 stderr: %s", request_id, stderr[:500])
+            logger.info("[%s] 截断的 stderr: %s", request_id, stderr[:500])
 
         # 记录性能指标
-        logger.debug(
+        logger.info(
             "[%s] 性能指标 - 执行时间: %.3fs, 输出大小: %d/%d bytes",
             request_id,
             execution_time,

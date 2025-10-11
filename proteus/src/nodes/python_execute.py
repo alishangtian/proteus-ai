@@ -132,10 +132,10 @@ class PythonExecuteNode(BaseNode):
 
     async def agent_execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         execution_result = await self.execute(params)
+        success = execution_result.get("success", False)
         stderr = execution_result.get("stderr", None)
         error = execution_result.get("error", None)
-        if error is not None:
-            return {"result": f"{error}"}
-        if stderr is not None and stderr != "":
-            return {"result": f"{stderr}"}
-        return {"result": execution_result.get("result", "代码执行结果为空")}
+        stdout = execution_result.get("stdout", None)
+        if not success:
+            return {"result": f"{stderr}\n{error}"}
+        return {"result": stdout or "代码执行结果为空"}

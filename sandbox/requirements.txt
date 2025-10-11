@@ -9,3 +9,5 @@ PyPDF2
 paramiko
 pydantic_settings
 RestrictedPython
+akshare
+matplotlib

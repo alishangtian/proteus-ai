@@ -9,6 +9,7 @@ services:
     volumes:
       - .env:/app/.env
       - ./logs:/var/log/sandbox
+      - ./data:/var/data/sandbox
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Shanghai

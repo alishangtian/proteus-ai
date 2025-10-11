@@ -2,7 +2,7 @@ PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
   name: "Python/Shell代码执行"
-  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时先使用python 代码进行依赖的安装，python 代码最终需要将结果 print 出来才能接收到，请在代码中使用 logger.info进行重要日志输出"
+  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于数据处理、系统操作等场景。当缺少依赖时先使用python 代码进行依赖的安装，python 代码最终需要将结果 print 出来才能接收到，请在代码中使用 logger.info进行重要日志输出，当需要数据存储时，请使用数据目录保存，数据目录使用环境变量获取，key=DATA_DIR"
   output:
     result: "执行结果（标准输出）"
     stdout: "标准输出内容"
@@ -16,13 +16,13 @@ PythonExecuteNode:
       example: "def calculate(a, b):\n    print(a + b) \n calculate(a,b)"
     language:
       type: "str"
-      required: false
+      required: true
       default: "python"
       description: "代码语言类型：python 或 shell"
       example: "shell"
     enable_network:
       type: "bool"
-      required: false
+      required: true
       default: true
       description: "是否允许代码访问网络"
       example: false
