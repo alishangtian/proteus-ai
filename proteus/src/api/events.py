@@ -2,7 +2,8 @@
 
 import json
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+from src.utils.extract_playbook import PlaybookExtractor
 
 
 class EventType:
@@ -29,6 +30,7 @@ class EventType:
     AGENT_SELECTION = "agent_selection"  # 智能体选择事件
     AGENT_EXECUTION = "agent_execution"  # 智能体执行事件
     AGENT_EVALUATION = "agent_evaluation"  # 智能体结果评估事件
+    PLAYBOOK_UPDATE = "playbook_update"  # playbook 更新事件
 
 
 async def create_event(event_type: str, data: Any) -> Dict:
@@ -114,19 +116,16 @@ async def create_action_start_event(
 
 
 async def create_action_complete_event(
-    action: str, result: Any, action_id: str = None
+    action: str, result: Any, action_id: str = None, playbook: Optional[str] = None
 ) -> Dict:
     """创建动作完成事件"""
-    return await create_event(
-        EventType.ACTION_COMPLETE,
-        {
-            "action": action,
-            "action_id": action_id
-            or str(time.time()),  # 使用传入的action_id或时间戳作为默认值
-            "result": result,
-            "timestamp": time.time(),
-        },
-    )
+    data = {
+        "action": action,
+        "action_id": action_id or str(time.time()),
+        "result": result,
+        "timestamp": time.time(),
+    }
+    return await create_event(EventType.ACTION_COMPLETE, data)
 
 
 async def create_tool_progress_event(
@@ -171,9 +170,11 @@ async def create_agent_start_event(query: str) -> Dict:
 
 async def create_agent_complete_event(result: str) -> Dict:
     """创建agent完成事件"""
-    return await create_event(
-        EventType.AGENT_COMPLETE, {"result": result, "timestamp": time.time()}
-    )
+    # 在结果后添加AI标识，提醒用户这是AI生成的内容
+    ai_disclaimer = "\n\n---\n\n⚠️ **AI生成内容提示**：以上内容由AI生成，请仔细甄别后考虑是否采用。"
+    result_with_disclaimer = f"{result}{ai_disclaimer}" if result else ai_disclaimer
+    data = {"result": result_with_disclaimer, "timestamp": time.time()}
+    return await create_event(EventType.AGENT_COMPLETE, data)
 
 
 async def create_agent_error_event(error: str) -> Dict:
@@ -295,5 +296,27 @@ async def create_agent_evaluation_event(
             "feedback": feedback,
             "timestamp": time.time(),
             "agent_name": agent_name,
+        },
+    )
+
+
+async def create_playbook_update_event(playbook_content: str) -> Dict:
+    """创建 playbook 更新事件
+
+    Args:
+        playbook_content: playbook 内容
+
+    Returns:
+        Dict: 事件字典
+    """
+    # 使用 PlaybookExtractor 提取任务规划和完成度
+    extracted_tasks = PlaybookExtractor.extract_tasks_and_completion(playbook_content)
+
+    return await create_event(
+        EventType.PLAYBOOK_UPDATE,
+        {
+            "playbook": playbook_content,
+            "tasks": extracted_tasks,  # 添加提取的任务列表
+            "timestamp": time.time(),
         },
     )

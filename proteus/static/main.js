@@ -1,13 +1,37 @@
 import Icons from './icons.js';
 import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON } from './utils.js';
-import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent } from './ui.js';
+import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent, updatePlaybook as uiUpdatePlaybook } from './ui.js';
 import { registerSSEHandlers } from './sse-handlers.js';
 
 
 // 临时存储历史对话数据 {model: htmlContent}
 const historyStorage = {};
+// 存储每个模型的playbook数据 {model: playbookContent}
+const playbookStorage = {};
 // 存储每个模型的conversation_id {model: conversationId}
 const conversationIdStorage = {};
+// 异步获取 playbook 内容的函数
+async function fetchPlaybook() {
+    if (!currentConversationId) {
+        console.warn('无法获取 playbook: currentConversationId 为空');
+        return null;
+    }
+    try {
+        const response = await fetch(`/playbook/${currentChatId}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.success && data.playbook && data.playbook.tasks_and_completion) {
+            // 将任务列表转换为 Markdown 格式
+            return data.playbook.tasks_and_completion.join('\n');
+        }
+        return null;
+    } catch (error) {
+        console.error('获取 playbook 失败:', error);
+        return null;
+    }
+}
 // 菜单栏收起/展开功能
 document.addEventListener('DOMContentLoaded', function () {
     // 添加菜单项点击事件
@@ -602,12 +626,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 conversationIdStorage[currentModel] = currentConversationId;
             }
 
-            // 3. 清空当前对话历史
+            // 3. 清空当前对话历史和 playbook
             conversationHistory.innerHTML = '';
+            document.getElementById('playbook-content').innerHTML = '';
+            document.getElementById('playbook-container').style.display = 'none';
 
-            // 4. 恢复新模型的对话历史(如果存在)
+            // 4. 恢复新模型的对话历史和 playbook (如果存在)
             if (historyStorage[newModel]) {
                 conversationHistory.innerHTML = historyStorage[newModel];
+            }
+            if (playbookStorage[newModel]) {
+                document.getElementById('playbook-content').innerHTML = playbookStorage[newModel];
+                document.getElementById('playbook-container').style.display = 'flex';
             }
 
             // 5. 恢复或生成新模型的conversation_id
@@ -1205,6 +1235,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     Icons: Icons,
                     submitUserInput: submitUserInput,
                     streamTextContent: uiStreamTextContent, // 传递 streamTextContent
+                    updatePlaybook: uiUpdatePlaybook, // 传递 uiUpdatePlaybook
+                    fetchPlaybook: fetchPlaybook, // 传递 fetchPlaybook
                     onComplete: () => { resetUI(); },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });

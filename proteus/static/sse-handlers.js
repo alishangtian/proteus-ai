@@ -16,7 +16,11 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         renderExplanation,
         renderAnswer,
         createQuestionElement,
-        Icons
+        Icons,
+        updatePlaybook,
+        fetchPlaybook, // 添加 fetchPlaybook 到 ctx
+        currentModel, // 从 ctx 中获取 currentModel
+        playbookStorage // 从 ctx 中获取 playbookStorage
     } = ctx;
 
     // agent_selection
@@ -380,6 +384,43 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 endTime: null
             };
 
+            // 格式化参数显示内容
+            let formattedInput = '';
+            if (data.action === 'python_execute' && data.input && data.input.code) {
+                // 对于 python_execute 工具，如果有 code 参数，单独渲染代码
+                formattedInput = '<div class="python-code-section">';
+                formattedInput += '<div class="code-label">Python 代码:</div>';
+                
+                // 使用 highlight.js 直接高亮代码
+                let highlightedCode = data.input.code;
+                if (typeof hljs !== 'undefined') {
+                    try {
+                        highlightedCode = hljs.highlight(data.input.code, { language: 'python' }).value;
+                    } catch (e) {
+                        console.warn('代码高亮失败，使用原始代码', e);
+                    }
+                }
+                
+                formattedInput += `<pre><code class="hljs language-python">${highlightedCode}</code></pre>`;
+                
+                // 如果还有其他参数，也显示出来
+                const otherParams = Object.keys(data.input).filter(key => key !== 'code');
+                if (otherParams.length > 0) {
+                    const otherParamsObj = {};
+                    otherParams.forEach(key => {
+                        otherParamsObj[key] = data.input[key];
+                    });
+                    formattedInput += '<div class="other-params-section">';
+                    formattedInput += '<div class="code-label">其他参数:</div>';
+                    formattedInput += '<pre><code class="hljs language-json">' + JSON.stringify(otherParamsObj, null, 2) + '</code></pre>';
+                    formattedInput += '</div>';
+                }
+                formattedInput += '</div>';
+            } else {
+                // 其他工具使用普通 JSON 格式
+                formattedInput = '<pre><code class="hljs language-json">' + JSON.stringify(data.input, null, 2) + '</code></pre>';
+            }
+
             // 创建工具调用展示在聊天流中，默认折叠
             const actionGroup = document.createElement('div');
             actionGroup.className = 'action-group collapsed'; // 默认添加 collapsed 类
@@ -400,7 +441,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             <span class="action-group-item-name">参数</span>
                         </div>
                         <div class="action-group-item-details">
-                            <pre>${JSON.stringify(data.input, null, 2)}</pre>
+                            ${formattedInput}
                         </div>
                         <div class="action-group-item-metrics">
                             <div class="action-group-item-metric">
@@ -589,6 +630,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     });
                 }
             }
+
         } catch (error) {
             console.error('解析action完成事件失败:', error);
         }
@@ -706,8 +748,25 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     actionCompleteDiv.innerHTML = marked.parse(completeContent);
                 }
             }
+
         } catch (error) {
             console.error('解析agent完成事件失败:', error);
+        }
+    });
+
+    // playbook_update
+    eventSource.addEventListener('playbook_update', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const tasks = data.tasks || [];
+
+            if (tasks.length > 0 && typeof updatePlaybook === 'function') {
+                // 使用提取的任务列表渲染 playbook
+                updatePlaybook(tasks);
+                console.log('Playbook 已更新，任务数量:', tasks.length);
+            }
+        } catch (error) {
+            console.error('解析 playbook 更新事件失败:', error);
         }
     });
 

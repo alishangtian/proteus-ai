@@ -23,6 +23,7 @@ from ..api.events import (
     create_agent_error_event,
     create_agent_thinking_event,
     create_user_input_required_event,
+    create_playbook_update_event,
 )
 from ..manager.mcp_manager import get_mcp_manager
 from ..api.stream_manager import StreamManager
@@ -43,7 +44,10 @@ from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache, get_redis_connection
 from ..utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.tool_extract_prompt import TOOL_EXTRACT_PROMPT
-from src.agent.prompt.report_prompt import REPORT_PROMPT
+
+# import PLAYBOOK_PROMPT
+from src.agent.prompt.playbook_prompt import PLAYBOOK_PROMPT
+from src.agent.prompt.playbook_prompt_v2 import PLAYBOOK_PROMPT_v2
 
 logger = logging.getLogger(__name__)
 
@@ -534,7 +538,7 @@ class ReactAgent:
                         is_origin_query=item_dict.get("is_origin_query", False),
                         tool_execution_id=item_dict.get("tool_execution_id", ""),
                         role_type=item_dict.get("role_type", "") or "",
-                        report=item_dict.get("report", ""),
+                        playbook=item_dict.get("playbook", ""),
                     )
 
                     # 添加其他可能的属性
@@ -694,7 +698,7 @@ class ReactAgent:
                                 if hasattr(self.role_type, "value")
                                 else str(self.role_type)
                             ),
-                            "report": item.report,
+                            "playbook": item.playbook,
                         }
                         item_json = json.dumps(item_dict, ensure_ascii=False)
                         items_to_save.append(item_json)
@@ -823,6 +827,7 @@ class ReactAgent:
         current_iteration: int = 1,
         include_fields: List[IncludeFields] = None,
         context: str = None,
+        chat_id: str = None,
     ) -> str:
         """构造提示模板，使用缓存优化工具描述生成
 
@@ -917,12 +922,7 @@ class ReactAgent:
             # ),
             "max_iterations": self.max_iterations,
             "current_iteration": current_iteration,
-            "report": (
-                self.scratchpad_items[-1].report
-                if self.scratchpad_items
-                and hasattr(self.scratchpad_items[-1], "report")
-                else ""
-            ),
+            "playbook": (self._load_playbook_from_redis(chat_id) if chat_id else ""),
         }
 
         agent_prompt = Template(self.prompt_template).safe_substitute(all_values)
@@ -2112,6 +2112,15 @@ class ReactAgent:
                 event = await create_agent_start_event(query)
                 await self.stream_manager.send_message(chat_id, event)
 
+            # 剧本初始化
+            current_playbook = await self._generate_playbook(
+                last_playbook="",
+                tool_result="",
+                chat_id=chat_id,
+                model_name=self.model_name or self.reasoner_model_name,
+                query=query,
+            )
+            self._save_playbook_to_redis(chat_id, current_playbook)
             # 运行主循环
             result = await self._run_main_loop(
                 chat_id,
@@ -2122,6 +2131,8 @@ class ReactAgent:
                 include_fields=self.include_fields,
             )
             if stream and self.stream_manager and result:
+                # 获取最新的 playbook
+                current_playbook = self._load_playbook_from_redis(chat_id)
                 event = await create_agent_complete_event(result)
                 await self.stream_manager.send_message(chat_id, event)
             # 保存用户查询到对话历史
@@ -2217,6 +2228,7 @@ class ReactAgent:
                     current_iteration=iteration_count,
                     include_fields=include_fields,
                     context=context,
+                    chat_id=chat_id,
                 )
                 logger.info(f"Iteration {iteration_count} prompt: {prompt}")
 
@@ -2242,6 +2254,19 @@ class ReactAgent:
                     else:
                         # 兼容旧格式：直接是答案字符串
                         final_answer = action_input
+                    # generate playbook
+                    # 获取上一步的剧本
+                    last_playbook = self._load_playbook_from_redis(chat_id)
+
+                    # 生成新的剧本
+                    current_playbook = await self._generate_playbook(
+                        last_playbook=last_playbook,
+                        tool_result=f"thought:{thought}\n action:{action}\n final_answer:{final_answer}",
+                        chat_id=chat_id,
+                        model_name=self.model_name or self.reasoner_model_name,
+                        query=query,
+                    )
+                    self._save_playbook_to_redis(chat_id, current_playbook)
                     break
 
                 # 验证工具
@@ -2305,22 +2330,18 @@ class ReactAgent:
                 self.scratchpad_items.append(new_item)
                 observations.append(observation)
 
-                # 获取上一步的报告
-                last_report = (
-                    self.scratchpad_items[-2].report
-                    if len(self.scratchpad_items) >= 2
-                    else ""
-                )
+                # 获取上一步的剧本
+                last_playbook = self._load_playbook_from_redis(chat_id)
 
-                # 生成新的报告
-                current_report = await self._generate_report(
-                    last_report=last_report,
+                # 生成新的剧本
+                current_playbook = await self._generate_playbook(
+                    last_playbook=last_playbook,
                     tool_result=new_item.to_react_context(index=-1),
                     chat_id=chat_id,
                     model_name=self.model_name or self.reasoner_model_name,
                     query=query,
                 )
-                new_item.report = current_report
+                self._save_playbook_to_redis(chat_id, current_playbook)
 
                 # 每次工具执行后立即保存到Redis
                 if self.conversation_id:
@@ -2435,33 +2456,70 @@ class ReactAgent:
                 await asyncio.sleep(self.iteration_retry_delay)
         return final_answer
 
+    def _load_playbook_from_redis(self, chat_id: str) -> str:
+        """从Redis加载剧本"""
+        try:
+            with self._redis_manager.get_redis_connection() as redis_cache:
+                redis_key = f"playbook:{chat_id}"
+                playbook = redis_cache.get(redis_key)
+                if playbook:
+                    logger.info(f"从Redis加载剧本成功 (chat_id: {chat_id})")
+                    return playbook
+                return ""
+        except Exception as e:
+            logger.error(f"从Redis加载剧本失败: {e}")
+            return ""
+
+    def _save_playbook_to_redis(
+        self, chat_id: str, playbook: str, expire_hours: int = 12
+    ):
+        """将剧本保存到Redis"""
+        try:
+            with self._redis_manager.get_redis_connection() as redis_cache:
+                redis_key = f"playbook:{chat_id}"
+                redis_cache.set(redis_key, playbook, ex=expire_hours * 3600)
+                logger.info(f"成功保存剧本到Redis (conversation_id: {chat_id})")
+        except Exception as e:
+            logger.error(f"保存剧本到Redis失败: {e}")
+
     @langfuse_wrapper.observe_decorator(
-        name="_generate_report", capture_input=True, capture_output=True
+        name="_generate_playbook", capture_input=True, capture_output=True
     )
-    async def _generate_report(
+    async def _generate_playbook(
         self,
-        last_report: str,
+        last_playbook: str,
         tool_result: str,
         chat_id: str,
         model_name: str,
         query: str,
     ) -> str:
         """
-        基于上一步的报告和新的工具结果生成新的报告。
+        基于上一步的剧本和新的工具结果生成新的剧本。
         """
-        system_prompt = Template(REPORT_PROMPT).safe_substitute(
+        system_prompt = Template(PLAYBOOK_PROMPT_v2).safe_substitute(
             query=query,
-            last_report=last_report if last_report else "无",
+            last_playbook=last_playbook if last_playbook else "无",
             tool_result=tool_result,
+            current_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         messages = [{"role": "user", "content": system_prompt}]
         try:
-            report_content = await self._call_model(messages, chat_id, model_name)
-            return report_content
+            playbook = await self._call_model(messages, chat_id, model_name)
+
+            # 生成 playbook 后立即发送 SSE 事件
+            if self.stream_manager:
+                try:
+                    event = await create_playbook_update_event(playbook)
+                    await self.stream_manager.send_message(chat_id, event)
+                    logger.info(f"[{chat_id}] 已发送 playbook 更新事件")
+                except Exception as e:
+                    logger.error(f"[{chat_id}] 发送 playbook 更新事件失败: {e}")
+
+            return playbook
         except Exception as e:
-            logger.error(f"生成报告失败: {e}")
-            return f"报告生成失败: {str(e)}"
+            logger.error(f"生成剧本失败: {e}")
+            return f"生成剧本失败: {str(e)}"
 
     @langfuse_wrapper.observe_decorator(
         name="_check_termination", capture_input=True, capture_output=True

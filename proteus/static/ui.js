@@ -172,7 +172,10 @@ export function renderNodeResult(data, container, currentIteration = 1) {
             </div>
             <div class="node-content">${content}</div>
         `;
-        nodeDiv.classList.remove('collapsed');
+        // 默认折叠，除非状态是 'running'
+        if (data.status !== 'running') {
+            nodeDiv.classList.add('collapsed');
+        }
         container.appendChild(nodeDiv);
     }
 
@@ -258,4 +261,30 @@ export function createQuestionElement(text, currentModel) {
 
     questionElement.appendChild(qaContainer);
     return { questionElement, answerElement, questionDiv };
+}
+export function updatePlaybook(tasks) {
+    const playbookContainer = document.getElementById('playbook-container');
+    const playbookContent = document.getElementById('playbook-content');
+    
+    if (tasks && tasks.length > 0) {
+        // 构建任务列表 HTML，每个任务前添加圆形状态指示器
+        let html = '<ul class="playbook-task-list">';
+        tasks.forEach(task => {
+            const statusClass = task.status === '已完成' ? 'completed' : 'pending';
+            
+            html += `
+                <li class="playbook-task-item ${statusClass}">
+                    <div class="task-indicator ${statusClass}"></div>
+                    <span class="task-description">${task.description}</span>
+                </li>
+            `;
+        });
+        html += '</ul>';
+        
+        playbookContent.innerHTML = html;
+        playbookContainer.style.display = 'flex';
+    } else {
+        playbookContent.innerHTML = '';
+        playbookContainer.style.display = 'none';
+    }
 }

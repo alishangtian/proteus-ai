@@ -14,9 +14,14 @@ from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
 from src.api.llm_api import call_multimodal_llm_api
 from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
 import uuid  # 导入 uuid 用于生成唯一 ID
+from src.utils.redis_cache import RedisCache  # 导入 RedisCache
 from src.utils.file_parser import parse_file  # 导入文件解析函数
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+# 导入extract_tasks_and_completion
+from src.utils.extract_playbook import PlaybookExtractor
+
 from fastapi.responses import HTMLResponse
 import shutil
 from sse_starlette.sse import EventSourceResponse
@@ -32,6 +37,8 @@ from src.agent.prompt.react_prompt_v5 import REACT_PROMPT_V5
 from src.agent.prompt.react_prompt_v6 import REACT_PROMPT_V6
 from src.agent.prompt.react_prompt_v7 import REACT_PROMPT_V7
 from src.agent.prompt.react_prompt_v8 import REACT_PROMPT_V8
+from src.agent.prompt.react_playbook_prompt import REACT_PLAYBOOK_PROMPT
+from src.agent.prompt.react_playbook_prompt_v2 import REACT_PLAYBOOK_PROMPT_v2
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -231,6 +238,7 @@ async def auth_middleware(request: Request, call_next):
         "/health",  # 健康检查
         "/static",  # 静态文件
         "/favicon.ico",  # 网站图标
+        "/newui",  # 新的聊天页面
     }
 
     path = request.url.path
@@ -470,6 +478,20 @@ async def get_agent_page(request: Request):
 async def get_super_agent_page(request: Request):
     """返回super-agent交互页面"""
     return templates.TemplateResponse("superagent/index.html", {"request": request})
+
+
+@app.get("/newui", response_class=HTMLResponse)
+async def get_newui_page(request: Request):
+    """返回新的聊天页面"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "newui.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "username": user.username if user else "",
+        },
+    )
 
 
 @langfuse_wrapper.observe_decorator(
@@ -967,11 +989,11 @@ async def process_agent(
                 "python_execute",
                 "file_write",
             ]
-            prompt_template = REACT_PROMPT_V8
+            prompt_template = REACT_PLAYBOOK_PROMPT_v2
             include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
 
             # 创建详细的instruction
-            instruction = """
+            explanation = """
                 你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。
                 你可以使用Python代码进行任何计算、数据处理、文件操作等。
                 在编写代码时，请确保代码安全且只执行必要的操作。"""
@@ -979,7 +1001,7 @@ async def process_agent(
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
-                instruction=instruction,
+                instruction=explanation,
                 stream_manager=stream_manager,
                 max_iterations=itecount,
                 iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
@@ -1023,9 +1045,8 @@ async def process_agent(
                 "python_execute",
                 "serper_search",
                 "web_crawler",
-                "planner",
             ]
-            prompt_template = REACT_PROMPT_V8
+            prompt_template = REACT_PLAYBOOK_PROMPT_v2
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
@@ -1042,7 +1063,6 @@ async def process_agent(
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id, context=file_analysis_context)
-
             await stream_manager.send_message(chat_id, await create_complete_event())
     except Exception as e:
         from src.api.events import create_error_event
@@ -1188,7 +1208,7 @@ async def execute_workflow(request: WorkflowRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8888)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 # 提供模型配置列表接口，供前端下拉使用
@@ -1229,3 +1249,39 @@ async def list_models():
         logger.error(f"读取模型配置失败: {e}", exc_info=True)
         # 发生不可预期错误时返回 500
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/playbook/{chat_id}")
+async def get_playbook(chat_id: str):
+    """
+    根据 chat_id 获取剧本，并只提取规划和完成部分的内容。
+    """
+    try:
+        redis_conn = get_redis_connection()
+        playbook_key = f"playbook:{chat_id}"
+        playbook_content = redis_conn.get(playbook_key)
+
+        if not playbook_content:
+            return {"success": True, "chat_id": chat_id, "playbook": ""}
+
+        # 提取任务规划与完成度部分
+        extracted_tasks = PlaybookExtractor.extract_tasks_and_completion(
+            playbook_content
+        )
+
+        # 将提取到的任务转换为更友好的格式
+        formatted_tasks = []
+        for task in extracted_tasks:
+            formatted_tasks.append(f"- [状态: {task['status']}] {task['description']}")
+
+        extracted_content = {
+            "tasks_and_completion": formatted_tasks if formatted_tasks else "无"
+        }
+
+        return {"success": True, "chat_id": chat_id, "playbook": extracted_content}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取剧本失败 (chat_id: {chat_id}): {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取剧本失败: {str(e)}")

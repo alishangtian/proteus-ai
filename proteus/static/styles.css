@@ -254,11 +254,24 @@ body {
 /* 主容器 */
 .main-container {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    display: flex; /* 改用 flex 布局，更简单直观 */
+    flex-direction: row; /* 左右布局 */
     overflow: hidden;
     height: 100vh;
     position: relative;
+    gap: 0; /* 左右区域之间无间隙 */
+    background: #f5f5f5; /* 统一背景色 */
+}
+
+
+.content-wrapper {
+    flex: 1; /* 占据剩余空间 */
+    display: flex;
+    flex-direction: column; /* 上下布局：conversation-history 在上，input-container 在下 */
+    overflow: hidden;
+    height: 100%; /* 填充父容器高度 */
+    align-items: center; /* 使子元素在横向居中 */
+    background: #f5f5f5; /* 统一背景色 */
 }
 
 /* 隐藏旧的工具展示区域 */
@@ -267,21 +280,7 @@ body {
     display: none !important;
 }
 
-.container {
-    width: 100%;
-    max-width: calc(100% - 200px);
-    height: 100vh;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    transition: all 0.3s ease;
-}
 
-.sidebar.collapsed~.main-container .container {
-    max-width: calc(100% - 60px);
-}
 
 #welcome-title {
     text-align: center;
@@ -295,21 +294,24 @@ body {
     transform: translate(-50%, -50%);
 }
 
-.container:has(#conversation-history:empty) {
-    justify-content: center;
-}
 
 .input-container {
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    /* 缩窄聊天框最大宽度，视觉上更协调 */
-    max-width: 1000px;
+    /* content-wrapper 的子元素，位于底部 */
     padding: 18px;
-    background: #f5f5f5;
+    background: transparent; /* 透明背景，融入整体 */
     z-index: 100;
+    box-sizing: border-box;
+    position: relative;
+    width: 100%;
+    max-width: 1100px; /* 与 .qa-container 的 max-width 保持一致 */
+    flex-shrink: 0; /* 防止被压缩 */
+    /* 父容器已经设置了 align-items: center，所以会自动居中 */
+}
+
+@media (max-width: 1024px) {
+    .input-container {
+        /* 小屏幕下，它仍然是 content-wrapper 的子元素，不需要额外的 grid 调整 */
+    }
 }
 
 /* 已上传文件列表容器样式 */
@@ -674,25 +676,31 @@ body {
 }
 
 #conversation-history {
-    /* 让对话列表作为垂直列并水平居中其内容 */
-    flex: 1;
+    flex: 1; /* 占据剩余空间，input-container 在下方 */
     padding: 20px;
-    overflow-y: auto;
-    height: calc(100vh - 200px);
-    margin-bottom: 180px;
+    overflow-y: auto; /* 允许滚动 */
     scroll-behavior: smooth;
-
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0;
+    width: 100%; /* 占据父容器宽度 */
+    max-width: 100%;
+    
+    /* 隐藏滚动条但保持滚动功能 */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 和 Edge */
+}
+
+/* 隐藏 Webkit 浏览器（Chrome, Safari）的滚动条 */
+#conversation-history::-webkit-scrollbar {
+    display: none;
 }
 
 /* 每个 QA 容器限制宽度并居中 */
 .qa-container {
     width: 100%;
-    max-width: 1100px;
-    /* 保持与之前工具栏一致的最大宽度 */
+    max-width: 1100px; /* 保持与之前工具栏一致的最大宽度 */
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -1133,9 +1141,10 @@ body {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: 500px;
-    /* 默认展开时的最大高度 */
-    overflow: hidden;
+    max-height: none;
+    /* 移除最大高度限制，让内容完整显示 */
+    overflow: visible;
+    /* 改为可见，不隐藏内容 */
     transition: max-height 0.3s ease, padding 0.3s ease;
 }
 
@@ -1143,6 +1152,7 @@ body {
     max-height: 0;
     /* 折叠时隐藏内容 */
     padding: 0;
+    display: none; /* 明确隐藏内容 */
 }
 
 .action-group-item {
@@ -1213,10 +1223,22 @@ body {
     font-size: 12px;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 150px;
-    /* 限制高度 */
-    overflow-y: auto;
-    /* 添加滚动条 */
+    max-height: none;
+    /* 移除高度限制，让内容完整显示 */
+    overflow-y: visible;
+    /* 移除滚动条限制 */
+}
+
+.action-group-item-details ol,
+.action-group-item-details ul {
+    margin: 0;
+    padding: 0;
+    list-style: none; /* 移除默认列表样式 */
+}
+
+.action-group-item-details li {
+    margin-bottom: 4px; /* 调整列表项间距 */
+    line-height: 1.4; /* 调整行高 */
 }
 
 .action-group-item-metrics {
@@ -1722,17 +1744,11 @@ body {
     position: relative;
 }
 
-/* Remove container max-width that reserved sidebar space */
-.container {
-    max-width: 100% !important;
-}
 
-/* Re-center input container horizontally for full-width layout */
+/* input-container 不需要额外的定位，由 flex 布局自动处理 */
 .input-container {
-    left: 50% !important;
-    transform: translateX(-50%) !important;
+    /* 移除绝对定位相关样式，让 flex 布局自动处理 */
     width: 100% !important;
-    /* 保持此前缩窄的最大宽度以避免过宽 */
     max-width: 1000px !important;
     padding: 16px !important;
 }
@@ -1746,12 +1762,6 @@ body {
     margin-right: 0 !important;
 }
 
-/* Remove any sibling selector rules that adjusted size when sidebar exists */
-.sidebar.collapsed~.main-container .container,
-.sidebar~.main-container,
-.sidebar+.main-container {
-    max-width: 100% !important;
-}
 
 /* Hide sidebar-related footer toggle if present elsewhere */
 .toggle-sidebar,
@@ -2259,4 +2269,296 @@ body {
     border: 1px solid #ffeeba;
     /* 黄色边框 */
     color: #856404;
+}
+.playbook-container {
+    /* 右侧固定宽度区域 */
+    flex: 0 0 350px; /* 固定宽度 350px，不伸缩 */
+    margin: 0; /* 移除所有外边距，与其他区域融为一体 */
+    padding: 20px; /* 与 conversation-history 保持一致的内边距 */
+    border-radius: 0; /* 移除圆角 */
+    background: #f5f5f5; /* 与整体背景色一致 */
+    border: none; /* 移除边框 */
+    border-left: 1px solid rgba(0, 0, 0, 0.05); /* 仅保留左侧淡淡的分隔线 */
+    box-shadow: none; /* 移除阴影 */
+    box-sizing: border-box;
+    display: flex; /* 默认显示 */
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto; /* 允许内容滚动 */
+    height: 100vh; /* 填充整个视口高度 */
+    max-width: 400px; /* 限制最大宽度 */
+    min-width: 300px; /* 最小宽度 */
+    
+    /* 隐藏滚动条但保持滚动功能 */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 和 Edge */
+}
+
+/* 隐藏 Webkit 浏览器（Chrome, Safari）的滚动条 */
+.playbook-container::-webkit-scrollbar {
+    display: none;
+}
+
+
+.playbook-container h3 {
+    font-size: 16px;
+    color: #333;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08); /* 更淡的分隔线 */
+    padding-bottom: 8px;
+}
+
+#playbook-content {
+    font-size: 14px;
+    color: #555;
+    line-height: 1.6;
+    white-space: pre-wrap; /* 保留空白符和换行符 */
+    word-break: break-word; /* 允许长单词换行 */
+}
+
+/* Playbook 任务列表样式 */
+.playbook-task-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* 任务之间的紧凑间距 */
+}
+
+.playbook-task-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background-color 0.2s ease;
+}
+
+/* 通过背景色区分任务状态 */
+.playbook-task-item.completed {
+    background-color: rgba(34, 197, 94, 0.08); /* 淡绿色背景 */
+}
+
+.playbook-task-item.pending {
+    background-color: rgba(239, 68, 68, 0.06); /* 淡红色背景 */
+}
+
+.playbook-task-item:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* 任务状态指示器 - 圆形，带呼吸效果 */
+.task-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%; /* 保持圆形 */
+    flex-shrink: 0;
+    position: relative;
+}
+
+/* 已完成任务 - 绿色圆点，呼吸效果 */
+.task-indicator.completed {
+    background-color: #22c55e;
+    animation: breathe-green 2s ease-in-out infinite;
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+}
+
+@keyframes breathe-green {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    }
+    
+    50% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
+    }
+}
+
+/* 未完成任务 - 红色圆点，呼吸效果 */
+.task-indicator.pending {
+    background-color: #ef4444;
+    animation: breathe-red 2s ease-in-out infinite;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+}
+
+@keyframes breathe-red {
+    0%, 100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    
+    50% {
+        transform: scale(1.1);
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+    }
+}
+
+/* 任务描述文本 */
+.task-description {
+    flex: 1;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    word-break: break-word;
+}
+
+/* 已完成任务的文本样式 */
+.playbook-task-item.completed .task-description {
+    color: #1a1a1a;
+    font-weight: 500;
+}
+
+/* 未完成任务的文本样式 */
+.playbook-task-item.pending .task-description {
+    color: #555;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .playbook-task-item {
+        padding: 6px 10px;
+        gap: 8px;
+    }
+    
+    .task-indicator {
+        width: 10px;
+        height: 10px;
+    }
+    
+    .task-description {
+        font-size: 13px;
+    }
+}
+
+/* Python 代码区域样式优化 */
+.python-code-section {
+    margin: 12px 0;
+    padding: 0;
+}
+
+.python-code-section .code-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.python-code-section .code-label::before {
+    content: '🐍';
+    font-size: 16px;
+}
+
+.python-code-section pre {
+    margin: 0 0 12px 0;
+    background: #282c34 !important;
+    border: 1px solid #3e4451;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+}
+
+.python-code-section pre code {
+    background: transparent !important;
+    padding: 0;
+    font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #abb2bf;
+    display: block;
+}
+
+/* 其他参数区域样式 */
+.other-params-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5e7eb;
+}
+
+.other-params-section .code-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 6px;
+}
+
+.other-params-section .code-label::before {
+    content: '⚙️';
+    font-size: 14px;
+}
+
+.other-params-section pre {
+    background: #f9fafb !important;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 12px;
+    margin: 0;
+}
+
+.other-params-section pre code {
+    background: transparent !important;
+    color: #374151;
+    font-size: 12px;
+}
+
+/* 确保 action-group-item-details 中的代码块样式正确 */
+.action-group-item-details pre {
+    margin: 0;
+    max-height: none;
+}
+
+.action-group-item-details .python-code-section pre {
+    max-height: 600px;
+    /* 增加最大高度，提供更好的阅读体验 */
+    overflow-y: auto;
+    /* 超出时显示滚动条 */
+}
+
+/* 当 action-group 展开时，确保有足够的空间显示代码 */
+.action-group:not(.collapsed) .action-group-item-details {
+    max-height: none;
+}
+
+.action-group:not(.collapsed) .python-code-section {
+    max-height: none;
+}
+
+/* 代码块滚动条样式 */
+.python-code-section pre::-webkit-scrollbar,
+.other-params-section pre::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.python-code-section pre::-webkit-scrollbar-track {
+    background: #21252b;
+    border-radius: 4px;
+}
+
+.python-code-section pre::-webkit-scrollbar-thumb {
+    background: #4b5263;
+    border-radius: 4px;
+}
+
+.python-code-section pre::-webkit-scrollbar-thumb:hover {
+    background: #5c6370;
+}
+
+.other-params-section pre::-webkit-scrollbar-track {
+    background: #f3f4f6;
+    border-radius: 4px;
+}
+
+.other-params-section pre::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.other-params-section pre::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
