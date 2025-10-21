@@ -104,50 +104,52 @@
                 <div class="input-wrapper">
                     <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
 
-                    <!-- 底部工具栏：将所有可选择项集中并沉底 -->
-                    <div role="toolbar" aria-label="输入底部工具栏">
-                        <div class="model-select-wrapper" aria-hidden="false"
-                            style="display:flex;gap:8px;align-items:center;">
-                            <select id="model-select" class="select-control" aria-label="选择模式"></select>
-                            <select id="model-name-select" class="select-control" aria-label="选择模型"
-                                title="选择具体模型名称"></select>
+                    <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
+                        <input type="file" id="file-upload" style="display: none;" multiple>
+                        <button id="upload-button" type="button" aria-label="上传文件">
+                            📎
+                        </button>
+                        <button id="send-button" type="button" aria-label="发送">
+                            发送
+                        </button>
+                    </div>
+                </div>
 
-                            <!-- 将迭代选择并排放在模型选择右侧 -->
-                            <div id="itecount-container" class="itecount-wrapper" aria-hidden="false"
-                                style="display:flex;align-items:center;gap:8px;">
-                                <label for="itecount" class="itecount-label"
-                                    style="font-size:13px;color:#333">迭代</label>
-                                <input type="number" id="itecount" class="select-control ite-input" min="1" value="25"
-                                    placeholder="轮次" />
-                            </div>
+                <!-- 选项区域移动到输入框下方，视觉上与输入框融为一体（实际为分离容器） -->
+                <div class="options-bar" role="toolbar" aria-label="输入下方选项">
+                    <div class="model-select-wrapper" aria-hidden="false"
+                        style="display:flex;gap:8px;align-items:center;">
+                        <select id="model-select" class="select-control" aria-label="选择模式"></select>
+                        <select id="model-name-select" class="select-control" aria-label="选择模型"
+                            title="选择具体模型名称"></select>
 
-                            <!-- 将会话轮次选择并排放在模型选择右侧 -->
-                            <div id="conversation_count-container" class="itecount-wrapper" aria-hidden="false"
-                                style="display:flex;align-items:center;gap:8px;">
-                                <label for="itecount" class="itecount-label"
-                                    style="font-size:13px;color:#333">会话轮次</label>
-                                <input type="number" id="conversation_count" class="select-control ite-input" min="1"
-                                    value="10" placeholder="轮次" />
-                            </div>
+                        <div id="itecount-container" class="itecount-wrapper" aria-hidden="false"
+                            style="display:flex;align-items:center;gap:8px;">
+                            <label for="itecount" class="itecount-label" style="font-size:13px;color:#333">迭代</label>
+                            <input type="number" id="itecount" class="select-control ite-input" min="1" value="25"
+                                placeholder="轮次" />
                         </div>
 
-                        <div style="flex:1"></div>
-
-                        <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
-                            <input type="file" id="file-upload" style="display: none;" multiple>
-                            <button id="upload-button" type="button" aria-label="上传文件">
-                                📎
-                            </button>
-                            <button id="send-button" type="button" aria-label="发送">
-                                发送
-                            </button>
+                        <div id="conversation_count-container" class="itecount-wrapper" aria-hidden="false"
+                            style="display:flex;align-items:center;gap:8px;">
+                            <label for="conversation_count" class="itecount-label"
+                                style="font-size:13px;color:#333">会话轮次</label>
+                            <input type="number" id="conversation_count" class="select-control ite-input" min="1"
+                                value="10" placeholder="轮次" />
+                        </div>
+                        <!-- 本地记忆开关：仅存浏览器本地，不会上传服务器 -->
+                        <div class="memory-wrapper" aria-label="记忆设置">
+                            <label class="memory-label">
+                                <input type="checkbox" id="memory-toggle" class="memory-toggle">
+                                <span>工具记忆</span>
+                            </label>
+                            <span class="memory-help" data-title="开启后，工具调用将会被提取和记录，以更好的支持随后工具的选择">?</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div id="playbook-container" class="playbook-container">
-            <h3>Playbook</h3>
             <div id="playbook-content"></div>
         </div>
     </div>

@@ -71,7 +71,7 @@ os.environ["MCP_CONFIG_PATH"] = os.path.join(
 )
 
 # 获取日志文件路径
-log_file_path = os.getenv("log_file_path", "logs/workflow_engine.log")
+log_file_path = os.getenv("LOG_FILE_PATH", "logs/workflow_engine.log")
 
 # 配置日志
 setup_logger(log_file_path)
@@ -499,6 +499,7 @@ async def get_newui_page(request: Request):
 )
 @app.post("/chat")
 async def create_chat(
+    request: Request,
     text: str = Body(..., embed=True),
     model: str = Body(..., embed=True),
     model_name: str = Body(None, embed=True),
@@ -508,6 +509,7 @@ async def create_chat(
     conversation_id: str = Body(None, embed=True),
     conversation_round: int = Body(5, embed=True),
     file_ids: Optional[List[str]] = Body(None, embed=True),  # 新增文件 ID 列表参数
+    memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
 ):
     """创建新的聊天会话
 
@@ -520,6 +522,11 @@ async def create_chat(
     Returns:
         dict: 包含chat_id的响应
     """
+    # 获取当前登录用户
+    user = await get_current_user(request)
+    logger.info(f"用户 {user} 创建新的会话")
+    username = user.username if user else None
+
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     stream_manager.create_stream(chat_id, text)
 
@@ -537,6 +544,8 @@ async def create_chat(
                 model_name=model_name,
                 conversation_round=conversation_round,
                 file_ids=file_ids,  # 传递文件 ID 列表
+                username=username,  # 传递用户名
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
         )
     else:
@@ -848,6 +857,8 @@ async def process_agent(
     model_name: str = None,
     conversation_round: int = 5,
     file_ids: Optional[List[str]] = None,  # 新增文件 ID 列表参数
+    username: str = None,  # 新增用户名参数
+    memory_enabled: bool = False,  # 新增工具记忆参数
 ):
     """处理Agent请求的异步函数
 
@@ -857,8 +868,11 @@ async def process_agent(
         itecount: 迭代次数
         agentid: 代理ID(可选)
         agentmodel: 代理模型(可选)
+        username: 用户名(可选)，用于工具记忆隔离
     """
-    logger.info(f"[{chat_id}] 开始处理Agent请求: {text[:100]}... (agentid={agentid})")
+    logger.info(
+        f"[{chat_id}] 开始处理Agent请求: {text[:100]}... (agentid={agentid}, username={username})"
+    )
     team = None
     agent = None
     try:
@@ -948,6 +962,7 @@ async def process_agent(
                     llm_timeout=config.get("llm_timeout", None),
                     conversation_id=conversation_id,
                     conversation_round=conversation_round,
+                    memory_enabled=memory_enabled,  # 传递工具记忆参数
                 )
 
             # 创建团队实例
@@ -956,6 +971,8 @@ async def process_agent(
                 tools_config=tools_config,
                 start_role=getattr(TeamRole, team_config["start_role"]),
                 conversation_round=conversation_round,
+                username=username,
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents(chat_id)
@@ -976,6 +993,8 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
+                username=username,
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -1011,6 +1030,8 @@ async def process_agent(
                 conversation_id=conversation_id,
                 include_fields=include_fields,
                 conversation_round=conversation_round,
+                username=username,
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -1036,6 +1057,8 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
+                username=username,
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
@@ -1045,6 +1068,7 @@ async def process_agent(
                 "python_execute",
                 "serper_search",
                 "web_crawler",
+                "user_input",
             ]
             prompt_template = REACT_PLAYBOOK_PROMPT_v2
             # 获取基础工具集合 - 延迟初始化node_manager
@@ -1059,6 +1083,8 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
+                username=username,
+                memory_enabled=memory_enabled,  # 传递工具记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能
@@ -1208,7 +1234,7 @@ async def execute_workflow(request: WorkflowRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
 
 
 # 提供模型配置列表接口，供前端下拉使用
@@ -1285,3 +1311,46 @@ async def get_playbook(chat_id: str):
     except Exception as e:
         logger.error(f"获取剧本失败 (chat_id: {chat_id}): {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取剧本失败: {str(e)}")
+
+
+@app.post("/feedback/{conversation_id}/{chat_id}/{feedback_type}")
+async def submit_feedback(
+    chat_id: str, conversation_id: str, feedback_type: str, request: Request
+):
+    """
+    处理用户对会话的点赞/点踩反馈
+    """
+    user = await get_current_user(request)
+    username = user.username if user else "anonymous"
+
+    if feedback_type not in ["like", "dislike"]:
+        raise HTTPException(status_code=400, detail="无效的反馈类型")
+
+    try:
+        redis_conn = get_redis_connection()
+        feedback_key = f"feedback:{conversation_id}:{chat_id}"
+
+        # 存储反馈信息
+        feedback_data = {
+            "chat_id": chat_id,
+            "conversation_id": conversation_id,
+            "feedback_type": feedback_type,
+            "username": username,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # 将反馈数据存储到 Redis，可以设置一个过期时间，例如 7 天
+        redis_conn.setex(
+            feedback_key, 7 * 24 * 3600, json.dumps(feedback_data, ensure_ascii=False)
+        )
+
+        logger.info(
+            f"用户 {username} 对会话 {conversation_id} (chat_id: {chat_id}) 提交了 {feedback_type} 反馈"
+        )
+        return {"success": True, "message": "反馈提交成功"}
+    except Exception as e:
+        logger.error(
+            f"提交反馈失败 (chat_id: {chat_id}, conversation_id: {conversation_id}, feedback_type: {feedback_type}): {str(e)}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=f"提交反馈失败: {str(e)}")

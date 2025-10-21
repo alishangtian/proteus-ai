@@ -250,13 +250,16 @@ class ScratchpadItem:
         """将对象转换为 ReAct 上下文行，格式参考：
 
         Thought {n}: ...
-        Action {n}: ToolName[param1=val1, param2=val2]
+        Action {n}: ToolName
+        Action Input {n}: {"param1": "val1", "param2": "val2"}
         Observation {n}: ...
 
         说明：
-        - 优先尝试将 action_input 解析为 JSON（dict/list），解析成功则以紧凑形式展示参数；
+        - Action 行只显示工具名称
+        - Action Input 行单独显示工具参数
+        - 优先尝试将 action_input 解析为 JSON（dict/list），解析成功则以 JSON 格式展示；
         - 若无法解析为 JSON，则直接使用字符串形式的 action_input；
-        - 若没有 action_input，则显示空的方括号 [] 以保持格式一致性。
+        - 若没有 action_input，则不显示 Action Input 行。
         """
         step_number = index if index is not None else 1
         if step_number < 0:
@@ -265,9 +268,13 @@ class ScratchpadItem:
         # Thought 行
         thought_line = f"Thought {step_number}: {self.thought}"
 
-        # Action 行，合并工具名与参数
+        # Action 行，只显示工具名称
         action_name = self.action or ""
-        action_params_str = ""
+        action_line = f"Action {step_number}: {action_name}"
+
+        # Action Input 行，单独显示参数
+        lines = [thought_line, action_line]
+
         if self.action_input:
             raw = str(self.action_input).strip()
             # 尝试解析为 JSON
@@ -277,37 +284,22 @@ class ScratchpadItem:
             except Exception:
                 parsed = None
 
-            if isinstance(parsed, dict):
-                # 格式化为 key=value, 保持简洁
-                pairs = []
-                for k, v in parsed.items():
-                    # 简单将值转换为单行字符串
-                    if isinstance(v, (dict, list)):
-                        pairs.append(f"{k}={json.dumps(v, ensure_ascii=False)}")
-                    else:
-                        pairs.append(f"{k}={v}")
-                action_params_str = ", ".join(pairs)
-            elif isinstance(parsed, list):
-                action_params_str = ", ".join(str(x) for x in parsed)
+            if isinstance(parsed, (dict, list)):
+                # 格式化为 JSON 字符串
+                action_input_str = json.dumps(parsed, ensure_ascii=False, indent=2)
             else:
-                # 不是 JSON，直接使用原始字符串（单行）
-                # 去掉换行并压缩空白使其更紧凑
-                action_params_str = " ".join(raw.split())
-        else:
-            action_params_str = ""
+                # 不是 JSON，直接使用原始字符串
+                action_input_str = raw
 
-        # 保证括号展示，即使没有参数也显示 []
-        if action_params_str:
-            action_line = f"Action {step_number}: {action_name}[{action_params_str}]"
-        else:
-            action_line = f"Action {step_number}: {action_name}[]"
+            action_input_line = f"Action Input {step_number}: {action_input_str}"
+            lines.append(action_input_line)
 
         # Observation 行，使用已有的 markdown 格式化方法（保持多行内容）
         formatted_observation = self._format_markdown_observation(self.observation)
-        # 把 observation 的多行首尾空白修正为单行或多行块
         observation_line = f"Observation {step_number}: {formatted_observation}"
+        lines.append(observation_line)
 
-        return "\n".join([thought_line, action_line, observation_line]) + "\n"
+        return "\n".join(lines) + "\n"
 
     def to_react_context_table(
         self,
@@ -461,6 +453,7 @@ class Tool:
     full_description: str = ""  # 完整描述
     max_retries: int = 0  # 新增：最大重试次数
     retry_delay: float = 1.0  # 新增：重试延迟（秒）
+    memory: Optional[str] = None  # 新增：工具的历史记忆
 
     @classmethod
     def fromAnything(cls, func: Callable, **kwargs) -> "Tool":

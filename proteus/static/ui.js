@@ -215,16 +215,32 @@ export function renderAnswer(content, container, isFinal = false) {
     // 累积内容
     currentStreamedContent += content;
 
+    // 辅助函数：判断字符串是否为有效的 JSON
+    const isJsonString = (str) => {
+        try {
+            JSON.parse(str);
+        } catch (e) {
+            return false;
+        }
+        return true;
+    };
+
     // 如果是最终块，则进行 Markdown 渲染并替换内容
     if (isFinal) {
         if (streamingInterval) {
             clearInterval(streamingInterval);
             streamingInterval = null;
         }
-        answerDiv.innerHTML = marked.parse(currentStreamedContent);
+        let renderedContent = currentStreamedContent;
+        if (isJsonString(currentStreamedContent)) {
+            renderedContent = "```json\n" + currentStreamedContent + "\n```";
+        }
+        answerDiv.innerHTML = marked.parse(renderedContent);
         currentStreamedContent = ''; // 重置累积内容
     } else {
         // 否则，进行流式输出
+        // 在流式输出过程中，我们不进行实时的 Markdown/JSON 渲染，只更新文本内容
+        // 最终的渲染会在 isFinal 阶段完成
         streamTextContent(answerDiv, currentStreamedContent);
     }
 }
@@ -265,13 +281,17 @@ export function createQuestionElement(text, currentModel) {
 export function updatePlaybook(tasks) {
     const playbookContainer = document.getElementById('playbook-container');
     const playbookContent = document.getElementById('playbook-content');
-    
+
     if (tasks && tasks.length > 0) {
-        // 构建任务列表 HTML，每个任务前添加圆形状态指示器
-        let html = '<ul class="playbook-task-list">';
+        // 构建任务列表 HTML
+        let html = '<div class="playbook-title">任务清单</div><ul class="playbook-task-list">';
         tasks.forEach(task => {
-            const statusClass = task.status === '已完成' ? 'completed' : 'pending';
-            
+            let statusClass = 'pending';
+            if (task.status === '已完成') {
+                statusClass = 'completed';
+            } else if (task.status === '进行中') {
+                statusClass = 'in-progress';
+            }
             html += `
                 <li class="playbook-task-item ${statusClass}">
                     <div class="task-indicator ${statusClass}"></div>
@@ -280,11 +300,27 @@ export function updatePlaybook(tasks) {
             `;
         });
         html += '</ul>';
-        
+
+        // 渲染内容
         playbookContent.innerHTML = html;
-        playbookContainer.style.display = 'flex';
+
+        // 先将任务项标记为 staged，随后分步进入（渐进式，不突兀）
+        const items = playbookContent.querySelectorAll('.playbook-task-item');
+        items.forEach(li => li.classList.add('staged'));
+        // 强制回流，确保后续过渡生效
+        void playbookContent.offsetHeight;
+        items.forEach((li, idx) => {
+            setTimeout(() => {
+                li.classList.remove('staged');
+                li.classList.add('enter');
+            }, idx * 40);
+        });
+
+        // 渐进式展示容器
+        playbookContainer.classList.add('is-visible');
     } else {
+        // 清空并隐藏
         playbookContent.innerHTML = '';
-        playbookContainer.style.display = 'none';
+        playbookContainer.classList.remove('is-visible');
     }
 }

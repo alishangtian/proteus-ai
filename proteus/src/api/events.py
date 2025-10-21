@@ -171,7 +171,9 @@ async def create_agent_start_event(query: str) -> Dict:
 async def create_agent_complete_event(result: str) -> Dict:
     """创建agent完成事件"""
     # 在结果后添加AI标识，提醒用户这是AI生成的内容
-    ai_disclaimer = "\n\n---\n\n⚠️ **AI生成内容提示**：以上内容由AI生成，请仔细甄别后考虑是否采用。"
+    ai_disclaimer = (
+        "\n\n---\n\n⚠️ **AI生成内容提示**：以上内容由AI生成，请仔细甄别后考虑是否采用。"
+    )
     result_with_disclaimer = f"{result}{ai_disclaimer}" if result else ai_disclaimer
     data = {"result": result_with_disclaimer, "timestamp": time.time()}
     return await create_event(EventType.AGENT_COMPLETE, data)

@@ -4,12 +4,102 @@
     padding: 0;
 }
 
+:root {
+    /* Colors */
+    --primary-blue: #3b82f6;
+    --primary-blue-dark: #2563eb;
+    --primary-blue-darker: #1d4ed8;
+    --light-blue: #e3f2fd;
+    --light-blue-hover: #dbeeff;
+    --light-blue-border: #1976d2;
+    --red: #ef4444;
+    --red-dark: #dc2626;
+    --red-darker: #b91c1c;
+    --green: #22c55e;
+    --green-dark: #166534;
+    --yellow: #facc15;
+
+    --text-color-dark: #1a1a1a;
+    --text-color-medium: #333;
+    --text-color-light: #555;
+    --text-color-lighter: #666;
+    --text-color-placeholder: #a0a0a0;
+    --text-color-disabled: #9ca3af;
+    --text-color-code: #abb2bf;
+    --text-color-code-dark: #0b1220;
+
+    --bg-color-light: #f5f5f5;
+    --bg-color-white: #ffffff;
+    --bg-color-light-gray: #f0f0f0;
+    --bg-color-lighter-gray: #f8f9fa;
+    --bg-color-code-light: #f9fafb;
+    --bg-color-code-dark: #282c34;
+    --bg-color-info: #f0f8ff;
+    --bg-color-warning: #fff3cd;
+    --bg-color-error: #fee2e2;
+    --bg-color-success: #dcfce7;
+    --bg-color-blue-light: #dbeafe;
+
+    --border-color-light: #e0e0e0;
+    --border-color-medium: #ddd;
+    --border-color-dark: #3e4451;
+    --border-color-blue: rgba(59, 130, 246, 0.2);
+    --border-color-blue-light: rgba(59, 130, 246, 0.15);
+    --border-color-code: #e6eefc;
+    --border-color-code-dark: #3e4451;
+    --border-color-success: #28a745;
+    --border-color-error: #dc3545;
+    --border-color-warning: #ffeeba;
+
+    /* Spacing */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 12px;
+    --spacing-lg: 16px;
+    --spacing-xl: 20px;
+    --spacing-xxl: 28px;
+
+    /* Border Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+    --radius-xxl: 24px;
+    --radius-pill: 999px;
+
+    /* Box Shadow */
+    --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+    --shadow-input-focus: 0 16px 48px rgba(59, 130, 246, 0.12), 0 8px 16px rgba(59, 130, 246, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --shadow-button-primary: 0 4px 12px rgba(59, 130, 246, 0.25), 0 2px 4px rgba(59, 130, 246, 0.15);
+    --shadow-button-primary-hover: 0 8px 20px rgba(59, 130, 246, 0.35), 0 4px 8px rgba(59, 130, 246, 0.2);
+    --shadow-button-stop: 0 4px 12px rgba(239, 68, 68, 0.25), 0 2px 4px rgba(239, 68, 68, 0.15);
+    --shadow-button-stop-hover: 0 8px 20px rgba(239, 68, 68, 0.35), 0 4px 8px rgba(239, 68, 68, 0.2);
+    --shadow-input-wrapper: 0 10px 30px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    --shadow-input-wrapper-focus: 0 16px 40px rgba(15, 23, 42, 0.09), 0 2px 0 rgba(255, 255, 255, 0.6);
+    --shadow-select-control: 0 2px 6px rgba(16, 24, 40, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    --shadow-select-control-hover: 0 6px 18px rgba(59, 130, 246, 0.06);
+    --shadow-select-control-focus: 0 10px 30px rgba(59, 130, 246, 0.08);
+    --shadow-code-block: 0 6px 18px rgba(15, 23, 42, 0.04);
+    --shadow-modal: 0 8px 32px rgba(0, 0, 0, 0.2);
+    --shadow-uploaded-file: 0 2px 8px rgba(0, 0, 0, 0.04);
+    --shadow-user-input-container: 0 4px 12px rgba(59, 130, 246, 0.06), 0 2px 4px rgba(0, 0, 0, 0.03);
+    --shadow-user-input-container-hover: 0 6px 16px rgba(59, 130, 246, 0.08), 0 3px 6px rgba(0, 0, 0, 0.04);
+    --shadow-input-prompt: 0 1px 4px rgba(59, 130, 246, 0.04);
+    --shadow-input-field-focus: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 2px 6px rgba(59, 130, 246, 0.06);
+    --shadow-submit-input: 0 2px 8px rgba(59, 130, 246, 0.2), 0 1px 3px rgba(59, 130, 246, 0.12);
+    --shadow-submit-input-hover: 0 4px 12px rgba(59, 130, 246, 0.3), 0 2px 4px rgba(59, 130, 246, 0.15);
+    --shadow-submit-input-active: 0 1px 4px rgba(59, 130, 246, 0.25);
+    --shadow-input-field-invalid-focus: 0 0 0 3px rgba(239, 68, 68, 0.1), 0 2px 6px rgba(239, 68, 68, 0.06);
+}
+
 body {
     font-family: 'Arial', sans-serif;
     line-height: 1.6;
     margin: 0;
     padding: 0;
-    background-color: #f5f5f5;
+    background-color: var(--bg-color-light);
     overflow: hidden;
     height: 100vh;
     display: flex;
@@ -27,17 +117,17 @@ body {
 }
 
 .sidebar-menu-item.active {
-    background-color: #e0e0e0;
-    border-left: 3px solid #007bff;
+    background-color: var(--border-color-light);
+    border-left: 3px solid var(--primary-blue);
 }
 
 .sidebar {
     width: 200px;
-    background-color: #fff;
+    background-color: var(--bg-color-white);
     height: 100vh;
     transition: all 0.3s ease;
     overflow-y: auto;
-    border-right: 1px solid #e0e0e0;
+    border-right: 1px solid var(--border-color-light);
     display: flex;
     flex-direction: column;
 }
@@ -67,7 +157,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border-color-light);
 }
 
 .user-info {
@@ -85,7 +175,7 @@ body {
 .username {
     font-size: 14px;
     font-weight: 500;
-    color: #333;
+    color: var(--text-color-medium);
     max-width: 120px;
     white-space: nowrap;
     overflow: hidden;
@@ -97,8 +187,8 @@ body {
 
 .login-btn {
     padding: 6px 12px;
-    background-color: #3b82f6;
-    color: white;
+    background-color: var(--primary-blue);
+    color: var(--bg-color-white);
     border: none;
     border-radius: 6px;
     font-size: 13px;
@@ -114,7 +204,7 @@ body {
 }
 
 .login-btn:hover {
-    background-color: #2563eb;
+    background-color: var(--primary-blue-dark);
     transform: translateY(-1px);
 }
 
@@ -145,11 +235,11 @@ body {
     transition: transform 0.3s ease;
     width: 20px;
     height: 20px;
-    color: #666;
+    color: var(--text-color-lighter);
 }
 
 .toggle-sidebar:hover {
-    color: #333;
+    color: var(--text-color-medium);
     transform: scale(1.1);
 }
 
@@ -186,18 +276,18 @@ body {
     cursor: pointer;
     transition: background-color 0.2s;
     border-left: 3px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
 }
 
 .menu-item.active {
-    background-color: #e3f2fd;
-    border-left: 3px solid #1976d2;
-    color: #0d47a1;
+    background-color: var(--light-blue);
+    border-left: 3px solid var(--light-blue-border);
+    color: var(--primary-blue-darker);
     font-weight: 500;
 }
 
 .menu-item:hover {
-    background-color: #f0f0f0;
+    background-color: var(--bg-color-light-gray);
 }
 
 .menu-item-icon {
@@ -225,7 +315,7 @@ body {
 
 .sidebar-footer {
     padding: 15px;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid var(--border-color-light);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -260,7 +350,7 @@ body {
     height: 100vh;
     position: relative;
     gap: 0; /* 左右区域之间无间隙 */
-    background: #f5f5f5; /* 统一背景色 */
+    background: var(--bg-color-light); /* 统一背景色 */
 }
 
 
@@ -271,7 +361,7 @@ body {
     overflow: hidden;
     height: 100%; /* 填充父容器高度 */
     align-items: center; /* 使子元素在横向居中 */
-    background: #f5f5f5; /* 统一背景色 */
+    background: var(--bg-color-light); /* 统一背景色 */
 }
 
 /* 隐藏旧的工具展示区域 */
@@ -284,7 +374,7 @@ body {
 
 #welcome-title {
     text-align: center;
-    color: #000;
+    color: var(--text-color-dark);
     font-size: 32px;
     margin: auto 0;
     font-weight: 600;
@@ -324,12 +414,12 @@ body {
     width: 100%;
     max-width: 1000px;
     /* 与 input-container 保持一致的最大宽度 */
-    padding: 8px 20px;
-    margin-bottom: 10px;
+    padding: var(--spacing-sm) var(--spacing-xl);
+    margin-bottom: var(--spacing-md);
     /* 与输入框保持一定距离 */
-    background: #f8f9fa;
-    border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    background: var(--bg-color-lighter-gray);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     display: none;
     flex-wrap: wrap;
     gap: 8px;
@@ -342,11 +432,11 @@ body {
 .uploaded-file-item {
     display: flex;
     align-items: center;
-    background: #e9ecef;
+    background: var(--bg-color-light-gray);
     padding: 6px 10px;
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     font-size: 13px;
-    color: #343a40;
+    color: var(--text-color-medium);
     gap: 6px;
 }
 
@@ -357,15 +447,15 @@ body {
 }
 
 .uploaded-file-item.has-image-analysis:hover {
-    background-color: #e0e0e0;
+    background-color: var(--border-color-light);
     /* 悬停时背景变色 */
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-sm);
     /* 悬停时增加阴影 */
 }
 
 .uploaded-file-item .image-analysis-preview {
     font-size: 11px;
-    color: #007bff;
+    color: var(--primary-blue);
     /* 蓝色，更像链接 */
     cursor: pointer;
     /* 提示可点击 */
@@ -378,47 +468,52 @@ body {
 .delete-file-btn {
     background: none;
     border: none;
-    color: #dc3545;
+    color: var(--red-dark);
     font-size: 14px;
     cursor: pointer;
-    padding: 0 4px;
+    padding: 0 var(--spacing-xs);
     transition: color 0.2s ease;
 }
 
 .delete-file-btn:hover {
-    color: #c82333;
+    color: var(--red-darker);
 }
 
 .input-wrapper {
     position: relative;
-    background: #fff;
-    border-radius: 16px;
-    padding: 12px 16px;
-    margin: 0 20px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-    transition: box-shadow 0.3s ease;
+    background: linear-gradient(135deg, var(--bg-color-white) 0%, var(--bg-color-lighter-gray) 100%);
+    border-radius: var(--radius-xxl);
+    padding: var(--spacing-lg) 24px;
+    margin: 0 var(--spacing-xl);
+    box-shadow: var(--shadow-lg), var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-lg);
+    border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .input-wrapper:focus-within {
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-input-focus);
+    transform: translateY(-2px);
+    border-color: var(--border-color-blue);
 }
 
 #user-input {
     flex: 1;
-    min-height: 20px;
-    max-height: 80px;
-    padding: 8px 0;
+    min-height: 24px;
+    max-height: 120px;
+    padding: 10px 0;
     border: none;
     font-size: 16px;
-    background: #fff;
+    background: transparent;
     resize: none;
-    font-family: inherit;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
     box-sizing: border-box;
-    line-height: 1.6;
+    line-height: 1.7;
     transition: all 0.2s ease;
+    color: var(--text-color-dark);
+    font-weight: 400;
 }
 
 #user-input:focus {
@@ -426,16 +521,18 @@ body {
 }
 
 #user-input::placeholder {
-    color: #999;
+    color: var(--text-color-placeholder);
     transition: color 0.2s ease;
+    font-weight: 400;
 }
 
 #user-input:focus::placeholder {
-    color: #ccc;
+    color: var(--border-color-light);
 }
 
 #user-input:not(:placeholder-shown) {
     font-weight: 500;
+    color: var(--text-color-dark);
 }
 
 .input-controls {
@@ -445,15 +542,63 @@ body {
     padding: 0;
 }
 
-/* 下拉选择样式，放在聊天输入框左下角 */
+#upload-button {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0;
+    background: var(--bg-color-white);
+    color: var(--text-color-medium);
+    border: 1px solid var(--border-color-blue-light);
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: transform 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#upload-button:hover {
+    background: #fbfdff;
+    border-color: var(--border-color-blue);
+    transform: translateY(-1px);
+    box-shadow: none;
+    color: var(--text-color-dark);
+}
+
+#upload-button:active {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+#upload-button:disabled {
+    background: var(--bg-color-code-light);
+    color: var(--text-color-disabled);
+    border-color: var(--border-color-light);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+@media (max-width: 640px) {
+    #upload-button {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        font-size: 14px;
+        border-radius: 8px;
+    }
+}
+
+/* 下拉选择区域：调整为输入框下方的独立选项栏 */
 .model-select-wrapper {
-    position: absolute;
-    left: 16px;
-    /* 与 input-wrapper 内边距对齐 */
-    bottom: 12px;
+    position: static;
     display: flex;
     align-items: center;
-    z-index: 110;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 /* 将下拉样式统一为左侧菜单 active 的强调样式（蓝色边条 + 淡蓝背景） */
@@ -461,39 +606,40 @@ body {
     appearance: none;
     -webkit-appearance: none;
     -moz-appearance: none;
-    padding: 8px 10px;
-    border-radius: 8px;
+    padding: var(--spacing-sm) 10px;
+    border-radius: var(--radius-md);
     border: 1px solid transparent;
-    background: #e3f2fd;
+    background: var(--light-blue);
     /* 与 .menu-item.active 背景一致 */
     font-size: 14px;
-    color: #0d47a1;
+    color: var(--primary-blue-darker);
     /* 与 .menu-item.active 文字色一致 */
     min-width: 160px;
     cursor: pointer;
     box-shadow: none;
     transition: background-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
-    border-left: 3px solid #1976d2;
+    border-left: 3px solid var(--light-blue-border);
     /* 与左侧菜单蓝色左边条一致 */
 }
 
 .select-control:hover {
-    background: #dbeeff;
+    background: var(--light-blue-hover);
 }
 
 .select-control:focus {
     outline: none;
-    box-shadow: 0 8px 24px rgba(25, 118, 210, 0.12);
+    box-shadow: var(--shadow-select-control-focus);
     transform: translateY(-1px);
 }
 
 /* 小屏幕时把下拉放到输入框左侧内联显示，避免遮挡内容 */
 @media (max-width: 640px) {
     .model-select-wrapper {
-        position: relative;
-        left: 0;
-        bottom: 0;
+        position: static;
+        left: auto;
+        bottom: auto;
         margin-right: 8px;
+        flex-wrap: wrap;
     }
 
     .select-control {
@@ -504,10 +650,10 @@ body {
 /* 迭代次数容器样式保留，用于智能体模式 */
 #itecount-container {
     /* 与 model-select 并排显示，放入同一定位容器 */
-    margin-left: 8px;
-    padding: 4px 8px;
-    background: #f0f0f0;
-    border-radius: 8px;
+    margin-left: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-color-light-gray);
+    border-radius: var(--radius-md);
     /* 默认可见（恢复原始行为），并与模型选择并列 */
     display: inline-flex;
     align-items: center;
@@ -519,10 +665,10 @@ body {
 
 #conversation_count-container {
     /* 与 model-select 并排显示，放入同一定位容器 */
-    margin-left: 8px;
-    padding: 4px 8px;
-    background: #f0f0f0;
-    border-radius: 8px;
+    margin-left: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--bg-color-light-gray);
+    border-radius: var(--radius-md);
     /* 默认可见（恢复原始行为），并与模型选择并列 */
     display: inline-flex;
     align-items: center;
@@ -551,36 +697,36 @@ body {
 }
 
 .itecount-label {
-    color: #666;
+    color: var(--text-color-lighter);
     font-size: 14px;
     font-weight: 500;
 }
 
 #itecount {
     width: 60px;
-    padding: 4px 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color-medium);
+    border-radius: var(--radius-sm);
     font-size: 14px;
-    color: #333;
-    background: white;
+    color: var(--text-color-medium);
+    background: var(--bg-color-white);
 }
 
 #conversation_count {
     width: 60px;
-    padding: 4px 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color-medium);
+    border-radius: var(--radius-sm);
     font-size: 14px;
-    color: #333;
-    background: white;
+    color: var(--text-color-medium);
+    background: var(--bg-color-white);
 }
 
 
 #itecount:focus {
     outline: none;
-    border-color: #007bff;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25); /* Keep rgba for now as it's a specific blue */
 }
 
 /* .menu-item.model-option {
@@ -638,46 +784,73 @@ body {
 }
 
 #send-button {
-    padding: 10px 24px;
-    background-color: #000;
-    color: white;
+    padding: var(--spacing-md) 32px;
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+    color: var(--bg-color-white);
     border: none;
-    border-radius: 10px;
+    border-radius: var(--radius-xl);
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s ease;
+    font-size: 15px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-button-primary);
+    letter-spacing: 0.3px;
+    position: relative;
+    overflow: hidden;
+}
+
+#send-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+#send-button:hover::before {
+    left: 100%;
 }
 
 #send-button:hover {
-    background-color: #333;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: linear-gradient(135deg, var(--primary-blue-dark) 0%, var(--primary-blue-darker) 100%);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-button-primary-hover);
+}
+
+#send-button:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-submit-input-active);
 }
 
 #send-button:disabled {
-    background-color: #e0e0e0;
-    color: #999;
+    background: linear-gradient(135deg, var(--border-color-light) 0%, var(--border-color-medium) 100%);
+    color: var(--text-color-disabled);
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
 }
 
 #send-button.stop {
-    background-color: #dc3545;
+    background: linear-gradient(135deg, var(--red) 0%, var(--red-dark) 100%);
+    box-shadow: var(--shadow-button-stop);
 }
 
 #send-button.stop:hover {
-    background-color: #c82333;
+    background: linear-gradient(135deg, var(--red-dark) 0%, var(--red-darker) 100%);
+    box-shadow: var(--shadow-button-stop-hover);
 }
 
 #send-button.stop:disabled {
-    background-color: #e0e0e0;
+    background: linear-gradient(135deg, var(--border-color-light) 0%, var(--border-color-medium) 100%);
+    box-shadow: none;
 }
 
 #conversation-history {
     flex: 1; /* 占据剩余空间，input-container 在下方 */
-    padding: 20px;
+    padding: var(--spacing-xl);
     overflow-y: auto; /* 允许滚动 */
     scroll-behavior: smooth;
     display: flex;
@@ -714,20 +887,20 @@ body {
 .history-item {
     /* 限制单条对话宽度与工具调用栏一致（保持视觉对齐），并居中显示 */
     max-width: 1100px;
-    margin: 0 auto 28px;
-    padding: 16px 20px;
-    border-radius: 24px;
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    margin: 0 auto var(--spacing-xxl);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    border-radius: var(--radius-xxl);
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
     /* 浅灰色边框 */
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-md);
     transition: box-shadow 0.3s ease;
     width: 100%;
     box-sizing: border-box;
 }
 
 .history-item:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
 }
 
 .qa-container {
@@ -740,29 +913,29 @@ body {
 .question {
     font-weight: 600;
     color: #1a1a1a;
-    margin-bottom: 12px;
+    margin-bottom: var(--spacing-md);
     font-size: 15px;
     align-self: flex-end;
-    background: #f0f0f0;
-    padding: 12px 16px;
-    border-radius: 16px;
+    background: var(--bg-color-light-gray);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-xl);
     width: auto;
     max-width: 80%;
     margin-left: auto;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
 }
 
 .answer {
-    color: #333;
+    color: var(--text-color-medium);
     line-height: 1.6;
     font-size: 14px;
     align-self: flex-start;
-    background: #f8f9fa;
+    background: var(--bg-color-lighter-gray);
     /* 更友好的底色 */
-    padding: 12px 16px;
-    border-radius: 16px;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-radius: var(--radius-xl);
     width: 100%;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
     word-wrap: break-word; /* 允许长单词或 URL 在容器边界处换行 */
     word-break: break-all; /* 强制在任意字符处换行，以防止溢出 */
 }
@@ -785,16 +958,16 @@ body {
 
 .agent-complete {
     width: 100%;
-    margin: 0 auto 28px;
+    margin: 0 auto var(--spacing-xxl);
     /* 与 .history-item 保持一致的间距 */
-    padding: 16px 20px;
+    padding: var(--spacing-lg) var(--spacing-xl);
     /* 与 .history-item 保持一致的内边距 */
-    border-radius: 24px;
+    border-radius: var(--radius-xxl);
     /* 与 .history-item 保持一致的圆角 */
-    background: #fff;
-    border: 1px solid #e0e0e0;
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
     /* 浅灰色边框 */
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-md);
     transition: box-shadow 0.3s ease;
     cursor: pointer;
     /* 表示可点击折叠 */
@@ -804,15 +977,15 @@ body {
 }
 
 .agent-complete:hover {
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
 }
 
 .agent-complete-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--text-color-dark);
     font-size: 15px;
 }
 
@@ -822,7 +995,7 @@ body {
     width: 20px;
     height: 20px;
     display: inline-block;
-    color: #3b82f6;
+    color: var(--primary-blue);
     /* 蓝色图标 */
 }
 
@@ -839,17 +1012,17 @@ body {
 }
 
 .agent-complete-final {
-    background: #f8f9fa;
+    background: var(--bg-color-lighter-gray);
     /* 浅灰色底色 */
-    padding: 16px 20px;
+    padding: var(--spacing-lg) var(--spacing-xl);
     /* 与 .agent-complete 保持一致的内边距 */
-    border-radius: 24px;
+    border-radius: var(--radius-xxl);
     /* 与 .agent-complete 保持一致的圆角 */
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--border-color-light);
     /* 浅灰色边框 */
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--shadow-md);
     /* 阴影 */
-    margin: 0 auto 28px;
+    margin: 0 auto var(--spacing-xxl);
     /* 与 .agent-complete 保持一致的间距 */
     width: 100%;
     box-sizing: border-box;
@@ -864,7 +1037,7 @@ body {
     /* 默认隐藏内容 */
     padding-top: 12px;
     margin-top: 12px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-color-light);
 }
 
 .agent-complete.collapsed .agent-complete-content {
@@ -874,15 +1047,15 @@ body {
 
 /* 智能体思考样式 */
 .agent-thinking {
-    margin: 12px 0;
-    padding: 12px 16px;
-    background: #f0f8ff;
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-color-info);
     /* 淡蓝色底色 */
-    border-left: 4px solid #a3bffa;
+    border-left: 4px solid var(--border-color-blue);
     /* 浅蓝色边框 */
-    border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
-    color: #555;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    color: var(--text-color-light);
     font-size: 14px;
     line-height: 1.6;
 }
@@ -904,13 +1077,13 @@ body {
 }
 
 .thinking-indicator.running {
-    background-color: #ef4444;
+    background-color: var(--red);
     /* 红色 */
     animation: pulse 1.5s infinite ease-in-out;
 }
 
 .thinking-indicator.completed {
-    background-color: #22c55e;
+    background-color: var(--green);
     /* 绿色 */
     animation: none;
 }
@@ -936,7 +1109,7 @@ body {
     flex: 1;
     font-style: italic;
     /* 斜体显示思考内容 */
-    color: #333;
+    color: var(--text-color-medium);
 }
 
 .thinking-timestamp {
@@ -946,16 +1119,16 @@ body {
 
 /* 工作流信息样式 */
 .workflow-info {
-    background: #f8f9fa;
-    border-radius: 12px;
-    margin: 16px 0;
+    background: var(--bg-color-lighter-gray);
+    border-radius: var(--radius-lg);
+    margin: var(--spacing-lg) 0;
     overflow: hidden;
     transition: all 0.3s ease;
 }
 
 .workflow-header {
-    padding: 12px 16px;
-    background: #e9ecef;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-color-light-gray);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -974,8 +1147,8 @@ body {
 }
 
 .workflow-content {
-    padding: 16px;
-    background: #fff;
+    padding: var(--spacing-lg);
+    background: var(--bg-color-white);
     max-height: 500px;
     overflow-y: auto;
     transition: max-height 0.3s ease;
@@ -989,21 +1162,21 @@ body {
 
 /* 节点结果样式 */
 .node-result {
-    margin: 12px 0;
-    border-radius: 10px;
+    margin: var(--spacing-md) 0;
+    border-radius: var(--radius-lg);
     overflow: hidden;
-    background: #fff;
-    border: 1px solid #e9ecef;
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
     transition: all 0.3s ease;
 }
 
 .node-header {
-    padding: 12px 16px;
+    padding: var(--spacing-md) var(--spacing-lg);
     display: flex;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    background: #f8f9fa;
+    background: var(--bg-color-lighter-gray);
     font-weight: 500;
 }
 
@@ -1017,15 +1190,15 @@ body {
 }
 
 .node-result.running {
-    border-color: #007bff;
+    border-color: var(--primary-blue);
 }
 
 .node-result.success {
-    border-color: #28a745;
+    border-color: var(--border-color-success);
 }
 
 .node-result.error {
-    border-color: #dc3545;
+    border-color: var(--border-color-error);
 }
 
 /* 移除旧的工具进度样式，因为现在由 .action-group-item 处理 */
@@ -1037,34 +1210,34 @@ body {
 
 /* 工具重试样式 */
 .tool-retry {
-    margin: 8px 0;
-    padding: 12px;
-    border-radius: 8px;
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
+    margin: var(--spacing-sm) 0;
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+    background: var(--bg-color-warning);
+    border: 1px solid var(--border-color-warning);
 }
 
 .retry-info {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    color: #856404;
+    color: #856404; /* Keep as is, no variable defined for this specific shade */
 }
 
 .retry-error {
     font-size: 12px;
-    color: #dc3545;
+    color: var(--border-color-error);
 }
 
 /* Action Group 样式 */
 .action-group {
-    margin: 16px 0;
-    padding: 16px;
-    background: #fff;
-    border-radius: 12px;
-    border-left: 4px solid #3b82f6;
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-lg);
+    background: var(--bg-color-white);
+    border-radius: var(--radius-lg);
+    border-left: 4px solid var(--primary-blue);
     /* 使用更鲜明的蓝色 */
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-sm);
 }
 
 .action-group-header {
@@ -1090,12 +1263,12 @@ body {
 
 .action-group-title {
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--text-color-dark);
     font-size: 14px;
     display: flex;
     /* 允许图标和文本对齐 */
     align-items: center;
-    gap: 8px;
+    gap: var(--spacing-sm);
     /* 图标和文本间距 */
 }
 
@@ -1114,27 +1287,27 @@ body {
 }
 
 .action-group-status.running {
-    background: #dbeafe;
-    color: #1e40af;
+    background: var(--bg-color-blue-light);
+    color: var(--primary-blue-darker);
 }
 
 .action-group-status.success {
-    background: #dcfce7;
-    color: #166534;
+    background: var(--bg-color-success);
+    color: var(--green-dark);
 }
 
 .action-group-status.error {
-    background: #fee2e2;
-    color: #991b1b;
+    background: var(--bg-color-error);
+    color: var(--red-darker);
 }
 
 .action-group-id {
     font-family: 'Menlo', 'Monaco', monospace;
     font-size: 12px;
-    color: #666;
-    background: #f5f5f5;
-    padding: 2px 8px;
-    border-radius: 4px;
+    color: var(--text-color-lighter);
+    background: var(--bg-color-light);
+    padding: 2px var(--spacing-sm);
+    border-radius: var(--radius-sm);
 }
 
 .action-group-content {
@@ -1158,21 +1331,21 @@ body {
 .action-group-item {
     padding: 10px;
     /* 缩窄内边距 */
-    background: #f8f9fa;
-    border-radius: 8px;
-    border-left: 3px solid #3b82f6;
+    background: var(--bg-color-lighter-gray);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--primary-blue);
 }
 
 .action-group-item.running {
-    border-left-color: #3b82f6;
+    border-left-color: var(--primary-blue);
 }
 
 .action-group-item.success {
-    border-left-color: #22c55e;
+    border-left-color: var(--green);
 }
 
 .action-group-item.error {
-    border-left-color: #ef4444;
+    border-left-color: var(--red);
 }
 
 .action-group-item-header {
@@ -1214,11 +1387,11 @@ body {
     /* 缩窄外边距 */
     padding: 6px;
     /* 缩窄内边距 */
-    background: #fcfcfc;
+    background: var(--bg-color-white);
     /* 浅色背景，与外部 action-group-item 区分 */
-    border: 1px solid #eee;
+    border: 1px solid var(--border-color-light);
     /* 浅色边框 */
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     font-family: 'Menlo', 'Monaco', monospace;
     font-size: 12px;
     white-space: pre-wrap;
@@ -1248,7 +1421,7 @@ body {
     margin-top: 6px;
     /* 缩窄外边距 */
     font-size: 12px;
-    color: #666;
+    color: var(--text-color-lighter);
 }
 
 .action-group-item-metric {
@@ -1258,7 +1431,7 @@ body {
 }
 
 .action-group-item-metric-label {
-    color: #999;
+    color: #999; /* Keep as is, no variable defined for this specific shade */
 }
 
 .action-group-item-metric-value {
@@ -1282,13 +1455,13 @@ body[data-model="workflow"] .tools-container {
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    color: #999;
+    color: #999; /* Keep as is, no variable defined for this specific shade */
     transition: all 0.2s ease;
     border-radius: 4px;
 }
 
 .copy-btn:hover {
-    color: #333;
+    color: var(--text-color-medium);
     background: rgba(0, 0, 0, 0.05);
 }
 
@@ -1302,16 +1475,16 @@ body[data-model="workflow"] .tools-container {
     right: 100%;
     top: 50%;
     transform: translateY(-50%);
-    background: #333;
-    color: white;
-    padding: 4px 8px;
-    border-radius: 4px;
+    background: var(--text-color-medium);
+    color: var(--bg-color-white);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
     font-size: 12px;
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
-    margin-right: 8px;
+    margin-right: var(--spacing-sm);
 }
 
 .copy-btn:hover .copy-tooltip {
@@ -1339,9 +1512,9 @@ body[data-model="workflow"] .tools-container {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    background: var(--bg-color-white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
     padding: 40px;
     width: 100%;
     max-width: 400px;
@@ -1349,9 +1522,9 @@ body[data-model="workflow"] .tools-container {
 }
 
 .login-box {
-    background: white;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    background: var(--bg-color-white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
     padding: 40px;
     width: 100%;
     max-width: 400px;
@@ -1362,7 +1535,7 @@ body[data-model="workflow"] .tools-container {
     font-size: 24px;
     font-weight: 600;
     margin-bottom: 30px;
-    color: #333;
+    color: var(--text-color-medium);
 }
 
 .login-form .form-group {
@@ -1374,22 +1547,22 @@ body[data-model="workflow"] .tools-container {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: #555;
+    color: var(--text-color-light);
 }
 
 .login-form input {
     width: 100%;
-    padding: 12px 16px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: 1px solid var(--border-color-medium);
+    border-radius: var(--radius-md);
     font-size: 16px;
     transition: all 0.3s;
 }
 
 .login-form input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3px var(--border-color-blue);
 }
 
 .login-btn {
@@ -1406,18 +1579,18 @@ body[data-model="workflow"] .tools-container {
 }
 
 .login-btn:hover {
-    background-color: #2563eb;
+    background-color: var(--primary-blue-dark);
     transform: translateY(-1px);
 }
 
 .login-footer {
-    margin-top: 20px;
+    margin-top: var(--spacing-xl);
     font-size: 14px;
-    color: #666;
+    color: var(--text-color-lighter);
 }
 
 .login-footer a {
-    color: #3b82f6;
+    color: var(--primary-blue);
     text-decoration: none;
 }
 
@@ -1426,7 +1599,7 @@ body[data-model="workflow"] .tools-container {
 }
 
 .error-message {
-    color: #dc3545;
+    color: var(--border-color-error);
     font-size: 14px;
     margin-top: 5px;
     text-align: left;
@@ -1447,21 +1620,21 @@ body[data-model="workflow"] .tools-container {
 /* 更圆、更居中、轻阴影、pills 风格的选择器，覆盖前面定义 */
 .input-wrapper {
     position: relative;
-    background: #ffffff;
-    border-radius: 20px !important;
-    padding: 18px 20px !important;
-    margin: 0 20px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+    background: var(--bg-color-white);
+    border-radius: var(--radius-xl) !important;
+    padding: 18px var(--spacing-xl) !important;
+    margin: 0 var(--spacing-xl);
+    box-shadow: var(--shadow-input-wrapper) !important;
     transition: box-shadow 0.25s ease, transform 0.12s ease;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--spacing-md);
     align-self: center;
 }
 
 /* focus 时微微抬起并加深阴影 */
 .input-wrapper:focus-within {
-    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.09), 0 2px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: var(--shadow-input-wrapper-focus);
     transform: translateY(-2px);
 }
 
@@ -1479,17 +1652,17 @@ body[data-model="workflow"] .tools-container {
     box-sizing: border-box;
     line-height: 1.65;
     transition: all 0.15s ease;
-    color: #222;
+    color: var(--text-color-dark);
 }
 
 /* 占位符风格更淡 */
 #user-input::placeholder {
-    color: #bdbdbd;
+    color: #bdbdbd; /* Keep as is, no variable defined for this specific shade */
     transition: color 0.15s ease;
 }
 
 #user-input:focus::placeholder {
-    color: #d8d8d8;
+    color: #d8d8d8; /* Keep as is, no variable defined for this specific shade */
 }
 
 /* 输入有值时字体稍粗 */
@@ -1505,16 +1678,23 @@ body[data-model="workflow"] .tools-container {
     padding: 0;
 }
 
-/* 左下角模型选择 pill 样式（仿图片） */
+/* 选项栏：移动到输入框下方显示 */
+.options-bar {
+    margin: 8px var(--spacing-xl) 0 var(--spacing-xl);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
 .model-select-wrapper {
-    position: absolute;
-    left: 18px;
-    bottom: 14px;
-    /* 作为容器放置模型选择和迭代次数，横向排列 */
+    position: static;
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    z-index: 110;
+    z-index: auto;
+    flex-wrap: wrap;
 }
 
 .select-control {
@@ -1522,14 +1702,14 @@ body[data-model="workflow"] .tools-container {
     -webkit-appearance: none;
     -moz-appearance: none;
     padding: 6px 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(16, 24, 40, 0.06);
-    background: #ffffff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color-blue-light);
+    background: var(--bg-color-white);
     font-size: 13.5px;
-    color: #3b82f6;
+    color: var(--primary-blue);
     min-width: 120px;
     cursor: pointer;
-    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: var(--shadow-select-control);
     transition: background-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease;
 }
 
@@ -1544,13 +1724,13 @@ body[data-model="workflow"] .tools-container {
     /* 与 .select-control 保持一致的高度、边框与圆角 */
     min-width: 120px;
     padding: 6px 10px;
-    border-radius: 14px;
-    border: 1px solid rgba(16, 24, 40, 0.06);
-    background: #ffffff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color-blue-light);
+    background: var(--bg-color-white);
     font-size: 13.5px;
-    color: #111827;
+    color: var(--text-color-dark);
     text-align: center;
-    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    box-shadow: var(--shadow-select-control);
     -moz-appearance: textfield;
 }
 
@@ -1574,14 +1754,14 @@ body[data-model="workflow"] .tools-container {
 
 /* hover / focus 状态：轻微蓝色光晕 */
 .select-control:hover {
-    background: #fbfdff;
-    border-color: rgba(59, 130, 246, 0.16);
-    box-shadow: 0 6px 18px rgba(59, 130, 246, 0.06);
+    background: #fbfdff; /* Keep as is, no variable defined for this specific shade */
+    border-color: var(--border-color-blue);
+    box-shadow: var(--shadow-select-control-hover);
 }
 
 .select-control:focus {
     outline: none;
-    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.08);
+    box-shadow: var(--shadow-select-control-focus);
     transform: translateY(-1px);
 }
 
@@ -1591,12 +1771,12 @@ body[data-model="workflow"] .tools-container {
     width: 44px;
     height: 44px;
     padding: 0;
-    background-color: #3b82f6;
+    background-color: var(--primary-blue);
     /* 主蓝色 */
-    color: #ffffff;
+    color: var(--bg-color-white);
     border: none;
     /* 去掉外围边框 */
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     cursor: pointer;
     font-size: 14px;
     font-weight: 600;
@@ -1613,7 +1793,7 @@ body[data-model="workflow"] .tools-container {
     display: block;
     width: 18px;
     height: 18px;
-    color: #ffffff;
+    color: var(--bg-color-white);
     opacity: 1;
     transform: rotate(0deg);
     /* 保持向右；若原 svg 是向上，请在 HTML 中添加 .rotate-90 类或替换图标 */
@@ -1622,7 +1802,7 @@ body[data-model="workflow"] .tools-container {
 /* 悬停时使用稍深的蓝色高亮，不显示额外框 */
 #send-button:hover {
     transform: translateY(-2px);
-    background-color: #2563eb;
+    background-color: var(--primary-blue-dark);
 }
 
 /* active / 按下状态 */
@@ -1632,35 +1812,39 @@ body[data-model="workflow"] .tools-container {
 
 /* 禁用状态 */
 #send-button:disabled {
-    background: #93c5fd;
-    color: #e6f2ff;
+    background: #93c5fd; /* Keep as is, no variable defined for this specific shade */
+    color: #e6f2ff; /* Keep as is, no variable defined for this specific shade */
     cursor: not-allowed;
 }
 
 /* 停止状态（stop）使用柔和红色背景且无外围框 */
 #send-button.stop {
-    background-color: #ef4444;
-    color: #fff;
+    background-color: var(--red);
+    color: var(--bg-color-white);
     border: none;
     box-shadow: none;
 }
 
 #send-button.stop .send-icon svg {
-    color: #fff;
+    color: var(--bg-color-white);
 }
 
 #send-button.stop:hover {
-    background-color: #dc2626;
+    background-color: var(--red-dark);
 }
 
 /* 小屏幕自适应：压缩 padding、减小圆角 */
 @media (max-width: 640px) {
+    .options-bar {
+        margin: 8px var(--spacing-md) 0 var(--spacing-md);
+        gap: 6px;
+    }
+
     .model-select-wrapper {
-        position: relative;
-        left: 0;
-        bottom: 0;
+        position: static;
         margin-right: 8px;
         gap: 6px;
+        flex-wrap: wrap;
     }
 
     /* 小屏时迭代选择压缩为图标+短输入并与模型选择换行 */
@@ -1677,9 +1861,9 @@ body[data-model="workflow"] .tools-container {
     }
 
     .input-wrapper {
-        padding: 12px 12px;
-        border-radius: 14px;
-        margin: 0 12px;
+        padding: var(--spacing-md) var(--spacing-md);
+        border-radius: var(--radius-lg);
+        margin: 0 var(--spacing-md);
     }
 
     #user-input {
@@ -1701,18 +1885,18 @@ body[data-model="workflow"] .tools-container {
 /* 当 body 上存在 .show-thought 时，显式显示 thought 内容并与答复区样式一致 */
 body.show-thought .thought {
     display: block;
-    margin-top: 12px;
-    padding: 12px 16px;
-    background: #fdfdfd;
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-color-white);
     /* 更柔和的背景 */
-    border-radius: 10px;
-    border: 1px solid #e0e0e0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color-light);
     /* 浅灰色边框 */
-    color: #555;
+    color: var(--text-color-light);
     /* 稍深的文本颜色 */
     font-size: 14px;
     line-height: 1.6;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+    box-shadow: var(--shadow-sm);
     /* 更轻的阴影 */
 }
 
@@ -1895,6 +2079,8 @@ body {
 .explanation pre code[class*="language-"],
 .answer pre code[class*="language-"] {
     display: block;
+    white-space: pre-wrap; /* 确保自动换行 */
+    word-break: break-word; /* 强制在长单词处换行 */
 }
 
 /* 表格 */
@@ -2045,7 +2231,7 @@ body {
     width: 100%;
     height: 100%;
     overflow: auto;
-    background-color: rgba(0, 0, 0, 0.6);
+    background-color: rgba(0, 0, 0, 0.6); /* Keep as is, specific rgba value */
     /* 半透明黑色背景 */
     backdrop-filter: blur(5px);
     /* 模糊背景 */
@@ -2060,11 +2246,11 @@ body {
 }
 
 .modal-content {
-    background-color: #fefefe;
+    background-color: var(--bg-color-white);
     margin: auto;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
     width: 90%;
     max-width: 800px;
     /* 最大宽度 */
@@ -2092,7 +2278,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid var(--border-color-light);
     padding-bottom: 15px;
     margin-bottom: 15px;
 }
@@ -2100,11 +2286,11 @@ body {
 .modal-title {
     font-size: 18px;
     font-weight: 600;
-    color: #333;
+    color: var(--text-color-medium);
 }
 
 .close-modal-btn {
-    color: #aaa;
+    color: #aaa; /* Keep as is, no variable defined for this specific shade */
     font-size: 28px;
     font-weight: bold;
     cursor: pointer;
@@ -2116,7 +2302,7 @@ body {
 
 .close-modal-btn:hover,
 .close-modal-btn:focus {
-    color: #333;
+    color: var(--text-color-medium);
     text-decoration: none;
 }
 
@@ -2130,7 +2316,7 @@ body {
 
 .modal-result-content {
     /* 继承 Markdown 渲染样式 */
-    color: #111827;
+    color: var(--text-color-dark);
     font-size: 15px;
     /* 稍微增大字体 */
     line-height: 1.8;
@@ -2141,23 +2327,23 @@ body {
 }
 
 .modal-result-content pre {
-    background: linear-gradient(180deg, #0f172a06, #0f172a04);
-    border: 1px solid #e6eefc;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0.04)); /* Keep rgba for now */
+    border: 1px solid var(--border-color-code);
     padding: 14px;
-    border-radius: 10px;
+    border-radius: var(--radius-lg);
     overflow: auto;
     font-family: 'Menlo', 'Monaco', monospace;
     font-size: 13px;
-    color: #0b1220;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
-    margin: 12px 0;
+    color: var(--text-color-code-dark);
+    box-shadow: var(--shadow-code-block);
+    margin: var(--spacing-md) 0;
 }
 
 .modal-actions {
     display: flex;
     justify-content: flex-end;
     padding-top: 15px;
-    border-top: 1px solid #eee;
+    border-top: 1px solid var(--border-color-light);
     margin-top: 15px;
 }
 
@@ -2193,23 +2379,23 @@ body {
 
 /* 上传中的文件项样式 */
 .uploaded-file-item.uploading {
-    background: #f0f8ff;
+    background: var(--bg-color-info);
     /* 淡蓝色背景 */
-    border: 1px solid #a3bffa;
+    border: 1px solid var(--border-color-blue);
     /* 浅蓝色边框 */
-    color: #3b82f6;
+    color: var(--primary-blue);
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-uploaded-file);
 }
 
 /* 加载动画 */
 .loading-spinner {
-    border: 3px solid rgba(0, 123, 255, 0.2);
-    border-top: 3px solid #007bff;
+    border: 3px solid rgba(0, 123, 255, 0.2); /* Keep as is, specific rgba value */
+    border-top: 3px solid #007bff; /* Keep as is, specific blue value */
     border-radius: 50%;
     width: 16px;
     height: 16px;
@@ -2228,9 +2414,9 @@ body {
 
 /* 删除按钮样式优化 */
 .uploaded-file-item .delete-file-btn {
-    background: #6c757d;
+    background: #6c757d; /* Keep as is, no variable defined for this specific shade */
     /* 深灰色背景 */
-    color: white;
+    color: var(--bg-color-white);
     border-radius: 50%;
     /* 圆形 */
     width: 20px;
@@ -2243,45 +2429,50 @@ body {
     line-height: 1;
     /* 确保 'x' 居中 */
     padding: 0;
-    margin-left: 8px;
+    margin-left: var(--spacing-sm);
     transition: background-color 0.2s ease;
 }
 
 .uploaded-file-item .delete-file-btn:hover {
-    background: #dc3545;
+    background: var(--red-dark);
     /* 悬停时变为红色 */
-    color: white;
+    color: var(--bg-color-white);
 }
 
 /* 上传失败的文件项样式 */
 .uploaded-file-item.failed {
-    background: #fee2e2;
+    background: var(--bg-color-error);
     /* 浅红色背景 */
-    border: 1px solid #ef4444;
+    border: 1px solid var(--red);
     /* 红色边框 */
-    color: #991b1b;
+    color: var(--red-darker);
 }
 
 /* 删除中的文件项样式 */
 .uploaded-file-item.deleting {
-    background: #fff3cd;
+    background: var(--bg-color-warning);
     /* 浅黄色背景 */
-    border: 1px solid #ffeeba;
+    border: 1px solid var(--border-color-warning);
     /* 黄色边框 */
-    color: #856404;
+    color: #856404; /* Keep as is, no variable defined for this specific shade */
 }
 .playbook-container {
-    /* 右侧固定宽度区域 */
+    /* 右侧固定宽度区域（默认隐藏，等待有内容再展示） */
     flex: 0 0 350px; /* 固定宽度 350px，不伸缩 */
     margin: 0; /* 移除所有外边距，与其他区域融为一体 */
-    padding: 20px; /* 与 conversation-history 保持一致的内边距 */
+    padding: var(--spacing-xl); /* 与 conversation-history 保持一致的内边距 */
     border-radius: 0; /* 移除圆角 */
-    background: #f5f5f5; /* 与整体背景色一致 */
+    background: var(--bg-color-light-gray); /* 浅灰色背景 */
     border: none; /* 移除边框 */
-    border-left: 1px solid rgba(0, 0, 0, 0.05); /* 仅保留左侧淡淡的分隔线 */
+    border-left: 1px solid var(--border-color-blue-light); /* 仅保留左侧淡淡的分隔线 */
     box-shadow: none; /* 移除阴影 */
     box-sizing: border-box;
-    display: flex; /* 默认显示 */
+
+    /* 默认不展示，避免空白占位；由 .is-visible 控制显示 */
+    display: none;
+    opacity: 0;
+    transform: translateX(8px);
+
     flex-direction: column;
     gap: 10px;
     overflow-y: auto; /* 允许内容滚动 */
@@ -2294,26 +2485,71 @@ body {
     -ms-overflow-style: none; /* IE 和 Edge */
 }
 
+/* 渐进式展示：当有 playbook 内容时添加 .is-visible */
+.playbook-container.is-visible {
+    display: flex !important;            /* 覆盖任何 inline style */
+    opacity: 1;
+    transform: translateX(0);
+    animation: playbook-enter 220ms ease-out both;
+}
+
+/* 轻柔的右侧滑入 + 淡入 */
+@keyframes playbook-enter {
+    from { opacity: 0; transform: translateX(8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
 /* 隐藏 Webkit 浏览器（Chrome, Safari）的滚动条 */
 .playbook-container::-webkit-scrollbar {
     display: none;
 }
 
+/* 任务项的渐进式出现（逐条延迟进入），与 ui.js 的 staged/enter 类配合 */
+.playbook-task-item {
+    transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.playbook-task-item.staged {
+    opacity: 0;
+    transform: translateY(6px);
+}
+
+.playbook-task-item.enter {
+    opacity: 1;
+    transform: translateY(0);
+}
+
 
 .playbook-container h3 {
     font-size: 16px;
-    color: #333;
+    color: var(--text-color-medium); /* 深色标题 */
     margin-bottom: 10px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08); /* 更淡的分隔线 */
-    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color-blue-light); /* 更淡的分隔线 */
+    padding-bottom: var(--spacing-sm);
 }
 
 #playbook-content {
     font-size: 14px;
-    color: #555;
+    color: var(--text-color-light); /* 深色文本 */
     line-height: 1.6;
     white-space: pre-wrap; /* 保留空白符和换行符 */
     word-break: break-word; /* 允许长单词换行 */
+}
+
+.playbook-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color-medium);
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.playbook-title::before {
+    content: '☰'; /* 列表图标 */
+    font-size: 20px;
+    color: var(--text-color-medium);
 }
 
 /* Playbook 任务列表样式 */
@@ -2323,76 +2559,61 @@ body {
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px; /* 任务之间的紧凑间距 */
+    gap: 8px; /* 任务之间的紧凑间距 */
 }
 
 .playbook-task-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* 顶部对齐 */
     gap: 10px;
-    padding: 8px 12px;
-    border-radius: 8px;
+    padding: 6px 0; /* 调整内边距 */
+    border-radius: 0; /* 移除圆角 */
     transition: background-color 0.2s ease;
+    background-color: transparent !important; /* 移除背景色 */
 }
 
 /* 通过背景色区分任务状态 */
 .playbook-task-item.completed {
-    background-color: rgba(34, 197, 94, 0.08); /* 淡绿色背景 */
+    /* background-color: rgba(34, 197, 94, 0.08); */ /* 淡绿色背景 */
 }
 
 .playbook-task-item.pending {
-    background-color: rgba(239, 68, 68, 0.06); /* 淡红色背景 */
+    /* background-color: rgba(239, 68, 68, 0.06); */ /* 淡红色背景 */
 }
 
 .playbook-task-item:hover {
-    background-color: rgba(0, 0, 0, 0.03);
+    background-color: transparent; /* 移除 hover 背景色 */
 }
 
-/* 任务状态指示器 - 圆形，带呼吸效果 */
+/* 任务状态指示器 - 圆形 */
 .task-indicator {
-    width: 12px;
-    height: 12px;
+    width: 10px; /* 调整圆点大小 */
+    height: 10px;
     border-radius: 50%; /* 保持圆形 */
     flex-shrink: 0;
     position: relative;
+    margin-top: 5px; /* 调整位置，使其与文本顶部对齐 */
 }
 
-/* 已完成任务 - 绿色圆点，呼吸效果 */
+/* 已完成任务 - 绿色圆点 */
 .task-indicator.completed {
-    background-color: #22c55e;
-    animation: breathe-green 2s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    background-color: var(--green); /* 绿色 */
+    animation: none; /* 移除动画 */
+    box-shadow: none; /* 移除阴影 */
 }
 
-@keyframes breathe-green {
-    0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-    }
-    
-    50% {
-        transform: scale(1.1);
-        box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
-    }
-}
-
-/* 未完成任务 - 红色圆点，呼吸效果 */
+/* 未完成任务 - 白色圆点 */
 .task-indicator.pending {
-    background-color: #ef4444;
-    animation: breathe-red 2s ease-in-out infinite;
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    background-color: var(--bg-color-white); /* 白色 */
+    animation: none; /* 移除动画 */
+    box-shadow: 0 0 0 1px var(--border-color-medium); /* 浅灰色边框 */
 }
 
-@keyframes breathe-red {
-    0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
-    }
-    
-    50% {
-        transform: scale(1.1);
-        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
-    }
+/* 进行中任务 - 浅黄色圆点 */
+.task-indicator.in-progress {
+    background-color: var(--yellow); /* 浅黄色 */
+    animation: pulse 1.5s infinite ease-in-out; /* 沿用思考指示器的动画 */
+    box-shadow: 0 0 0 1px var(--yellow); /* 浅黄色边框 */
 }
 
 /* 任务描述文本 */
@@ -2400,31 +2621,39 @@ body {
     flex: 1;
     font-size: 14px;
     line-height: 1.5;
-    color: #333;
+    color: var(--text-color-medium); /* 默认深色文本 */
     word-break: break-word;
 }
 
-/* 已完成任务的文本样式 */
+/* 已完成任务的文本样式 - 绿色 */
 .playbook-task-item.completed .task-description {
-    color: #1a1a1a;
-    font-weight: 500;
+    color: var(--green); /* 绿色 */
+    font-weight: 500; /* 正常字体粗细 */
 }
 
-/* 未完成任务的文本样式 */
+/* 未完成任务的文本样式 - 黑色 */
 .playbook-task-item.pending .task-description {
-    color: #555;
+    color: var(--text-color-medium); /* 黑色 */
+    opacity: 1; /* 正常透明度 */
+}
+
+/* 进行中任务的文本样式 - 浅黄色 */
+.playbook-task-item.in-progress .task-description {
+    color: var(--yellow); /* 浅黄色 */
+    font-weight: 500; /* 正常字体粗细 */
 }
 
 /* 响应式调整 */
 @media (max-width: 640px) {
     .playbook-task-item {
-        padding: 6px 10px;
+        padding: 6px 0;
         gap: 8px;
     }
     
     .task-indicator {
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
+        margin-top: 4px;
     }
     
     .task-description {
@@ -2441,9 +2670,9 @@ body {
 .python-code-section .code-label {
     font-size: 13px;
     font-weight: 600;
-    color: #374151;
-    margin-bottom: 8px;
-    padding: 4px 0;
+    color: var(--text-color-medium);
+    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-xs) 0;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -2455,11 +2684,11 @@ body {
 }
 
 .python-code-section pre {
-    margin: 0 0 12px 0;
-    background: #282c34 !important;
-    border: 1px solid #3e4451;
-    border-radius: 8px;
-    padding: 16px;
+    margin: 0 0 var(--spacing-md) 0;
+    background: var(--bg-color-code-dark) !important;
+    border: 1px solid var(--border-color-dark);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
     overflow-x: auto;
 }
 
@@ -2469,21 +2698,23 @@ body {
     font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
     font-size: 13px;
     line-height: 1.6;
-    color: #abb2bf;
+    color: var(--text-color-code);
     display: block;
+    white-space: pre-wrap; /* 确保自动换行 */
+    word-break: break-word; /* 强制在长单词处换行 */
 }
 
 /* 其他参数区域样式 */
 .other-params-section {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #e5e7eb;
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--border-color-light);
 }
 
 .other-params-section .code-label {
     font-size: 12px;
     font-weight: 600;
-    color: #6b7280;
+    color: var(--text-color-lighter);
     margin-bottom: 6px;
 }
 
@@ -2493,17 +2724,19 @@ body {
 }
 
 .other-params-section pre {
-    background: #f9fafb !important;
-    border: 1px solid #e5e7eb;
-    border-radius: 6px;
-    padding: 12px;
+    background: var(--bg-color-code-light) !important;
+    border: 1px solid var(--border-color-light);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-md);
     margin: 0;
 }
 
 .other-params-section pre code {
     background: transparent !important;
-    color: #374151;
+    color: var(--text-color-medium);
     font-size: 12px;
+    white-space: pre-wrap; /* 确保自动换行 */
+    word-break: break-word; /* 强制在长单词处换行 */
 }
 
 /* 确保 action-group-item-details 中的代码块样式正确 */
@@ -2536,29 +2769,1062 @@ body {
 }
 
 .python-code-section pre::-webkit-scrollbar-track {
-    background: #21252b;
-    border-radius: 4px;
+    background: #21252b; /* Keep as is, specific dark shade */
+    border-radius: var(--radius-sm);
 }
 
 .python-code-section pre::-webkit-scrollbar-thumb {
-    background: #4b5263;
-    border-radius: 4px;
+    background: #4b5263; /* Keep as is, specific dark shade */
+    border-radius: var(--radius-sm);
 }
 
 .python-code-section pre::-webkit-scrollbar-thumb:hover {
-    background: #5c6370;
+    background: #5c6370; /* Keep as is, specific dark shade */
 }
 
 .other-params-section pre::-webkit-scrollbar-track {
-    background: #f3f4f6;
-    border-radius: 4px;
+    background: var(--bg-color-light);
+    border-radius: var(--radius-sm);
 }
 
 .other-params-section pre::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
+    background: var(--border-color-medium);
+    border-radius: var(--radius-sm);
 }
 
 .other-params-section pre::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
+    background: var(--text-color-disabled);
+}
+
+/* Serper 搜索结果样式 - 模仿 playbook 紧凑风格 */
+.serper-search-results {
+    margin: 12px 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    border-left: none;
+    box-shadow: none;
+}
+
+.serper-search-results .search-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: var(--text-color-medium);
+    font-size: 16px;
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-color-blue-light);
+}
+
+.serper-search-results .search-icon {
+    font-size: 18px;
+    color: var(--text-color-medium);
+}
+
+.serper-search-results .search-query {
+    flex: 1;
+}
+
+.serper-search-results .search-timestamp {
+    font-size: 12px;
+    color: #999; /* Keep as is, no variable defined for this specific shade */
+}
+
+.serper-search-results .search-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0; /* 移除间距，使用边框分隔 */
+}
+
+.serper-search-results .search-result-item {
+    background: transparent;
+    padding: 8px 0; /* 上下内边距，左右无内边距 */
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-color-blue-light); /* 使用淡淡的分隔线 */
+    transition: background-color 0.2s ease;
+    position: relative;
+    padding-left: 12px; /* 为圆点留出空间 */
+}
+
+.serper-search-results .search-result-item:last-child {
+    border-bottom: none; /* 最后一项不显示底部边框 */
+}
+
+.serper-search-results .search-result-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 14px; /* 调整位置使其与标题对齐 */
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--primary-blue); /* 蓝色圆点 */
+}
+
+.serper-search-results .search-result-item:hover {
+    background-color: rgba(59, 130, 246, 0.04); /* Keep as is, specific rgba value */
+    box-shadow: none;
+    transform: none;
+}
+
+.serper-search-results .result-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color-dark);
+    text-decoration: none;
+    display: block;
+    margin-bottom: var(--spacing-xs);
+    line-height: 1.5;
+}
+
+.serper-search-results .result-title:hover {
+    color: var(--primary-blue);
+    text-decoration: none;
+}
+
+.serper-search-results .result-snippet {
+    font-size: 13px;
+    color: var(--text-color-lighter);
+    margin-bottom: 2px;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* 限制为2行 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.serper-search-results .result-link {
+    font-size: 11px;
+    color: #999; /* Keep as is, no variable defined for this specific shade */
+    word-break: break-all;
+    font-family: 'Menlo', 'Monaco', monospace;
+}
+
+/* ====== User Input 样式优化 ====== */
+.user-input-container {
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-lg) var(--spacing-xl);
+    background: linear-gradient(135deg, var(--bg-color-white) 0%, var(--bg-color-lighter-gray) 100%);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color-blue-light);
+    box-shadow: var(--shadow-user-input-container);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.user-input-container:hover {
+    box-shadow: var(--shadow-user-input-container-hover);
+}
+
+.input-prompt {
+    margin-bottom: 14px;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); /* Keep as is, specific light blue shades */
+    border-left: 3px solid var(--primary-blue);
+    border-radius: var(--radius-md);
+    color: var(--primary-blue-darker);
+    font-size: 14px;
+    line-height: 1.6;
+    box-shadow: var(--shadow-input-prompt);
+}
+
+.input-prompt p {
+    margin: 0;
+    color: var(--primary-blue-darker);
+}
+
+.input-prompt strong {
+    color: var(--primary-blue-darker);
+    font-weight: 600;
+}
+
+.input-form {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.input-field {
+    flex: 1;
+    padding: 10px 14px;
+    border: 2px solid var(--border-color-light);
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-color-white);
+    color: var(--text-color-dark);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-sm);
+}
+
+.input-field:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: var(--shadow-input-field-focus);
+}
+
+.input-field::placeholder {
+    color: var(--text-color-disabled);
+    font-weight: 400;
+}
+
+.input-field:hover {
+    border-color: var(--border-color-medium);
+}
+
+/* 地理位置输入特殊样式 */
+.geolocation-input {
+    flex: 1;
+    padding: var(--spacing-md);
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); /* Keep as is, specific green shades */
+    border-radius: var(--radius-lg);
+    border: 2px dashed var(--green);
+    text-align: center;
+}
+
+.geolocation-status {
+    color: var(--green-dark);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+}
+
+.geolocation-status::before {
+    content: '📍';
+    font-size: 16px;
+    animation: pulse 1.5s infinite ease-in-out;
+}
+
+/* 本地浏览器输入特殊样式 */
+.local-browser-input {
+    flex: 1;
+}
+
+.local-browser-input .input-field {
+    text-align: center;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* 提交按钮样式 */
+.submit-input {
+    padding: 10px 24px;
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+    color: var(--bg-color-white);
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-submit-input);
+    letter-spacing: 0.3px;
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.submit-input::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.submit-input:hover::before {
+    left: 100%;
+}
+
+.submit-input:hover {
+    background: linear-gradient(135deg, var(--primary-blue-dark) 0%, var(--primary-blue-darker) 100%);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-submit-input-hover);
+}
+
+.submit-input:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-submit-input-active);
+}
+
+.submit-input:disabled {
+    background: linear-gradient(135deg, var(--border-color-light) 0%, var(--border-color-medium) 100%);
+    color: var(--text-color-disabled);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .user-input-container {
+        padding: 14px 16px;
+        margin: 12px 0;
+    }
+    
+    .input-prompt {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+    
+    .input-form {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .input-field {
+        padding: 10px 12px;
+        font-size: 14px;
+    }
+    
+    .submit-input {
+        padding: 10px 20px;
+        font-size: 14px;
+        width: 100%;
+    }
+}
+
+/* 输入验证状态 */
+.input-field:invalid {
+    border-color: var(--red);
+}
+
+.input-field:invalid:focus {
+    box-shadow: var(--shadow-input-field-invalid-focus);
+}
+
+.input-field:valid {
+    border-color: var(--green);
+}
+
+/* 密码输入特殊样式 */
+.input-field[type="password"] {
+    letter-spacing: 2px;
+    font-family: monospace;
+}
+
+.input-field[type="password"]::placeholder {
+    letter-spacing: normal;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+/* ====== 代码行号样式 ====== */
+/* 带行号的代码块容器 */
+.code-with-line-numbers {
+    display: block;
+    counter-reset: line-number;
+    line-height: 1.4; /* 减小行高 */
+}
+
+/* 代码行样式 */
+.code-line {
+    display: block;
+    position: relative;
+    padding-left: 50px; /* 为行号留出空间 */
+    line-height: 1.4; /* 减小行高，使行间距更紧凑 */
+    margin: 0; /* 移除外边距 */
+}
+
+/* 行号样式 */
+.line-number {
+    position: absolute;
+    left: 0;
+    width: 40px;
+    text-align: right;
+    padding-right: 10px;
+    color: var(--text-color-lighter);
+    opacity: 0.6;
+    user-select: none; /* 防止行号被选中 */
+    font-size: 12px;
+    font-weight: 400;
+    border-right: 1px solid var(--border-color-dark);
+    line-height: 1.4; /* 与代码行保持一致 */
+}
+
+/* 行号悬停效果 */
+.code-line:hover .line-number {
+    opacity: 1;
+    color: var(--text-color-code);
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .code-line {
+        padding-left: 40px;
+    }
+    
+    .line-number {
+        width: 30px;
+        padding-right: 8px;
+        font-size: 11px;
+    }
+}
+/* ===== Scoped Input UI refinements (only for user_input_required area) ===== */
+/* 不影响主聊天输入框(#user-input)与功能选项(.options-bar/.select-control) */
+.user-input-container {
+    max-width: 1100px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.user-input-container .input-form {
+    gap: 8px;
+    align-items: stretch;
+    flex-wrap: nowrap;
+}
+
+@media (max-width: 640px) {
+    .user-input-container .input-form {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+}
+
+/* 输入框：更紧凑、柔和边框与光晕，不影响主输入框 */
+.user-input-container .input-field {
+    height: 40px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color-blue-light);
+    border-radius: 12px;
+    background: var(--bg-color-white);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.user-input-container .input-field:hover {
+    border-color: var(--border-color-blue);
+    background: #fbfdff; /* 仅在 scoped 域内使用的轻底色 */
+}
+
+.user-input-container .input-field:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: var(--shadow-select-control-focus);
+}
+
+/* 数字输入：移除默认上下箭头，仅限 scoped 域 */
+.user-input-container .input-field[type="number"]::-webkit-outer-spin-button,
+.user-input-container .input-field[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.user-input-container .input-field[type="number"] {
+    -moz-appearance: textfield;
+}
+
+/* 提交按钮：扁平化、主色、与输入同高；不影响全局 .submit-input */
+.user-input-container .submit-input {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 12px;
+    box-shadow: none;
+    background: var(--primary-blue);
+    color: var(--bg-color-white);
+    letter-spacing: 0.2px;
+    transition: transform 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
+}
+
+.user-input-container .submit-input:hover {
+    background: var(--primary-blue-dark);
+    transform: translateY(-1px);
+}
+
+.user-input-container .submit-input:active {
+    transform: translateY(0);
+}
+
+.user-input-container .submit-input.submitted {
+    background: var(--green);
+}
+
+.user-input-container .submit-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* 提示卡片：圆角微调，仅限 scoped 域 */
+.user-input-container .input-prompt {
+    margin-bottom: 10px;
+    border-radius: 10px;
+}
+
+/* 地理位置输入容器：中性布局，不干扰主输入 */
+.user-input-container .geolocation-input {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    border-radius: 12px;
+}
+
+.user-input-container .geolocation-status {
+    font-size: 13px;
+}
+
+/* 错误提示：与答复区风格一致 */
+.user-input-container .error {
+    color: var(--red-darker);
+    margin-top: 8px;
+    font-size: 13px;
+}
+
+/* 验证状态：仅限 scoped 域 */
+.user-input-container .input-field:invalid {
+    border-color: var(--red);
+    box-shadow: var(--shadow-input-field-invalid-focus);
+}
+
+.user-input-container .input-field:valid {
+    border-color: var(--green);
+}
+/* ===== Composite input + options visual integration (below input, looks unified but separate DOM) ===== */
+.input-container .input-wrapper {
+  position: relative;
+  z-index: 2; /* 盖住下方选项容器的上边缘，消除接缝 */
+}
+
+/* 将四个选项区域放在输入框下方，并通过负外边距“贴合”为一体视觉 */
+.input-container .input-wrapper + .options-bar {
+  background: var(--bg-color-white);
+  margin: -10px var(--spacing-xl) 0 var(--spacing-xl); /* 负距上移贴合 input-wrapper */
+  padding: 12px var(--spacing-xl);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 0; /* 去掉上边框避免与 input-wrapper 重叠产生接缝 */
+  border-radius: 0 0 var(--radius-xxl) var(--radius-xxl); /* 仅保留下圆角，形成一体外观 */
+  box-shadow: var(--shadow-md); /* 轻阴影，整体观感更自然 */
+}
+
+/* 内部间距与排版微调，使整体更紧凑 */
+.input-container .input-wrapper + .options-bar .model-select-wrapper {
+  padding: 0;
+  gap: 8px;
+}
+
+/* 小屏下保持一体感与安全间距 */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar {
+    margin: -8px var(--spacing-md) 0 var(--spacing-md);
+    padding: 10px var(--spacing-md);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  }
+}
+/* ===== Unified look: remove seam when options follow input (using :has) ===== */
+/* 当 .options-bar 紧跟在 .input-wrapper 之后时，移除输入框底部边框与下圆角，使两者视觉上一体 */
+.input-container:has(.input-wrapper + .options-bar) .input-wrapper {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom: 0 !important;
+}
+
+/* 如果启用 focus 抬升阴影，仍保持一体化的贴合关系 */
+.input-container:has(.input-wrapper + .options-bar) .input-wrapper:focus-within {
+  box-shadow: var(--shadow-input-wrapper-focus);
+}
+
+/* 保证移动端也采用无缝衔接 */
+@media (max-width: 640px) {
+  .input-container:has(.input-wrapper + .options-bar) .input-wrapper {
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-bottom: 0 !important;
+  }
+}
+/* ===== Options bar shimmer effect: background consistent, diagonal shine L->R on hover, R->L on mouseout ===== */
+.input-container .input-wrapper + .options-bar {
+  position: relative;
+  overflow: hidden; /* 裁剪高光溢出 */
+  background: var(--bg-color-white); /* 与输入框保持一致的背景色 */
+}
+
+/* 亮斜线覆盖层：默认在左侧之外，失焦时将以反向动画回到左侧（R->L） */
+.input-container .input-wrapper + .options-bar::after {
+  content: '';
+  position: absolute;
+  top: -25%;
+  left: -25%;
+  width: 150%;
+  height: 150%;
+  pointer-events: none;
+  /* 斜向高光：中部较亮、两侧透明，角度与按钮风格一致 */
+  background: linear-gradient(
+    75deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  /* 可选：叠加一层极低透明蓝色，增强科技感 */
+  /* background: linear-gradient(75deg, transparent 0%, rgba(255,255,255,.0) 42%, rgba(255,255,255,.55) 50%, rgba(255,255,255,.0) 58%, transparent 100%), linear-gradient(75deg, transparent 0%, rgba(59,130,246,.08) 50%, transparent 100%); */
+  transform: translateX(-120%);
+  transition: transform 0.65s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+  mix-blend-mode: screen; /* 提升亮度效果，同时保持背景一致 */
+}
+
+/* Hover 时从左到右扫过 */
+.input-container .input-wrapper + .options-bar:hover::after {
+  transform: translateX(120%);
+}
+
+/* 小屏优化：减小覆盖层尺寸，避免亮带过宽 */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar::after {
+    top: -20%;
+    left: -20%;
+    width: 140%;
+    height: 140%;
+  }
+}
+/* ===== Stronger shimmer override for options bar (more pronounced sweep) ===== */
+.input-container .input-wrapper + .options-bar {
+  background: var(--bg-color-white) !important; /* 与输入框背景保持一致 */
+  position: relative;
+  overflow: hidden;
+}
+
+/* 更强亮斜线：更大覆盖范围、更高亮度、叠加蓝色微光、稍微模糊增强发光感 */
+.input-container .input-wrapper + .options-bar::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: -40%;
+  width: 200%;
+  height: 200%;
+  pointer-events: none;
+  background:
+    linear-gradient(75deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0) 42%,
+      rgba(255,255,255,0.88) 50%,
+      rgba(255,255,255,0) 58%,
+      rgba(255,255,255,0) 100%
+    ),
+    linear-gradient(75deg,
+      rgba(59,130,246,0) 45%,
+      rgba(59,130,246,0.28) 50%,
+      rgba(59,130,246,0) 55%
+    );
+  transform: translateX(-170%);
+  transition: transform 0.95s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+  mix-blend-mode: screen;
+  filter: blur(0.2px) saturate(1.08) brightness(1.05);
+}
+
+/* 悬停时 L -> R 扫光更明显 */
+.input-container .input-wrapper + .options-bar:hover::after {
+  transform: translateX(170%) !important;
+}
+
+/* 小屏：减小覆盖层但保持强度 */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar::after {
+    top: -30%;
+    left: -30%;
+    width: 170%;
+    height: 170%;
+  }
+}
+/* ===== Strongest shimmer + exact background parity with input wrapper (final tuning) ===== */
+.input-container .input-wrapper + .options-bar {
+  /* 与 .input-wrapper 完全一致的外观基线 */
+  background: var(--bg-color-white) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-top: 0; /* 贴合处去除上边框 */
+  border-radius: 0 0 var(--radius-xxl) var(--radius-xxl);
+  box-shadow: var(--shadow-input-wrapper) !important; /* 与输入框一致的阴影族 */
+  position: relative;
+  overflow: hidden;
+}
+
+/* 更强扫光：多层叠加 + 高亮白 + 轻蓝辉光 + 投影，确保在白底上也明显可见 */
+.input-container .input-wrapper + .options-bar::after {
+  content: '';
+  position: absolute;
+  top: -45%;
+  left: -45%;
+  width: 220%;
+  height: 220%;
+  pointer-events: none;
+  /* 三层叠加：硬白高光 + 柔和蓝辉光 + 次级白光，保证在白色基底上仍具可见度 */
+  background:
+    linear-gradient(72deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0) 44%,
+      rgba(255,255,255,0.98) 50%,
+      rgba(255,255,255,0) 56%,
+      rgba(255,255,255,0) 100%
+    ),
+    linear-gradient(72deg,
+      rgba(59,130,246,0) 42%,
+      rgba(59,130,246,0.32) 50%,
+      rgba(59,130,246,0) 58%
+    ),
+    linear-gradient(72deg,
+      rgba(255,255,255,0) 46%,
+      rgba(255,255,255,0.75) 50%,
+      rgba(255,255,255,0) 54%
+    );
+  /* 默认停在左侧屏外，hover 时 L->R，mouseout 时 R->L */
+  transform: translateX(-200%);
+  transition: transform 1.05s cubic-bezier(0.2, 0.6, 0.2, 1);
+  will-change: transform;
+  /* 通过滤镜加强在白底上的发光与层次 */
+  filter: drop-shadow(0 0 14px rgba(59,130,246,0.20))
+          drop-shadow(0 0 8px rgba(255,255,255,0.35))
+          saturate(1.15) brightness(1.06);
+  /* 使用 overlay 以在白底保留亮部层次（screen 在纯白上不明显） */
+  mix-blend-mode: overlay;
+}
+
+/* 悬停：显著 L -> R 扫光 */
+.input-container .input-wrapper + .options-bar:hover::after {
+  transform: translateX(200%) !important;
+}
+
+/* 小屏：降低覆盖层尺寸以避免亮带过宽，同时保持强度 */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar::after {
+    top: -35%;
+    left: -35%;
+    width: 190%;
+    height: 190%;
+  }
+}
+
+/* 与输入框的无缝衔接（保持底角与边框统一） */
+.input-container:has(.input-wrapper + .options-bar) .input-wrapper {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  border-bottom: 0 !important;
+  box-shadow: var(--shadow-input-wrapper) !important; /* 两者阴影一致 */
+  background: var(--bg-color-white) !important;       /* 两者底色一致 */
+}
+/* ===== Options-bar memory toggle styles: keep same base color as input, cohesive with selects ===== */
+.input-container .input-wrapper + .options-bar .memory-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+
+/* Pill-like label to visually align with .select-control */
+.input-container .input-wrapper + .options-bar .memory-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color-blue-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-color-white); /* 与输入框/选项条一致的底色 */
+  color: var(--primary-blue);
+  font-size: 13.5px;
+  line-height: 1;
+  user-select: none;
+  box-shadow: var(--shadow-select-control);
+  transition: background-color 0.12s ease, transform 0.08s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.input-container .input-wrapper + .options-bar .memory-label:hover {
+  border-color: var(--border-color-blue);
+  background: #fbfdff;
+  box-shadow: var(--shadow-select-control-hover);
+}
+
+.input-container .input-wrapper + .options-bar .memory-label:active {
+  transform: translateY(0);
+}
+
+/* Checkbox accent color to match theme */
+.input-container .input-wrapper + .options-bar .memory-toggle {
+  accent-color: var(--primary-blue);
+  width: 14px;
+  height: 14px;
+}
+
+/* Help "?" bubble, same base color; custom tooltip on hover */
+.input-container .input-wrapper + .options-bar .memory-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary-blue);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: help;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(59,130,246,0.25);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.input-container .input-wrapper + .options-bar .memory-help:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(59,130,246,0.25);
+}
+
+/* Custom tooltip using the data-title attribute content for visibility; remains consistent with white base */
+.input-container .input-wrapper + .options-bar .memory-help::after {
+  content: attr(data-title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: #111827;
+  color: #fff;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.16);
+}
+
+.input-container .input-wrapper + .options-bar .memory-help::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  border: 6px solid transparent;
+  border-top-color: #111827;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 3;
+}
+
+.input-container .input-wrapper + .options-bar .memory-help:hover::after,
+.input-container .input-wrapper + .options-bar .memory-help:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Small screens: reduce padding to keep compact */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar .memory-label {
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+}
+/* ===== Fix: tooltip/modal being clipped; raise z-layer; keep white base; clip shimmer via clip-path ===== */
+.input-container .input-wrapper + .options-bar {
+  overflow: visible !important; /* 允许“？提示/弹层”超出容器显示 */
+  z-index: 3; /* 高于 input-wrapper(2)，避免被其遮挡 */
+  background: var(--bg-color-white) !important; /* 底色与输入框一致 */
+}
+
+/* 将扫光限定在容器内部，而不是靠 overflow:hidden 裁剪，避免遮挡提示 */
+.input-container .input-wrapper + .options-bar::after {
+  z-index: 0;
+  -webkit-clip-path: inset(0 round var(--radius-xxl));
+  clip-path: inset(0 round var(--radius-xxl));
+}
+
+/* ===== Memory toggle: iOS 风格开关（替换原样式），与 options 统一视觉 ===== */
+.input-container .input-wrapper + .options-bar .memory-label {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-color-medium);
+}
+
+/* iOS 风格的开关本体 */
+.input-container .input-wrapper + .options-bar .memory-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e5e7eb; /* 关闭态浅灰 */
+  border: 1px solid rgba(0,0,0,0.08);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  outline: none;
+}
+
+.input-container .input-wrapper + .options-bar .memory-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.input-container .input-wrapper + .options-bar .memory-toggle:hover {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75), 0 0 0 2px rgba(59,130,246,0.08);
+}
+
+.input-container .input-wrapper + .options-bar .memory-toggle:checked {
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+  border-color: rgba(59,130,246,0.35);
+}
+
+.input-container .input-wrapper + .options-bar .memory-toggle:checked::after {
+  transform: translateX(18px);
+  box-shadow: 0 2px 6px rgba(59,130,246,0.35);
+}
+
+.input-container .input-wrapper + .options-bar .memory-toggle:focus-visible {
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.18);
+}
+
+/* “记忆”文字 */
+.input-container .input-wrapper + .options-bar .memory-label > span {
+  font-size: 13.5px;
+  color: var(--text-color-medium);
+  user-select: none;
+}
+
+/* “？”说明按钮层级提升，避免被扫光/其他元素遮挡 */
+.input-container .input-wrapper + .options-bar .memory-help {
+  z-index: 10;
+}
+.input-container .input-wrapper + .options-bar .memory-help::after,
+.input-container .input-wrapper + .options-bar .memory-help::before {
+  z-index: 11;
+}
+
+/* 小屏适配 */
+@media (max-width: 640px) {
+  .input-container .input-wrapper + .options-bar .memory-toggle {
+    width: 40px;
+    height: 22px;
+  }
+  .input-container .input-wrapper + .options-bar .memory-toggle::after {
+    width: 18px;
+    height: 18px;
+  }
+  .input-container .input-wrapper + .options-bar .memory-toggle:checked::after {
+    transform: translateX(16px);
+  }
+}
+/* ===== Tooltip/弹层可见性修复：避免祖先 overflow 裁剪 ===== */
+.main-container,
+.content-wrapper {
+  overflow: visible !important; /* 允许 options-bar 的 “？” tooltip、弹层完全显示 */
+}
+
+/* 保持与输入框统一的底色（白色），并确保层级不被输入框遮挡 */
+.input-container .input-wrapper + .options-bar {
+  background: var(--bg-color-white) !important;
+  z-index: 3; /* 高于 input-wrapper(2) */
+  position: relative;
+}
+
+/* 限定扫光仅在容器内部，避免遮挡 tooltip，同时不再依赖 overflow: hidden */
+.input-container .input-wrapper + .options-bar::after {
+  pointer-events: none;
+  z-index: 0;
+  -webkit-clip-path: inset(0 round var(--radius-xxl));
+  clip-path: inset(0 round var(--radius-xxl));
+}
+
+/* 提升 “？” 提示的层级，确保不被其它元素（含扫光层）覆盖 */
+.input-container .input-wrapper + .options-bar .memory-help {
+  z-index: 10;
+}
+.input-container .input-wrapper + .options-bar .memory-help::after,
+.input-container .input-wrapper + .options-bar .memory-help::before {
+  z-index: 11;
+}
+/* ===== Remove options-bar shimmer and shadow (clean, flat style) ===== */
+/* 保持与输入框一致的白底，但去掉扫光与阴影效果 */
+.input-container .input-wrapper + .options-bar {
+  box-shadow: none !important;
+  background: var(--bg-color-white) !important;
+}
+
+/* 彻底关闭先前添加的扫光伪元素与相关效果 */
+.input-container .input-wrapper + .options-bar::after,
+.input-container .input-wrapper + .options-bar::before {
+  content: none !important;
+  background: none !important;
+  -webkit-clip-path: none !important;
+  clip-path: none !important;
+  transform: none !important;
+  transition: none !important;
+  mix-blend-mode: normal !important;
+  filter: none !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
+}
+
+/* 继续确保输入框与 options-bar 底色一致 */
+.input-container .input-wrapper,
+.input-container .input-wrapper + .options-bar {
+  background: var(--bg-color-white) !important;
+}
+/* ===== Fix: 工具记忆控件不换行，保持一行 ===== */
+@media (min-width: 900px) {
+  /* 大屏下选项区不再自动换行 */
+  .model-select-wrapper {
+    flex-wrap: nowrap !important;
+  }
+}
+
+/* 强制“工具记忆”整组保持在一行内 */
+.input-container .input-wrapper + .options-bar .memory-wrapper,
+.input-container .input-wrapper + .options-bar .memory-label,
+.input-container .input-wrapper + .options-bar .memory-label > span,
+.input-container .input-wrapper + .options-bar .memory-help {
+  white-space: nowrap !important;
+  flex-wrap: nowrap !important;
+}
+
+/* 避免 “?” 被挤到下一行 */
+.input-container .input-wrapper + .options-bar .memory-help {
+  flex-shrink: 0;
+}
+
+/* 对齐细节 */
+.input-container .input-wrapper + .options-bar .memory-label {
+  align-items: center;
+}
+/* ===== Compact: 迭代轮次 / 会话轮次 输入更窄，三位数字宽度 ===== */
+.input-container .input-wrapper + .options-bar .ite-input,
+#itecount.select-control.ite-input,
+#conversation_count.select-control.ite-input {
+  min-width: 64px !important;  /* 适配最多三位数 */
+  width: 64px !important;
+  max-width: 72px !important;
+  padding-left: 6px;
+  padding-right: 6px;
+  text-align: center;
+}
+
+/* 标签与输入间距略微收紧 */
+.input-container .input-wrapper + .options-bar .itecount-wrapper {
+  gap: 6px;
 }

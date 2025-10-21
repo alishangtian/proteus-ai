@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger(__name__)
 load_dotenv()
 
+
 class RedisManager:
     def __init__(self):
         self._pool = None
@@ -32,7 +33,7 @@ class RedisManager:
                     max_connections=20,
                     socket_timeout=5,
                     socket_connect_timeout=5,
-                    retry_on_timeout=True
+                    retry_on_timeout=True,
                 )
                 self._client = redis.Redis(connection_pool=self._pool)
                 # 测试连接是否可用
@@ -41,7 +42,9 @@ class RedisManager:
             except (redis.ConnectionError, redis.TimeoutError) as e:
                 if attempt == self.max_retries - 1:
                     raise
-                logger.warning(f"Redis连接失败，尝试重连({attempt + 1}/{self.max_retries}): {e}")
+                logger.warning(
+                    f"Redis连接失败，尝试重连({attempt + 1}/{self.max_retries}): {e}"
+                )
                 time.sleep(self.retry_delay)
 
     def get_client(self):
@@ -54,63 +57,66 @@ class RedisManager:
             self._connect()
             return self._client
 
+
 redis_manager = RedisManager()
 redis_client = redis_manager.get_client()
 
+
 class FileStorageManager:
     """本地文件存储管理器"""
+
     def __init__(self):
         self.data_dir = os.getenv("DATA_PATH", "./data")
         os.makedirs(self.data_dir, exist_ok=True)
-    
+
     def _get_user_file(self, username: str) -> str:
         return os.path.join(self.data_dir, f"user_{username}.json")
-    
+
     def _get_session_file(self, session_id: str) -> str:
         return os.path.join(self.data_dir, f"session_{session_id}.json")
-    
+
     def save_user(self, username: str, user_data: dict):
         """保存用户数据到文件"""
         try:
-            with open(self._get_user_file(username), 'w') as f:
+            with open(self._get_user_file(username), "w") as f:
                 json.dump(user_data, f)
             return True
         except Exception as e:
             logger.error(f"保存用户数据失败: {e}")
             return False
-    
+
     def get_user(self, username: str) -> Optional[dict]:
         """从文件获取用户数据"""
         try:
-            with open(self._get_user_file(username), 'r') as f:
+            with open(self._get_user_file(username), "r") as f:
                 return json.load(f)
         except FileNotFoundError:
             return None
         except Exception as e:
             logger.error(f"读取用户数据失败: {e}")
             return None
-    
+
     def save_session(self, session_id: str, session_data: dict):
         """保存会话数据到文件"""
         try:
-            with open(self._get_session_file(session_id), 'w') as f:
+            with open(self._get_session_file(session_id), "w") as f:
                 json.dump(session_data, f)
             return True
         except Exception as e:
             logger.error(f"保存会话数据失败: {e}")
             return False
-    
+
     def get_session(self, session_id: str) -> Optional[dict]:
         """从文件获取会话数据"""
         try:
-            with open(self._get_session_file(session_id), 'r') as f:
+            with open(self._get_session_file(session_id), "r") as f:
                 return json.load(f)
         except FileNotFoundError:
             return None
         except Exception as e:
             logger.error(f"读取会话数据失败: {e}")
             return None
-    
+
     def delete_session(self, session_id: str):
         """删除会话文件"""
         try:
@@ -122,6 +128,7 @@ class FileStorageManager:
             logger.error(f"删除会话文件失败: {e}")
             return False
 
+
 file_storage = FileStorageManager()
 SESSION_MODEL = os.getenv("SESSION_MODEL", "redis")
 
@@ -130,9 +137,9 @@ router = APIRouter(tags=["认证模块"])
 # 密码哈希配置
 pwd_context = CryptContext(
     schemes=["bcrypt"],
-    deprecated="auto", 
+    deprecated="auto",
     bcrypt__rounds=12,  # 明确指定rounds参数
-    bcrypt__ident="2b"  # 使用现代bcrypt标识
+    bcrypt__ident="2b",  # 使用现代bcrypt标识
 )
 
 # 会话配置
@@ -140,22 +147,27 @@ SESSION_EXPIRE_MINUTES = int(os.getenv("SESSION_EXPIRE_MINUTES", 30))
 SESSION_PREFIX = "session:"
 USER_PREFIX = "user:"
 
+
 def get_session_key(session_id: str) -> str:
     return f"{SESSION_PREFIX}{session_id}"
 
+
 def get_user_key(username: str) -> str:
     return f"{USER_PREFIX}{username}"
+
+
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=20)
     email: str = Field(..., pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
     password: str = Field(..., min_length=6)
     confirm_password: str = Field(..., min_length=6)
 
-    @validator('confirm_password')
+    @validator("confirm_password")
     def passwords_match(cls, v, values):
-        if 'password' in values and v != values['password']:
-            raise ValueError('密码不一致')
+        if "password" in values and v != values["password"]:
+            raise ValueError("密码不一致")
         return v
+
 
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=20)
@@ -183,7 +195,7 @@ async def get_current_user(request: Request) -> Optional[SessionData]:
     session_id = request.cookies.get("session")
     if not session_id:
         return None
-    
+
     if SESSION_MODEL == "redis":
         session_key = get_session_key(session_id)
         try:
@@ -197,10 +209,10 @@ async def get_current_user(request: Request) -> Optional[SessionData]:
         session_data = file_storage.get_session(session_id)
         if not session_data:
             return None
-        
+    logger.info(f"获取会话数据成功: {session_data}")
+
     return SessionData(
-        username=session_data["username"],
-        expires=session_data["expires"]
+        username=session_data["username"], expires=session_data["expires"]
     )
 
 
@@ -209,9 +221,9 @@ def verify_password(plain_password: str, hashed_password: str):
     try:
         # 确保明文密码和哈希密码都是字符串类型
         if isinstance(plain_password, bytes):
-            plain_password = plain_password.decode('utf-8')
+            plain_password = plain_password.decode("utf-8")
         if isinstance(hashed_password, bytes):
-            hashed_password = hashed_password.decode('utf-8')
+            hashed_password = hashed_password.decode("utf-8")
         return pwd_context.verify(plain_password, hashed_password)
     except Exception as e:
         logger.error(f"密码验证失败: {e}")
@@ -223,7 +235,7 @@ def get_password_hash(password: str):
     try:
         # 确保密码是字符串类型，bcrypt会在内部处理编码
         if isinstance(password, bytes):
-            password = password.decode('utf-8')
+            password = password.decode("utf-8")
         return pwd_context.hash(password)
     except Exception as e:
         logger.error(f"密码哈希生成失败: {e}")
@@ -237,51 +249,42 @@ async def register(register_data: RegisterRequest):
         "username": register_data.username,
         "email": register_data.email,
         "hashed_password": get_password_hash(register_data.password),
-        "disabled": "False"
+        "disabled": "False",
     }
-    
+
     if SESSION_MODEL == "redis":
         user_key = get_user_key(register_data.username)
         try:
             if redis_client.exists(user_key):
                 return ApiResponse(
-                    event="register",
-                    success=False,
-                    error="用户名已存在"
+                    event="register", success=False, error="用户名已存在"
                 ).dict()
             redis_client.hmset(user_key, user_data)
         except redis.RedisError as e:
             logger.error(f"用户注册操作失败: {e}")
             return ApiResponse(
-                event="register",
-                success=False,
-                error="系统错误，请稍后重试"
+                event="register", success=False, error="系统错误，请稍后重试"
             ).dict()
     else:
         if file_storage.get_user(register_data.username):
             return ApiResponse(
-                event="register",
-                success=False,
-                error="用户名已存在"
+                event="register", success=False, error="用户名已存在"
             ).dict()
         if not file_storage.save_user(register_data.username, user_data):
             return ApiResponse(
-                event="register",
-                success=False,
-                error="系统错误，请稍后重试"
+                event="register", success=False, error="系统错误，请稍后重试"
             ).dict()
-    
+
     return ApiResponse(
-        event="register",
-        success=True,
-        data={"username": register_data.username}
+        event="register", success=True, data={"username": register_data.username}
     ).dict()
+
 
 @router.post("/login", response_model=ApiResponse)
 async def login(request: Request, login_data: LoginRequest):
     """用户登录接口"""
     logger.info(f"login info {login_data.username}:{login_data.password}")
-    
+
     if SESSION_MODEL == "redis":
         user_key = get_user_key(login_data.username)
         try:
@@ -289,13 +292,11 @@ async def login(request: Request, login_data: LoginRequest):
         except redis.RedisError as e:
             logger.error(f"用户登录操作失败: {e}")
             return ApiResponse(
-                event="login",
-                success=False,
-                error="系统错误，请稍后重试"
+                event="login", success=False, error="系统错误，请稍后重试"
             ).dict()
     else:
         user_data = file_storage.get_user(login_data.username)
-    
+
     if not user_data or not verify_password(
         login_data.password, user_data["hashed_password"]
     ):
@@ -305,11 +306,8 @@ async def login(request: Request, login_data: LoginRequest):
 
     session_id = str(uuid.uuid4())
     expires = datetime.now() + timedelta(minutes=SESSION_EXPIRE_MINUTES)
-    session_data = {
-        "username": login_data.username,
-        "expires": expires.isoformat()
-    }
-    
+    session_data = {"username": login_data.username, "expires": expires.isoformat()}
+
     if SESSION_MODEL == "redis":
         session_key = get_session_key(session_id)
         try:
@@ -318,18 +316,14 @@ async def login(request: Request, login_data: LoginRequest):
         except redis.RedisError as e:
             logger.error(f"用户登录操作失败: {e}")
             return ApiResponse(
-                event="login",
-                success=False,
-                error="系统错误，请稍后重试"
+                event="login", success=False, error="系统错误，请稍后重试"
             ).dict()
     else:
         if not file_storage.save_session(session_id, session_data):
             return ApiResponse(
-                event="login",
-                success=False,
-                error="系统错误，请稍后重试"
+                event="login", success=False, error="系统错误，请稍后重试"
             ).dict()
-    
+
     response = JSONResponse(content=ApiResponse(event="login", success=True).dict())
     response.set_cookie(
         key="session",
@@ -347,10 +341,12 @@ async def serve_register_page():
     """返回注册页面"""
     return FileResponse("static/register.html")
 
+
 @router.get("/login")
 async def serve_register_page():
     """返回注册页面"""
     return FileResponse("static/login.html")
+
 
 @router.get("/logout", response_model=ApiResponse)
 async def logout(request: Request):
@@ -366,7 +362,7 @@ async def logout(request: Request):
         else:
             if not file_storage.delete_session(session_id):
                 logger.error("删除会话文件失败")
-    
+
     response = JSONResponse(content=ApiResponse(event="logout", success=True).dict())
     response.delete_cookie("session")
     return response

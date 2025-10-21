@@ -16,12 +16,21 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         renderExplanation,
         renderAnswer,
         createQuestionElement,
+        streamTextContent, // 从 ctx 中获取流式文本输出函数（用于模拟打字机效果）
         Icons,
         updatePlaybook,
         fetchPlaybook, // 添加 fetchPlaybook 到 ctx
         currentModel, // 从 ctx 中获取 currentModel
         playbookStorage // 从 ctx 中获取 playbookStorage
     } = ctx;
+
+    // 标记 agent_complete 的流式渲染状态，避免 complete 事件过早重置 UI
+    let isAgentCompleteStreaming = false;
+    // 标记是否已经收到 complete 事件
+    let pendingCompleteEvent = false;
+
+    // 默认打字机延迟（毫秒），可通过 ctx.typingDelay 覆盖
+    const defaultTypingDelay = (ctx && typeof ctx.typingDelay === 'number' ? ctx.typingDelay : 25);
 
     // agent_selection
     eventSource.addEventListener('agent_selection', event => {
@@ -352,6 +361,42 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         }
     });
 
+    // serper_search
+    eventSource.addEventListener('serper_search', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const searchDiv = document.createElement('div');
+            searchDiv.className = 'serper-search-results';
+            
+            let resultsHtml = '';
+            if (data.results && data.results.length > 0) {
+                resultsHtml = data.results.map(item => `
+                    <div class="search-result-item">
+                        <a href="${item.link}" target="_blank" class="result-title">${item.title}</a>
+                        <p class="result-snippet">${item.snippet}</p>
+                        <p class="result-link">${item.link}</p>
+                    </div>
+                `).join('');
+            } else {
+                resultsHtml = '<p>没有找到搜索结果。</p>';
+            }
+
+            searchDiv.innerHTML = `
+                <div class="search-header">
+                    <span class="search-icon">🔍</span>
+                    <span class="search-query">Serper 搜索: ${data.query}</span>
+                    <span class="search-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                </div>
+                <div class="search-content">
+                    ${resultsHtml}
+                </div>
+            `;
+            if (answerElement) answerElement.appendChild(searchDiv);
+        } catch (error) {
+            console.error('解析 Serper 搜索事件失败:', error);
+        }
+    });
+
     // action_start
     eventSource.addEventListener('action_start', event => {
         try {
@@ -391,7 +436,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 formattedInput = '<div class="python-code-section">';
                 formattedInput += '<div class="code-label">Python 代码:</div>';
                 
-                // 使用 highlight.js 直接高亮代码
+                // 使用 highlight.js 直接高亮代码并添加行号
                 let highlightedCode = data.input.code;
                 if (typeof hljs !== 'undefined') {
                     try {
@@ -401,7 +446,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     }
                 }
                 
-                formattedInput += `<pre><code class="hljs language-python">${highlightedCode}</code></pre>`;
+                // 将代码按行分割并添加行号
+                const codeLines = highlightedCode.split('\n');
+                const numberedCode = codeLines.map((line, index) => {
+                    const lineNumber = index + 1;
+                    return `<span class="code-line"><span class="line-number">${lineNumber}</span>${line}</span>`;
+                }).join('\n');
+                
+                formattedInput += `<pre><code class="hljs language-python code-with-line-numbers">${numberedCode}</code></pre>`;
                 
                 // 如果还有其他参数，也显示出来
                 const otherParams = Object.keys(data.input).filter(key => key !== 'code');
@@ -732,27 +784,66 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         try {
             const data = JSON.parse(event.data);
             const content = data.result;
+            console.debug('[SSE] agent_complete received, length=', (content || '').length);
+
             const completeDiv = document.createElement('div');
             completeDiv.className = 'agent-complete-final';
-            completeDiv.innerHTML = `
-                <div class="complete-info">
-                    <div class="action_complete"></div> <!-- 内容将直接填充 -->
-                </div>
-            `;
-            if (answerElement) {
-                answerElement.appendChild(completeDiv);
-                const actionCompleteDiv = completeDiv.querySelector('.action_complete');
-                const completeContent = content || '智能体已完成任务。'; // 提供默认文本
-                // 暂时禁用流式输出，直接进行 Markdown 渲染
-                if (actionCompleteDiv) {
-                    actionCompleteDiv.innerHTML = marked.parse(completeContent);
-                }
+
+            // 直接渲染 Markdown，无需流式或打字机效果
+            let renderedHtml = '';
+            try {
+                renderedHtml = marked.parse(content || '智能体已完成任务。');
+            } catch (e) {
+                // 回退为纯文本
+                renderedHtml = (content || '智能体已完成任务。');
             }
 
+            completeDiv.innerHTML = `
+                <div class="complete-info">
+                    <div class="action_complete">${renderedHtml}</div>
+                </div>
+            `;
+
+            if (answerElement) {
+                answerElement.appendChild(completeDiv);
+            }
         } catch (error) {
             console.error('解析agent完成事件失败:', error);
         }
     });
+
+// agent_completed（兼容别名，与 agent_complete 同逻辑）
+eventSource.addEventListener('agent_completed', event => {
+    try {
+        const data = JSON.parse(event.data);
+        const content = data.result;
+        console.debug('[SSE] agent_completed received, length=', (content || '').length);
+
+        const completeDiv = document.createElement('div');
+        completeDiv.className = 'agent-complete-final';
+
+        // 直接渲染 Markdown，无需流式或打字机效果
+        let renderedHtml = '';
+        try {
+            renderedHtml = marked.parse(content || '智能体已完成任务。');
+        } catch (e) {
+            renderedHtml = (content || '智能体已完成任务。');
+        }
+
+        completeDiv.innerHTML = `
+            <div class="complete-info">
+                <div class="action_complete">${renderedHtml}</div>
+            </div>
+        `;
+
+        if (answerElement) {
+            answerElement.appendChild(completeDiv);
+        }
+    } catch (error) {
+        console.error('解析agent完成事件失败:', error);
+    }
+});
+
 
     // playbook_update
     eventSource.addEventListener('playbook_update', event => {
@@ -764,6 +855,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 // 使用提取的任务列表渲染 playbook
                 updatePlaybook(tasks);
                 console.log('Playbook 已更新，任务数量:', tasks.length);
+                
+                // 保存 playbook 内容到 playbookStorage，以便在切换模型或第二次 chat 时能够恢复
+                if (playbookStorage && currentModel) {
+                    const playbookContent = document.getElementById('playbook-content');
+                    if (playbookContent) {
+                        playbookStorage[currentModel] = playbookContent.innerHTML;
+                    }
+                }
             }
         } catch (error) {
             console.error('解析 playbook 更新事件失败:', error);
@@ -778,7 +877,17 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             indicator.classList.remove('running');
             indicator.classList.add('completed');
         });
-        if (typeof ctx.onComplete === 'function') ctx.onComplete();
+
+        // 标记已收到 complete 事件
+        pendingCompleteEvent = true;
+
+        // 统一延迟触发 onComplete，给 agent_complete 流式渲染留出时间设置标记
+        // 若 150ms 后仍未开始流式，则立即收尾；若已开始，则在 agent_complete 的收尾回调中触发
+        setTimeout(() => {
+            if (!isAgentCompleteStreaming) {
+                if (typeof ctx.onComplete === 'function') ctx.onComplete();
+            }
+        }, Math.max(defaultTypingDelay * 12, 300));
     });
 
     // onerror

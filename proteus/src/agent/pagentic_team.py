@@ -24,6 +24,7 @@ class PagenticTeam:
         start_role: TeamRole = TeamRole.TEAM_LEADER,
         conversation_id: str = None,
         conversation_round: int = 5,
+        username: str = None,
     ):
         """
         初始化五个角色的agent
@@ -43,11 +44,13 @@ class PagenticTeam:
             team_rules: 团队行为规范
             start_role: 启动角色
             conversation_id: 会话ID，用于获取历史迭代信息
+            username: 用户名，用于工具记忆隔离
         """
         self.agents: Dict[TeamRole, ReactAgent] = {}
         self.team_rules = team_rules or "默认团队规范"
         self.conversation_id = conversation_id
         self.conversation_round = conversation_round
+        self.username = username
         self._initialize_agents(tools_config or {})
         self.startRole = start_role
         self._event_loop_task = None  # 保存事件循环任务引用
@@ -91,6 +94,7 @@ class PagenticTeam:
                 conversation_round=self.conversation_round,
                 role_type=role,
                 scratchpad_items=getattr(config, "historical_scratchpad_items", None),
+                username=self.username,  # 传递用户名
             )
 
     @langfuse_wrapper.observe_decorator(

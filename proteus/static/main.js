@@ -64,6 +64,16 @@ let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
 const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
 
+ // 会话级“工具洞察”开关读取（仅以当前会话为准）
+ // 说明：避免被历史 localStorage 的 options_memory_enabled 干扰
+ function isToolInsightEnabled() {
+   try {
+     return sessionStorage.getItem('tool_insight_enabled') === 'true';
+   } catch (e) {
+     return false;
+   }
+ }
+
 // 简单安全清理：移除 <script> 和 <style>，并删除所有 on* 事件属性与 javascript: 协议的 href/src
 function sanitizeHTML(html) {
     const template = document.createElement('template');
@@ -471,6 +481,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const itecountContainer = document.getElementById('itecount-container');
     const modelSelect = document.getElementById('model-select');
 
+    // 限制“迭代轮次”和“会话轮次”为三位数字并缩窄输入框
+    const itecountInput = document.getElementById('itecount');
+    const conversationCountInput = document.getElementById('conversation_count');
+    [itecountInput, conversationCountInput].forEach((inp) => {
+        if (!inp) return;
+        try {
+            // 属性限制
+            inp.setAttribute('max', '999');
+            if (!inp.getAttribute('min')) inp.setAttribute('min', '1');
+            inp.setAttribute('inputmode', 'numeric'); // 移动端数字键盘
+
+            // 视觉缩窄，覆盖全局 .ite-input 的 min-width
+            inp.style.minWidth = '56px';
+            inp.style.width = '56px';
+            inp.style.maxWidth = '64px';
+            inp.style.textAlign = 'center';
+
+            // 实时限制为最多三位纯数字
+            inp.addEventListener('input', () => {
+                let v = (inp.value || '').replace(/\D/g, '');
+                if (v.length > 3) v = v.slice(0, 3);
+                // 去掉前导零（但允许单个 0 被替换为 1 在 blur 时处理）
+                v = v.replace(/^0+(\d)/, '$1');
+                // 上限保护
+                let num = v === '' ? '' : Math.min(parseInt(v, 10), 999);
+                inp.value = num === '' ? '' : String(num);
+            });
+
+            // 失焦兜底：范围 [1, 999]
+            inp.addEventListener('blur', () => {
+                let num = parseInt(inp.value || '0', 10);
+                if (isNaN(num) || num < 1) num = 1;
+                if (num > 999) num = 999;
+                inp.value = String(num);
+            });
+        } catch (e) {
+            console.warn('配置数字输入限制失败', e);
+        }
+    });
+
     // 将左侧菜单项填充到聊天框左下角的下拉选择中（并保持与菜单互通）
     if (modelSelect) {
         modelOptions.forEach(item => {
@@ -629,7 +679,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // 3. 清空当前对话历史和 playbook
             conversationHistory.innerHTML = '';
             document.getElementById('playbook-content').innerHTML = '';
-            document.getElementById('playbook-container').style.display = 'none';
+            const pbContainer = document.getElementById('playbook-container');
+            if (pbContainer) pbContainer.classList.remove('is-visible');
 
             // 4. 恢复新模型的对话历史和 playbook (如果存在)
             if (historyStorage[newModel]) {
@@ -637,7 +688,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (playbookStorage[newModel]) {
                 document.getElementById('playbook-content').innerHTML = playbookStorage[newModel];
-                document.getElementById('playbook-container').style.display = 'flex';
+                const pbContainer2 = document.getElementById('playbook-container');
+                if (pbContainer2) pbContainer2.classList.add('is-visible');
             }
 
             // 5. 恢复或生成新模型的conversation_id
@@ -888,17 +940,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     userInput.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.isComposing) { // 检查是否是回车键且不是输入法合成事件
             if (e.shiftKey) {
                 // Shift+Enter 插入换行
                 return;
             } else {
-                // 单独Enter 发送消息
-                e.preventDefault();
+                // 单独Enter 触发提交
+                e.preventDefault(); // 阻止默认的换行行为
                 sendMessage();
-                scrollToBottom();
             }
         }
+    });
+
+    // 监听 compositionend 事件，确保输入法完成输入后可以正常提交
+    userInput.addEventListener('compositionend', e => {
+        // 当输入法完成输入后，如果用户立即按 Enter，此时 isComposing 为 false，会触发 keydown 中的提交逻辑。
+        // 这里不需要额外处理，因为 keydown 已经处理了。
     });
 
     userInput.addEventListener('paste', async (event) => {
@@ -1184,8 +1241,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         max_iterations: parseInt(document.getElementById('itecount').value) || 10,
                         stream: true,
                         model_name: selectedModelName,
-                        file_ids: uploadedFiles.map(file => file.id) // 添加文件 ID 列表
-                    })
+                        file_ids: uploadedFiles.map(file => file.id), memory_enabled: isToolInsightEnabled() // 工具洞察开关（会话级）
+                      })
                 });
             } else {
                 // 其他模式使用 /chat 接口
@@ -1201,8 +1258,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         conversation_id: currentConversationId,
                         itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined,
                         conversation_count: parseInt(document.getElementById('conversation_count').value) || 5,
-                        file_ids: uploadedFiles.map(file => file.id) // 添加文件 ID 列表
-                    })
+                        file_ids: uploadedFiles.map(file => file.id), memory_enabled: isToolInsightEnabled() // 工具洞察开关（会话级）
+                      })
                 });
             }
 
@@ -1237,6 +1294,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     streamTextContent: uiStreamTextContent, // 传递 streamTextContent
                     updatePlaybook: uiUpdatePlaybook, // 传递 uiUpdatePlaybook
                     fetchPlaybook: fetchPlaybook, // 传递 fetchPlaybook
+                    currentModel: currentModel, // 传递当前模型
+                    playbookStorage: playbookStorage, // 传递 playbook 存储对象
                     onComplete: () => { resetUI(); },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });
@@ -1251,4 +1310,73 @@ document.addEventListener('DOMContentLoaded', () => {
             resetUI();
         }
     }
+});
+// ===== Memory option for options-bar (persist selections locally, add help tooltip) =====
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const optionsBar = document.querySelector('.options-bar');
+    const modelWrapper = optionsBar ? optionsBar.querySelector('.model-select-wrapper') : null;
+    if (!modelWrapper) return;
+
+    // 使用页面内现有的“记忆”开关（优先），若不存在则回退为动态创建
+    let memoryToggle = document.getElementById('memory-toggle');
+    if (!memoryToggle) {
+      const memoryWrapper = document.createElement('div');
+      memoryWrapper.className = 'memory-wrapper';
+      memoryWrapper.style.display = 'inline-flex';
+      memoryWrapper.style.alignItems = 'center';
+      memoryWrapper.style.gap = '8px';
+
+      memoryWrapper.innerHTML = `
+        <label class="memory-label" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" id="memory-toggle" class="memory-toggle" style="cursor:pointer;">
+          <span>记忆</span>
+        </label>
+        <span class="memory-help" data-title="开启后，将在本次会话记录并分析工具调用，用于优化后续调用；该状态会随请求传给后端参与决策。" aria-label="记忆说明" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--primary-blue);color:#fff;font-weight:600;cursor:help;user-select:none;">?</span>
+      `;
+      if (modelWrapper) modelWrapper.appendChild(memoryWrapper);
+      memoryToggle = memoryWrapper.querySelector('#memory-toggle');
+    } else {
+      // 兜底：使用 data-title 避免原生 title 产生第二种提示
+      const help = document.querySelector('.memory-help');
+      if (help) {
+        if (!help.getAttribute('data-title')) {
+          help.setAttribute('data-title', '开启后，将在本次会话记录并分析工具调用，用于优化后续调用；该状态会随请求传给后端参与决策。');
+        }
+        if (help.hasAttribute('title')) help.removeAttribute('title');
+      }
+    }
+
+    // 仅控制“工具洞察”开关（会话级），不再持久化 UI 参数
+    const INSIGHT_KEY = 'tool_insight_enabled';
+
+    function getInsightEnabled() {
+      try { return sessionStorage.getItem(INSIGHT_KEY) === 'true'; } catch { return false; }
+    }
+    function setInsightEnabled(v) {
+      try { sessionStorage.setItem(INSIGHT_KEY, v ? 'true' : 'false'); } catch {}
+    }
+
+     // 初始化 toggle（一次性迁移 legacy 的 localStorage -> sessionStorage）
+     try {
+       const legacy = (localStorage.getItem('options_memory_enabled') === 'true');
+       const current = getInsightEnabled();
+       if (!current && legacy) {
+         setInsightEnabled(true);
+         try { localStorage.removeItem('options_memory_enabled'); } catch {}
+       }
+       memoryToggle.checked = getInsightEnabled();
+     } catch {
+       memoryToggle.checked = getInsightEnabled();
+     }
+
+    // 切换 -> 更新会话状态（随请求传到后端）
+    memoryToggle.addEventListener('change', () => {
+      setInsightEnabled(memoryToggle.checked);
+    });
+
+    // 不再保存/恢复模型与参数；“记忆”仅表示开启会话级工具洞察
+  } catch (e) {
+    console.warn('初始化记忆选项失败:', e);
+  }
 });

@@ -2,6 +2,14 @@ let isProcessing = false; // 标记是否正在处理消息
 let eventSource = null; // 用于SSE连接
 let chatContainer = null; // 聊天消息容器
 
+// 读取会话级“工具洞察”开关（与主界面保持一致）
+function isToolInsightEnabled() {
+    try {
+        return sessionStorage.getItem('tool_insight_enabled') === 'true';
+    } catch (e) {
+        return false;
+    }
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     // 获取聊天容器
@@ -95,7 +103,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 body: JSON.stringify({
                     text,
                     model: "agent",
-                    itecount: 20
+                    itecount: 20,
+                    memory_enabled: isToolInsightEnabled()
                 })
             });
 

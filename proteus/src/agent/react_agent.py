@@ -1,6 +1,6 @@
 from datetime import datetime
 import re
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Union, Optional
 import asyncio
 import logging
 from pydantic import BaseModel, Field
@@ -44,6 +44,7 @@ from .terminition import TerminationCondition, StepLimitTerminationCondition
 from ..utils.redis_cache import RedisCache, get_redis_connection
 from ..utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.tool_extract_prompt import TOOL_EXTRACT_PROMPT
+from src.agent.prompt.tool_memory_prompt import TOOL_MEMORY_ANALYSIS_PROMPT
 
 # import PLAYBOOK_PROMPT
 from src.agent.prompt.playbook_prompt import PLAYBOOK_PROMPT
@@ -324,6 +325,8 @@ class ReactAgent:
         conversation_id: str = None,  # 会话ID
         conversation_round: int = 5,
         include_fields: List[IncludeFields] = None,  # agent 组装 prompt 时要选择的字段
+        username: str = None,  # 用户名，用于隔离工具记忆
+        memory_enabled: bool = False,
     ):
         """初始化ReactAgent
 
@@ -378,6 +381,8 @@ class ReactAgent:
             langfuse_wrapper.get_langfuse_instance()
         )  # 使用LangfuseWrapper获取追踪对象
         self.include_fields = include_fields  # agent 组装 prompt 时要选择的字段
+        self.username = username  # 用户名，用于工具记忆隔离
+        self.memory_enabled = memory_enabled
 
         # 初始化Redis连接管理器
         self._redis_manager = RedisConnectionManager()
@@ -538,7 +543,6 @@ class ReactAgent:
                         is_origin_query=item_dict.get("is_origin_query", False),
                         tool_execution_id=item_dict.get("tool_execution_id", ""),
                         role_type=item_dict.get("role_type", "") or "",
-                        playbook=item_dict.get("playbook", ""),
                     )
 
                     # 添加其他可能的属性
@@ -847,13 +851,22 @@ class ReactAgent:
                     sorted(self.tools.values(), key=lambda x: x.name), 1
                 ):
                     # 在工具描述前加上编号，格式：[编号] 工具描述
+                    tool_desc_parts = []
                     if hasattr(tool, "full_description") and tool.full_description:
-                        tool_desc = f"{tool.full_description}"
+                        tool_desc_parts.append(f"{tool.full_description}")
                     else:
                         # 如果没有full_description，则构建基本描述
-                        tool_desc = f"{tool.name}"
+                        tool_desc_base = f"{tool.name}"
                         if hasattr(tool, "description") and tool.description:
-                            tool_desc += f" - {tool.description}"
+                            tool_desc_base += f" - {tool.description}"
+                        tool_desc_parts.append(tool_desc_base)
+
+                    # 附加工具的历史错误记忆（修正后的事实），如果存在
+                    if self.memory_enabled and tool.memory:
+                        memories_str = f"**使用指引** {tool.memory}\n"
+                        tool_desc_parts.append(memories_str)
+
+                    tool_desc = "\n".join(tool_desc_parts)
                     tools_desc.append(tool_desc)
                 return "\n".join(tools_desc), tool_names
 
@@ -922,7 +935,9 @@ class ReactAgent:
             # ),
             "max_iterations": self.max_iterations,
             "current_iteration": current_iteration,
-            "playbook": (self._load_playbook_from_redis(chat_id) if chat_id else ""),
+            "playbook": (
+                self._load_playbook_from_redis(self.conversation_id) if chat_id else ""
+            ),
         }
 
         agent_prompt = Template(self.prompt_template).safe_substitute(all_values)
@@ -1306,18 +1321,20 @@ class ReactAgent:
                 tool_params = answer_match.group(1).strip()
             else:
                 # 新增：支持方括号格式的Action模式
-                # 格式：Action: tool_name[param1=value1, param2=value2, ...]
-                action_bracket_pattern = r"Action:\s*([^[\s]+)\[([^\]]*)\]"
+                # 格式1：Action: tool_name[param1=value1, param2=value2, ...]
+                # 格式2：Action: tool_name[{"key": "value", ...}]
+                # 使用 DOTALL 标志使 . 能匹配换行符,支持多行JSON
+                action_bracket_pattern = r"Action:\s*([^[\s]+)\[(.*?)\]"
 
-                # 首先尝试方括号格式的Action
+                # 首先尝试方括号格式的Action (使用DOTALL支持多行JSON)
                 bracket_action_match = re.search(
-                    action_bracket_pattern, text, re.IGNORECASE
+                    action_bracket_pattern, text, re.DOTALL | re.IGNORECASE
                 )
                 if bracket_action_match:
                     tool_name = bracket_action_match.group(1).strip()
                     params_str = bracket_action_match.group(2).strip()
 
-                    # 解析方括号中的参数
+                    # 解析方括号中的参数(支持JSON格式和键值对格式)
                     tool_params = self._parse_bracket_params(params_str)
                 else:
                     # 提取标准格式的 Action 和 Action Input
@@ -1401,7 +1418,9 @@ class ReactAgent:
         """解析方括号中的参数字符串
 
         Args:
-            params_str: 参数字符串，格式如 "query=通义 DeepResearch, language=zh, max_results=5"
+            params_str: 参数字符串，支持以下格式：
+                1. JSON格式: {"key": "value", "num": 123}
+                2. 键值对格式: query=通义 DeepResearch, language=zh, max_results=5
 
         Returns:
             Dict[str, Any]: 解析后的参数字典
@@ -1410,10 +1429,28 @@ class ReactAgent:
             if not params_str.strip():
                 return {}
 
-            # 如果是完整的JSON字符串，直接解析
-            if self._is_json(params_str):
-                return json.loads(params_str)
+            # 优先尝试解析为JSON格式
+            # 检查是否以 { 开头，这是JSON对象的标志
+            params_str_stripped = params_str.strip()
+            if params_str_stripped.startswith("{") and params_str_stripped.endswith(
+                "}"
+            ):
+                try:
+                    parsed_json = json.loads(params_str_stripped)
+                    if isinstance(parsed_json, dict):
+                        logger.info(f"成功解析JSON格式参数: {parsed_json}")
+                        return parsed_json
+                except json.JSONDecodeError as e:
+                    logger.warning(f"JSON解析失败，尝试键值对格式: {e}")
+                    # JSON解析失败，继续尝试键值对格式
 
+            # 如果不是JSON格式或JSON解析失败，尝试使用 _is_json 方法检查
+            if self._is_json(params_str):
+                parsed = json.loads(params_str)
+                if isinstance(parsed, dict):
+                    return parsed
+
+            # 解析键值对格式
             params = {}
             # 使用正则表达式分割参数，支持包含逗号的值
             # 匹配 key=value 格式，value可以包含空格和特殊字符
@@ -1972,8 +2009,18 @@ class ReactAgent:
         thought: str,
         chat_id: str,
         tool: Tool,
+        user_query: Optional[str] = None,
     ) -> tuple:
-        """执行工具动作并处理结果"""
+        """执行工具动作并处理结果
+
+        Args:
+            action: 工具名称
+            action_input: 工具输入参数
+            thought: 思考过程
+            chat_id: 会话ID
+            tool: 工具实例
+            user_query: 当前会话的用户输入，用于工具记忆分析
+        """
         action_id = str(uuid.uuid4())
         stream = bool(self.stream_manager)
 
@@ -2052,6 +2099,24 @@ class ReactAgent:
         if action == "user_input":
             thought = f"{thought}\n{action_input['prompt']}"
 
+        # 异步处理工具记忆，不阻塞主流程
+        # 无论成功或失败都进行记忆总结
+        # 传递当前用户输入，同时会在 _process_tool_memory 内部加载历史会话
+        if self.memory_enabled:
+            asyncio.create_task(
+                self._process_tool_memory(
+                    tool_name=action,
+                    action_input=action_input,
+                    observation=observation,
+                    chat_id=chat_id,
+                    is_error=(retry_count > tool.max_retries),
+                    error_message=(
+                        error_msg if (retry_count > tool.max_retries) else None
+                    ),
+                    user_query=user_query,
+                )
+            )
+
         return observation, thought, action_id
 
     @langfuse_wrapper.observe_decorator(
@@ -2112,15 +2177,17 @@ class ReactAgent:
                 event = await create_agent_start_event(query)
                 await self.stream_manager.send_message(chat_id, event)
 
+            load_playbook = self._load_playbook_from_redis(self.conversation_id)
+
             # 剧本初始化
             current_playbook = await self._generate_playbook(
-                last_playbook="",
+                last_playbook=load_playbook,
                 tool_result="",
                 chat_id=chat_id,
                 model_name=self.model_name or self.reasoner_model_name,
                 query=query,
             )
-            self._save_playbook_to_redis(chat_id, current_playbook)
+            self._save_playbook_to_redis(self.conversation_id, current_playbook)
             # 运行主循环
             result = await self._run_main_loop(
                 chat_id,
@@ -2131,8 +2198,6 @@ class ReactAgent:
                 include_fields=self.include_fields,
             )
             if stream and self.stream_manager and result:
-                # 获取最新的 playbook
-                current_playbook = self._load_playbook_from_redis(chat_id)
                 event = await create_agent_complete_event(result)
                 await self.stream_manager.send_message(chat_id, event)
             # 保存用户查询到对话历史
@@ -2222,6 +2287,13 @@ class ReactAgent:
                 return "agent terminated"
 
             try:
+                # 为每个工具加载其历史执行记忆（包括成功和失败的经验）
+                if self.memory_enabled:
+                    for tool_name, tool_instance in self.tools.items():
+                        tool_instance.memory = await self._load_tool_memory_from_redis(
+                            tool_name, username=self.username
+                        )
+
                 # 构造并发送提示
                 prompt = self._construct_prompt(
                     query=query,
@@ -2256,7 +2328,7 @@ class ReactAgent:
                         final_answer = action_input
                     # generate playbook
                     # 获取上一步的剧本
-                    last_playbook = self._load_playbook_from_redis(chat_id)
+                    last_playbook = self._load_playbook_from_redis(self.conversation_id)
 
                     # 生成新的剧本
                     current_playbook = await self._generate_playbook(
@@ -2266,7 +2338,7 @@ class ReactAgent:
                         model_name=self.model_name or self.reasoner_model_name,
                         query=query,
                     )
-                    self._save_playbook_to_redis(chat_id, current_playbook)
+                    self._save_playbook_to_redis(self.conversation_id, current_playbook)
                     break
 
                 # 验证工具
@@ -2287,7 +2359,7 @@ class ReactAgent:
 
                 observation, thought, tool_execution_id = (
                     await self._execute_tool_action(
-                        action, action_input, thought, chat_id, tool
+                        action, action_input, thought, chat_id, tool, user_query=query
                     )
                 )
 
@@ -2330,8 +2402,9 @@ class ReactAgent:
                 self.scratchpad_items.append(new_item)
                 observations.append(observation)
 
+                # 记忆提取现在由 _execute_tool_action 统一异步处理，无需在此处重复
                 # 获取上一步的剧本
-                last_playbook = self._load_playbook_from_redis(chat_id)
+                last_playbook = self._load_playbook_from_redis(self.conversation_id)
 
                 # 生成新的剧本
                 current_playbook = await self._generate_playbook(
@@ -2341,7 +2414,7 @@ class ReactAgent:
                     model_name=self.model_name or self.reasoner_model_name,
                     query=query,
                 )
-                self._save_playbook_to_redis(chat_id, current_playbook)
+                self._save_playbook_to_redis(self.conversation_id, current_playbook)
 
                 # 每次工具执行后立即保存到Redis
                 if self.conversation_id:
@@ -2456,14 +2529,16 @@ class ReactAgent:
                 await asyncio.sleep(self.iteration_retry_delay)
         return final_answer
 
-    def _load_playbook_from_redis(self, chat_id: str) -> str:
+    def _load_playbook_from_redis(self, conversation_id: str) -> str:
         """从Redis加载剧本"""
         try:
             with self._redis_manager.get_redis_connection() as redis_cache:
-                redis_key = f"playbook:{chat_id}"
+                redis_key = f"playbook:{conversation_id}"
                 playbook = redis_cache.get(redis_key)
                 if playbook:
-                    logger.info(f"从Redis加载剧本成功 (chat_id: {chat_id})")
+                    logger.info(
+                        f"从Redis加载剧本成功 (conversation_id: {conversation_id})"
+                    )
                     return playbook
                 return ""
         except Exception as e:
@@ -2471,14 +2546,14 @@ class ReactAgent:
             return ""
 
     def _save_playbook_to_redis(
-        self, chat_id: str, playbook: str, expire_hours: int = 12
+        self, conversation_id: str, playbook: str, expire_hours: int = 12
     ):
         """将剧本保存到Redis"""
         try:
             with self._redis_manager.get_redis_connection() as redis_cache:
-                redis_key = f"playbook:{chat_id}"
+                redis_key = f"playbook:{conversation_id}"
                 redis_cache.set(redis_key, playbook, ex=expire_hours * 3600)
-                logger.info(f"成功保存剧本到Redis (conversation_id: {chat_id})")
+                logger.info(f"成功保存剧本到Redis (conversation_id: {conversation_id})")
         except Exception as e:
             logger.error(f"保存剧本到Redis失败: {e}")
 
@@ -2624,3 +2699,275 @@ class ReactAgent:
         """发送agent完成事件"""
         event = await create_agent_complete_event(message)
         await self.stream_manager.send_message(chat_id, event)
+
+    @langfuse_wrapper.observe_decorator(
+        name="_analyze_tool_execution", capture_input=True, capture_output=True
+    )
+    async def _analyze_tool_execution(
+        self,
+        tool_name: str,
+        action_input: Dict[str, Any],
+        error_message: Optional[str] = None,
+        observation: Optional[str] = None,
+        chat_id: str = None,
+        is_error: bool = False,
+        old_memory: Optional[str] = None,
+        user_query: Optional[str] = None,
+    ) -> str:
+        """
+        调用LLM分析工具执行结果，提取工具使用方式的指导意见（限500字符）。
+        只关注工具的正确使用方式，不关联具体任务内容。
+
+        Args:
+            tool_name: 工具名称
+            action_input: 工具输入参数
+            error_message: 错误信息（如果有）
+            observation: 工具执行结果
+            chat_id: 会话ID
+            is_error: 是否为错误执行
+            old_memory: 历史指导意见
+            user_query: 用户原始查询，用于更好地理解工具使用场景
+        """
+        # 构建上下文信息
+        context_info = ""
+        execution_status = "失败" if is_error else "成功"
+
+        if error_message:
+            context_info += f"- 错误信息: {error_message}\n"
+        if observation:
+            # 截取observation的前200字符，避免过长
+            obs_preview = (
+                observation[:200] + "..." if len(observation) > 200 else observation
+            )
+            context_info += f"- 工具输出: {obs_preview}\n"
+        if old_memory:
+            context_info += f"- 历史指导: {old_memory}\n"
+
+        # 安全地获取参数类型信息，处理嵌套字典的情况
+        def get_param_type(value):
+            """递归获取参数类型描述"""
+            if isinstance(value, dict):
+                return "dict"
+            elif isinstance(value, list):
+                return "list"
+            else:
+                return type(value).__name__
+
+        param_types = {k: get_param_type(v) for k, v in action_input.items()}
+
+        # 使用提取的提示词模板
+        prompt = TOOL_MEMORY_ANALYSIS_PROMPT.format(
+            tool_name=tool_name,
+            execution_status=execution_status,
+            param_types=json.dumps(param_types, ensure_ascii=False),
+            user_query=user_query or "未提供用户查询信息",
+            context_info=context_info,
+        )
+
+        model_to_use = self.reasoner_model_name or self.model_name
+        if not model_to_use:
+            logger.error("没有可用的模型进行工具执行分析")
+            return ""
+
+        try:
+            model_response = await call_llm_api(
+                [{"role": "user", "content": prompt}], model_name=model_to_use
+            )
+
+            if isinstance(model_response, tuple) and len(model_response) == 2:
+                extracted_text = model_response[0]
+            else:
+                extracted_text = model_response
+
+            # 清理并限制长度
+            result = extracted_text.strip()
+            # 移除可能的markdown标记
+            result = result.replace("```", "").replace("**", "").strip()
+
+            logger.info(
+                f"工具 '{tool_name}' ({execution_status}) 指导意见({len(result)}字符): {result}"
+            )
+            return result
+        except Exception as e:
+            logger.error(f"调用LLM分析工具执行结果时发生错误: {e}", exc_info=True)
+            return ""
+
+    async def _save_tool_memory_to_redis(
+        self,
+        tool_name: str,
+        tool_memory: str,  # 工具执行总结（成功或失败的指导意见）
+        expire_hours: int = 24,
+        username: str = None,
+    ) -> None:
+        """
+        将工具执行记忆（指导意见）存储到Redis中。
+        以 key:value 形式存储，每次生成新记忆时进行覆盖。
+        适用于成功和失败的执行结果。
+
+        Args:
+            tool_name: 工具名称
+            tool_memory: 工具使用指导意见
+            expire_hours: 过期时间（小时）
+            username: 用户名，用于隔离不同用户的工具记忆
+        """
+        try:
+            with self._redis_manager.get_redis_connection() as redis_cache:
+                # 使用用户名隔离工具记忆
+                if username:
+                    redis_key = f"tool_memory:{username}:{tool_name}"
+                else:
+                    redis_key = f"tool_memory:{tool_name}"
+
+                # 直接使用 SET 命令存储，覆盖旧记忆
+                redis_cache.set(redis_key, tool_memory, ex=expire_hours * 3600)
+                logger.info(
+                    f"成功保存工具 '{tool_name}' 的执行记忆到Redis (user: {username or 'global'})"
+                )
+        except Exception as e:
+            logger.error(
+                f"保存工具 '{tool_name}' 执行记忆到Redis失败: {e}", exc_info=True
+            )
+
+    @langfuse_wrapper.observe_decorator(
+        name="_load_tool_memory_from_redis", capture_input=True, capture_output=True
+    )
+    async def _load_tool_memory_from_redis(
+        self, tool_name: str, username: str = None
+    ) -> Optional[str]:
+        """
+        从Redis加载指定工具的最新执行记忆（指导意见）。
+
+        Args:
+            tool_name: 工具名称
+            username: 用户名，用于加载用户专属的工具记忆
+
+        Returns:
+            Optional[str]: 工具使用指导意见，如果不存在则返回None
+        """
+        try:
+            with self._redis_manager.get_redis_connection() as redis_cache:
+                # 优先加载用户专属记忆，如果不存在则加载全局记忆
+                if username:
+                    redis_key = f"tool_memory:{username}:{tool_name}"
+                    tool_memory = redis_cache.get(redis_key)
+                    if tool_memory:
+                        logger.info(
+                            f"成功从Redis加载工具 '{tool_name}' 的用户专属执行记忆 (user: {username})"
+                        )
+                        return tool_memory
+
+                # 回退到全局记忆
+                redis_key = f"tool_memory:{tool_name}"
+                tool_memory = redis_cache.get(redis_key)
+                if tool_memory:
+                    logger.info(f"成功从Redis加载工具 '{tool_name}' 的全局执行记忆")
+                    return tool_memory
+                return None
+        except Exception as e:
+            logger.error(
+                f"从Redis加载工具 '{tool_name}' 执行记忆失败: {e}", exc_info=True
+            )
+            return None
+
+    @langfuse_wrapper.observe_decorator(
+        name="_process_tool_memory", capture_input=True, capture_output=True
+    )
+    async def _process_tool_memory(
+        self,
+        tool_name: str,
+        action_input: Dict[str, Any],
+        observation: Optional[str] = None,
+        chat_id: str = None,
+        is_error: bool = False,
+        error_message: Optional[str] = None,
+        user_query: Optional[str] = None,
+    ) -> None:
+        """
+        异步处理工具记忆提取和保存。
+        从所有工具执行结果（成功或失败）中提取事实性指导意见（限500字符），用于优化后续工具调用。
+
+        Args:
+            tool_name: 工具名称
+            action_input: 工具输入参数
+            observation: 工具执行结果
+            chat_id: 会话ID
+            is_error: 是否为错误执行
+            error_message: 错误信息（如果有）
+            user_query: 当前会话的用户输入，将与历史会话一起传递给分析
+        """
+        try:
+            execution_status = "失败" if is_error else "成功"
+            logger.info(
+                f"开始处理工具 '{tool_name}' 的记忆提取 (状态: {execution_status})"
+            )
+
+            # 加载历史记忆
+            old_memory = await self._load_tool_memory_from_redis(
+                tool_name, username=self.username
+            )
+
+            # 组合用户输入：历史会话 + 当前会话
+            all_user_queries = []
+
+            # 1. 从会话历史中提取所有 user 角色的内容
+            if hasattr(self, "conversation_id") and self.conversation_id:
+                try:
+                    conversation_history = self._load_conversation_history(
+                        self.conversation_id
+                    )
+                    if conversation_history:
+                        # 提取所有 role 为 "user" 的内容
+                        historical_user_messages = [
+                            msg.get("content", "")
+                            for msg in conversation_history
+                            if msg.get("role") == "user"
+                        ]
+                        all_user_queries.extend(historical_user_messages)
+                        logger.debug(
+                            f"从会话历史中提取了 {len(historical_user_messages)} 条用户消息"
+                        )
+                except Exception as e:
+                    logger.warning(f"从会话历史中提取用户消息失败: {e}")
+
+            # 2. 添加当前会话的用户输入
+            if user_query:
+                all_user_queries.append(user_query)
+                logger.debug("添加了当前会话的用户输入")
+
+            # 3. 组合所有用户输入
+            combined_user_queries = (
+                "\n".join(all_user_queries)
+                if all_user_queries
+                else "未提供用户查询信息"
+            )
+
+            # 分析并提取指导意见（无论成功或失败都进行分析）
+            tool_guidance = await self._analyze_tool_execution(
+                tool_name=tool_name,
+                action_input=action_input,
+                error_message=error_message,
+                observation=observation,
+                chat_id=chat_id,
+                is_error=is_error,
+                old_memory=old_memory,
+                user_query=combined_user_queries,
+            )
+
+            # 保存指导意见
+            if tool_guidance is not None and tool_guidance.strip():
+                await self._save_tool_memory_to_redis(
+                    tool_name=tool_name,
+                    tool_memory=tool_guidance,
+                    username=self.username,
+                )
+                logger.info(
+                    f"工具 '{tool_name}' ({execution_status}) 指导意见已更新: {tool_guidance[:100]}..."
+                )
+            else:
+                logger.info(
+                    f"工具 '{tool_name}' ({execution_status}) 未生成新的指导意见"
+                )
+            return tool_guidance
+        except Exception as e:
+            logger.error(f"处理工具 '{tool_name}' 记忆失败: {e}", exc_info=True)
+            return None
