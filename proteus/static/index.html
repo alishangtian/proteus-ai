@@ -17,83 +17,18 @@
 
 <body>
     <!-- 左侧边栏 -->
-    <div class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="logo">
-                <img src="/static/icon/proteus.png" class="logo-icon" alt="Proteus Logo">
-                <div class="logo-text">Proteus</div>
-            </div>
-            <div class="user-info">
-                {% if logged_in %}
-                <span class="username">{{ username }}</span>
-                {% endif %}
-            </div>
-        </div>
-        <div class="sidebar-menu">
-            <div class="menu-item model-option active home-page" data-model="home">
-                <div class="menu-item-icon">
-                    🏠
-                </div>
-                <div class="menu-item-text">智能体</div>
-            </div>
-            <!-- <div class="menu-item model-option" data-model="super-agent">
-                <div class="menu-item-icon">
-                    🤖
-                </div>
-                <div class="menu-item-text">超级智能体</div>
-            </div> -->
-            <!-- <div class="menu-item model-option" data-model="workflow">
-                <div class="menu-item-icon">
-                    ⚙️
-                </div>
-                <div class="menu-item-text">自动工作流</div>
-            </div> -->
-            <div class="menu-item model-option" data-model="deep-research">
-                <div class="menu-item-icon">
-                    📚
-                </div>
-                <div class="menu-item-text">深度研究</div>
-            </div>
-            <div class="menu-item model-option" data-model="codeact-agent">
-                <div class="menu-item-icon">
-                    🖥️
-                </div>
-                <div class="menu-item-text">CodeAct智能体</div>
-            </div>
-            <div class="menu-item model-option" data-model="mcp-agent">
-                <div class="menu-item-icon">
-                    🖥️
-                </div>
-                <div class="menu-item-text">MCP智能体</div>
-            </div>
-            <div class="menu-item model-option" data-model="browser-agent">
-                <div class="menu-item-icon">
-                    💻
-                </div>
-                <div class="menu-item-text">Browser智能体</div>
-            </div>
-            <div class="menu-item model-option" data-model="create-agent">
-                <div class="menu-item-icon">
-                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" fill="none" stroke-width="2">
-                        <circle cx="12" cy="7" r="4" />
-                        <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-                        <line x1="12" y1="11" x2="12" y2="17" />
-                        <line x1="9" y1="14" x2="15" y2="14" />
-                    </svg>
-                </div>
-                <div class="menu-item-text">创建智能体</div>
-            </div>
-        </div>
-        <div class="sidebar-footer">
-            <svg class="toggle-sidebar" id="toggleSidebar" viewBox="0 0 24 24" width="20" height="20">
-                <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="4" y="4" width="16" height="16" rx="2"></rect>
-                    <path d="M9 4v16"></path>
-                </g>
-            </svg>
-        </div>
+    <div class="sidebar left-sidebar" id="leftSidebar">
+        <!-- <div class="user-info">
+            {% if logged_in %}
+            <span class="username">{{ username }}</span>
+            {% endif %}
+        </div> -->
     </div>
 
+    <!-- 左侧分隔线 -->
+    <div class="sidebar-resizer left-resizer" id="leftResizer"></div>
+
+    <!-- 中间内容区域 -->
     <div class="main-container">
         <div class="content-wrapper">
             <div id="conversation-history"></div>
@@ -102,6 +37,11 @@
                     <!-- 已上传文件将在这里显示 -->
                 </div>
                 <div class="input-wrapper">
+                    <div class="input-controls-left">
+                        <button id="options-button" type="button" aria-label="选项设置" class="options-button">
+                            +
+                        </button>
+                    </div>
                     <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
 
                     <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
@@ -115,41 +55,69 @@
                     </div>
                 </div>
 
-                <!-- 选项区域移动到输入框下方，视觉上与输入框融为一体（实际为分离容器） -->
-                <div class="options-bar" role="toolbar" aria-label="输入下方选项">
-                    <div class="model-select-wrapper" aria-hidden="false"
-                        style="display:flex;gap:8px;align-items:center;">
-                        <select id="model-select" class="select-control" aria-label="选择模式"></select>
-                        <select id="model-name-select" class="select-control" aria-label="选择模型"
-                            title="选择具体模型名称"></select>
+                <!-- 选项面板 - 点击+号后弹出 -->
+                <div id="options-panel" class="options-panel" style="display: none;">
+                    <div class="options-panel-content">
+                        <!-- <div class="options-panel-header">
+                            <button id="close-options-panel" type="button" aria-label="关闭">&times;</button>
+                        </div> -->
+                        <div class="options-panel-body">
+                            <div class="model-select-wrapper">
+                                <label for="model-select"><span>📚 工作模式</span></label>
+                                <select id="model-select" class="select-control" aria-label="工作模式" title="选择工作模式">
+                                    <option value="agent" selected>智能体</option>
+                                    <!-- <option value="super-agent" selected>超级智能体</option> -->
+                                    <option value="deep-research">深度研究</option>
+                                    <option value="codeact-agent">CodeAct智能体</option>
+                                    <option value="mcp-agent">MCP智能体</option>
+                                    <option value="browser-agent">Browser智能体</option>
+                                </select>
+                            </div>
 
-                        <div id="itecount-container" class="itecount-wrapper" aria-hidden="false"
-                            style="display:flex;align-items:center;gap:8px;">
-                            <label for="itecount" class="itecount-label" style="font-size:13px;color:#333">迭代</label>
-                            <input type="number" id="itecount" class="select-control ite-input" min="1" value="25"
-                                placeholder="轮次" />
-                        </div>
+                            <div class="model-select-wrapper">
+                                <label for="model-name-select"><span>👨‍🔬 模型</span></label>
+                                <select id="model-name-select" class="select-control" aria-label="模型"
+                                    title="选择模型"></select>
+                            </div>
 
-                        <div id="conversation_count-container" class="itecount-wrapper" aria-hidden="false"
-                            style="display:flex;align-items:center;gap:8px;">
-                            <label for="conversation_count" class="itecount-label"
-                                style="font-size:13px;color:#333">会话轮次</label>
-                            <input type="number" id="conversation_count" class="select-control ite-input" min="1"
-                                value="10" placeholder="轮次" />
-                        </div>
-                        <!-- 本地记忆开关：仅存浏览器本地，不会上传服务器 -->
-                        <div class="memory-wrapper" aria-label="记忆设置">
-                            <label class="memory-label">
-                                <input type="checkbox" id="memory-toggle" class="memory-toggle">
-                                <span>工具记忆</span>
-                            </label>
-                            <span class="memory-help" data-title="开启后，工具调用将会被提取和记录，以更好的支持随后工具的选择">?</span>
+                            <div id="itecount-container" class="model-select-wrapper">
+                                <label for="itecount"><span>🔄 迭代轮次</span></label>
+                                <input type="number" id="itecount" class="select-control" min="1" value="25"
+                                    placeholder="迭代轮次" />
+                            </div>
+
+                            <div id="conversation_count-container" class="model-select-wrapper">
+                                <label for="conversation_count"><span>💬 会话轮次</span></label>
+                                <input type="number" id="conversation_count" class="select-control" min="1" value="10"
+                                    placeholder="会话轮次" />
+                            </div>
+
+                            <div class="memory-wrapper">
+                                <label for="tool-memory-toggle">
+                                    <span>🔧 工具记忆</span>
+                                </label>
+                                <input type="checkbox" id="tool-memory-toggle" class="memory-toggle">
+                            </div>
+
+                            <div class="memory-wrapper">
+                                <label for="sop-memory-toggle">
+                                    <span>📋 SOP记忆</span>
+                                </label>
+                                <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div id="playbook-container" class="playbook-container">
+    </div>
+
+    <!-- 右侧分隔线 -->
+    <div class="sidebar-resizer right-resizer" id="rightResizer"></div>
+
+    <!-- 右侧边栏 -->
+    <div class="sidebar right-sidebar" id="rightSidebar">
+        <div class="playbook-container">
             <div id="playbook-content"></div>
         </div>
     </div>

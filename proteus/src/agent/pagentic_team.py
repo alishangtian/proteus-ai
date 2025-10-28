@@ -25,6 +25,8 @@ class PagenticTeam:
         conversation_id: str = None,
         conversation_round: int = 5,
         username: str = None,
+        sop_memory_enabled: bool = False,
+        tool_memory_enabled: bool = False,
     ):
         """
         初始化五个角色的agent

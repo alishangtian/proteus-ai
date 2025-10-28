@@ -39,6 +39,7 @@ from src.agent.prompt.react_prompt_v7 import REACT_PROMPT_V7
 from src.agent.prompt.react_prompt_v8 import REACT_PROMPT_V8
 from src.agent.prompt.react_playbook_prompt import REACT_PLAYBOOK_PROMPT
 from src.agent.prompt.react_playbook_prompt_v2 import REACT_PLAYBOOK_PROMPT_v2
+from src.agent.prompt.react_playbook_prompt_v3 import REACT_PLAYBOOK_PROMPT_v3
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -88,7 +89,7 @@ agent_dict = {}
 agent_model_list = [
     "workflow",
     "super-agent",
-    "home",
+    "agent",
     "mcp-agent",
     "multi-agent",
     "browser-agent",
@@ -501,7 +502,7 @@ async def get_newui_page(request: Request):
 async def create_chat(
     request: Request,
     text: str = Body(..., embed=True),
-    model: str = Body(..., embed=True),
+    modul: str = Body(..., embed=True),
     model_name: str = Body(None, embed=True),
     itecount: int = Body(5, embed=True),
     agentid: str = Body(None, embed=True),
@@ -509,7 +510,8 @@ async def create_chat(
     conversation_id: str = Body(None, embed=True),
     conversation_round: int = Body(5, embed=True),
     file_ids: Optional[List[str]] = Body(None, embed=True),  # 新增文件 ID 列表参数
-    memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
+    tool_memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
+    sop_memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
 ):
     """创建新的聊天会话
 
@@ -530,22 +532,23 @@ async def create_chat(
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     stream_manager.create_stream(chat_id, text)
 
-    if model in agent_model_list:
+    if modul in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
-        task = asyncio.create_task(
+        asyncio.create_task(
             process_agent(
                 chat_id,
                 text,
                 itecount,
                 agentid,
-                agentmodel=model,
+                agentmodul=modul,
                 team_name=team_name,
                 conversation_id=conversation_id,
                 model_name=model_name,
                 conversation_round=conversation_round,
                 file_ids=file_ids,  # 传递文件 ID 列表
                 username=username,  # 传递用户名
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递SOP记忆参数
             )
         )
     else:
@@ -851,14 +854,15 @@ async def process_agent(
     text: str,
     itecount: int,
     agentid: str = None,
-    agentmodel: str = None,
+    agentmodul: str = None,
     team_name: str = None,
     conversation_id: str = None,
     model_name: str = None,
     conversation_round: int = 5,
     file_ids: Optional[List[str]] = None,  # 新增文件 ID 列表参数
     username: str = None,  # 新增用户名参数
-    memory_enabled: bool = False,  # 新增工具记忆参数
+    tool_memory_enabled: bool = False,  # 新增工具记忆参数
+    sop_memory_enabled: bool = False,  # 新增 SOP 记忆参数
 ):
     """处理Agent请求的异步函数
 
@@ -903,10 +907,10 @@ async def process_agent(
             else:
                 logger.info(f"[{chat_id}] 没有文件解析内容需要添加到文本中。")
 
-        if agentmodel == "deep-research":
+        if agentmodul == "deep-research":
             # 建立 team 和 chatid 的绑定关系
             await _register_team_binding(
-                chat_id, team_name or "deep_research", agentmodel
+                chat_id, team_name or "deep_research", agentmodul
             )
 
             # 递归查找配置文件
@@ -962,7 +966,8 @@ async def process_agent(
                     llm_timeout=config.get("llm_timeout", None),
                     conversation_id=conversation_id,
                     conversation_round=conversation_round,
-                    memory_enabled=memory_enabled,  # 传递工具记忆参数
+                    tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                    sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
                 )
 
             # 创建团队实例
@@ -972,13 +977,14 @@ async def process_agent(
                 start_role=getattr(TeamRole, team_config["start_role"]),
                 conversation_round=conversation_round,
                 username=username,
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents(chat_id)
             logger.info(f"[{chat_id}] PagenticTeam开始运行")
             await team.run(text, chat_id)
-        elif agentmodel == "super-agent":
+        elif agentmodul == "super-agent":
             # 超级智能体，智能组建team并完成任务
             logger.info(f"[{chat_id}] 开始超级智能体请求")
             prompt_template = COT_TEAM_PROMPT_TEMPLATES
@@ -994,19 +1000,20 @@ async def process_agent(
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
                 username=username,
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
 
             await stream_manager.send_message(chat_id, await create_complete_event())
-        elif agentmodel == "codeact-agent":
+        elif agentmodul == "codeact-agent":
 
             # CodeAct Agent模式：只允许使用python_execute和user_input工具
             all_tools = [
                 "python_execute",
-                "file_write",
+                "user_input",
             ]
             prompt_template = REACT_PLAYBOOK_PROMPT_v2
             include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
@@ -1014,7 +1021,7 @@ async def process_agent(
             # 创建详细的instruction
             explanation = """
                 你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。
-                你可以使用Python代码进行任何计算、数据处理、文件操作等。
+                你可以使用Python代码进行任何计算、数据获取和处理。
                 在编写代码时，请确保代码安全且只执行必要的操作。"""
 
             # 获取基础工具集合 - 延迟初始化node_manager
@@ -1031,14 +1038,15 @@ async def process_agent(
                 include_fields=include_fields,
                 conversation_round=conversation_round,
                 username=username,
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id, context=file_analysis_context)
 
             await stream_manager.send_message(chat_id, await create_complete_event())
-        elif agentmodel == "browser-agent":
+        elif agentmodul == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
             agent = ReactAgent(
                 tools=[
@@ -1058,7 +1066,8 @@ async def process_agent(
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
                 username=username,
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
             # 调用Agent的run方法，启用stream功能
             await agent.run(text, chat_id)
@@ -1070,7 +1079,7 @@ async def process_agent(
                 "web_crawler",
                 "user_input",
             ]
-            prompt_template = REACT_PLAYBOOK_PROMPT_v2
+            prompt_template = REACT_PLAYBOOK_PROMPT_v3
             # 获取基础工具集合 - 延迟初始化node_manager
             agent = ReactAgent(
                 tools=all_tools,
@@ -1084,7 +1093,8 @@ async def process_agent(
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
                 username=username,
-                memory_enabled=memory_enabled,  # 传递工具记忆参数
+                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
+                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
 
             # 调用Agent的run方法，启用stream功能

@@ -31,6 +31,8 @@ class AgentConfiguration:
         conversation_id: str = None,
         conversation_round: int = 5,
         historical_scratchpad_items: List[ScratchpadItem] = None,
+        tool_memory_enabled: bool = False,
+        sop_memory_enabled: bool = False,
     ):
         """初始化Agent配置
 
@@ -47,6 +49,8 @@ class AgentConfiguration:
             llm_timeout: LLM超时时间
             conversation_id: 会话ID，用于获取历史信息
             historical_scratchpad_items: 历史迭代信息，从Redis中获取
+            tool_memory_enabled: 工具记忆开关
+            sop_memory_enabled: SOP记忆开关
         """
         self.role_type = role_type
         self.agent_instruction = agent_instruction
@@ -61,3 +65,5 @@ class AgentConfiguration:
         self.conversation_id = conversation_id
         self.historical_scratchpad_items = historical_scratchpad_items or []
         self.conversation_round = conversation_round
+        self.tool_memory_enabled = tool_memory_enabled
+        self.sop_memory_enabled = sop_memory_enabled

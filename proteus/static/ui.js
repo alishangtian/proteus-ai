@@ -279,8 +279,13 @@ export function createQuestionElement(text, currentModel) {
     return { questionElement, answerElement, questionDiv };
 }
 export function updatePlaybook(tasks) {
-    const playbookContainer = document.getElementById('playbook-container');
+    const playbookContainer = document.querySelector('.playbook-container');
     const playbookContent = document.getElementById('playbook-content');
+
+    if (!playbookContainer || !playbookContent) {
+        console.error('Playbook container elements not found');
+        return;
+    }
 
     if (tasks && tasks.length > 0) {
         // 构建任务列表 HTML

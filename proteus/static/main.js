@@ -32,7 +32,7 @@ async function fetchPlaybook() {
         return null;
     }
 }
-// 菜单栏收起/展开功能
+// 侧边栏拖拽功能
 document.addEventListener('DOMContentLoaded', function () {
     // 添加菜单项点击事件
     document.querySelectorAll('.menu-item').forEach(item => {
@@ -42,18 +42,101 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    const sidebar = document.querySelector('.sidebar');
-    const toggleBtn = document.querySelector('.toggle-sidebar');
+    // 侧边栏拖拽功能
+    function initSidebarResizer() {
+        const leftSidebar = document.getElementById('leftSidebar');
+        const rightSidebar = document.getElementById('rightSidebar');
+        const leftResizer = document.getElementById('leftResizer');
+        const rightResizer = document.getElementById('rightResizer');
+        const mainContainer = document.querySelector('.main-container');
 
-    // 默认保持菜单栏展开状态
-    sidebar.classList.remove('collapsed');
+        if (!leftSidebar || !rightSidebar || !leftResizer || !rightResizer || !mainContainer) {
+            console.warn('侧边栏拖拽元素未找到，跳过初始化');
+            return;
+        }
 
-    // 切换按钮点击事件
-    toggleBtn.addEventListener('click', function () {
-        sidebar.classList.toggle('collapsed');
-        // 保存状态到本地存储
-        localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
-    });
+        // 左侧拖拽功能
+        let isLeftDragging = false;
+        let startXLeft = 0;
+        let startWidthLeft = 0;
+
+        leftResizer.addEventListener('mousedown', function (e) {
+            isLeftDragging = true;
+            startXLeft = e.clientX;
+            startWidthLeft = parseInt(document.defaultView.getComputedStyle(leftSidebar).width, 10);
+
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            leftResizer.classList.add('dragging');
+
+            e.preventDefault();
+        });
+
+        // 右侧拖拽功能
+        let isRightDragging = false;
+        let startXRight = 0;
+        let startWidthRight = 0;
+
+        rightResizer.addEventListener('mousedown', function (e) {
+            isRightDragging = true;
+            startXRight = e.clientX;
+            startWidthRight = parseInt(document.defaultView.getComputedStyle(rightSidebar).width, 10);
+
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            rightResizer.classList.add('dragging');
+
+            e.preventDefault();
+        });
+
+        // 鼠标移动事件
+        document.addEventListener('mousemove', function (e) {
+            if (isLeftDragging) {
+                const deltaX = e.clientX - startXLeft;
+                const newWidth = Math.max(200, Math.min(500, startWidthLeft + deltaX));
+
+                leftSidebar.style.width = `${newWidth}px`;
+                // 更新左侧分隔线位置
+                leftResizer.style.left = `calc(${newWidth}px - 4px)`;
+                // 更新CSS变量，确保其他样式也能响应
+                document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+            }
+
+            if (isRightDragging) {
+                const deltaX = startXRight - e.clientX;
+                const newWidth = Math.max(200, Math.min(500, startWidthRight + deltaX));
+
+                rightSidebar.style.width = `${newWidth}px`;
+                // 更新右侧分隔线位置
+                rightResizer.style.right = `calc(${newWidth}px - 4px)`;
+                // 更新CSS变量，确保其他样式也能响应
+                document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+            }
+        });
+
+        // 鼠标释放事件
+        document.addEventListener('mouseup', function () {
+            if (isLeftDragging || isRightDragging) {
+                isLeftDragging = false;
+                isRightDragging = false;
+
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                leftResizer.classList.remove('dragging');
+                rightResizer.classList.remove('dragging');
+            }
+        });
+
+        // 防止拖拽时选中文本
+        document.addEventListener('selectstart', function (e) {
+            if (isLeftDragging || isRightDragging) {
+                e.preventDefault();
+            }
+        });
+    }
+
+    // 初始化侧边栏拖拽功能
+    initSidebarResizer();
 });
 
 
@@ -62,17 +145,17 @@ let currentChatId = null;
 let isProcessing = false;
 let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
-const showIterationModels = ["super-agent", "home", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
+const showIterationModels = ["super-agent", "agent", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
 
- // 会话级“工具洞察”开关读取（仅以当前会话为准）
- // 说明：避免被历史 localStorage 的 options_memory_enabled 干扰
- function isToolInsightEnabled() {
-   try {
-     return sessionStorage.getItem('tool_insight_enabled') === 'true';
-   } catch (e) {
-     return false;
-   }
- }
+// 会话级“工具洞察”开关读取（仅以当前会话为准）
+// 说明：避免被历史 localStorage 的 options_memory_enabled 干扰
+function isToolInsightEnabled() {
+    try {
+        return sessionStorage.getItem('tool_insight_enabled') === 'true';
+    } catch (e) {
+        return false;
+    }
+}
 
 // 简单安全清理：移除 <script> 和 <style>，并删除所有 on* 事件属性与 javascript: 协议的 href/src
 function sanitizeHTML(html) {
@@ -459,6 +542,45 @@ document.addEventListener('click', function (e) {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 选项面板显示/隐藏逻辑
+    const optionsButton = document.getElementById('options-button');
+    const optionsPanel = document.getElementById('options-panel');
+    const closeOptionsPanel = document.getElementById('close-options-panel');
+
+    function toggleOptionsPanel() {
+        if (optionsPanel.style.display === 'none' || !optionsPanel.style.display) {
+            optionsPanel.style.display = 'block';
+        } else {
+            optionsPanel.style.display = 'none';
+        }
+    }
+
+    function closeOptionsPanelHandler() {
+        optionsPanel.style.display = 'none';
+    }
+
+    // 点击+号按钮切换面板
+    if (optionsButton) {
+        optionsButton.addEventListener('click', toggleOptionsPanel);
+    }
+
+    // 点击关闭按钮关闭面板
+    if (closeOptionsPanel) {
+        closeOptionsPanel.addEventListener('click', closeOptionsPanelHandler);
+    }
+
+    // 点击面板外部关闭面板
+    document.addEventListener('click', (event) => {
+        if (optionsPanel && optionsPanel.style.display === 'block') {
+            const isClickInsideOptionsButton = optionsButton.contains(event.target);
+            const isClickInsidePanel = optionsPanel.contains(event.target);
+
+            if (!isClickInsideOptionsButton && !isClickInsidePanel) {
+                closeOptionsPanelHandler();
+            }
+        }
+    });
+
     // 添加页面刷新前的处理
     window.addEventListener('beforeunload', (event) => {
         if (isProcessing && currentChatId) {
@@ -492,11 +614,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!inp.getAttribute('min')) inp.setAttribute('min', '1');
             inp.setAttribute('inputmode', 'numeric'); // 移动端数字键盘
 
-            // 视觉缩窄，覆盖全局 .ite-input 的 min-width
-            inp.style.minWidth = '56px';
-            inp.style.width = '56px';
-            inp.style.maxWidth = '64px';
-            inp.style.textAlign = 'center';
 
             // 实时限制为最多三位纯数字
             inp.addEventListener('input', () => {
@@ -640,79 +757,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 初始化显示状态 - 只选中首页选项
-    document.querySelectorAll('.menu-item').forEach(item => {
-        item.classList.remove('active');
-        if (item.classList.contains("home-page")) {
-            item.classList.add('active');
-            updateIterationDisplay(item);
-            currentModel = item.getAttribute('data-model');
-            // 为初始模型生成conversation_id
-            currentConversationId = generateConversationId();
-            conversationIdStorage[currentModel] = currentConversationId;
-            // 同步下拉选中
-            if (modelSelect) modelSelect.value = currentModel;
+    // 初始化显示状态 - 为所有模式生成初始conversation_id
+    Array.from(document.getElementById('model-select').options).forEach(item => {
+        const model = item.value
+        if (!conversationIdStorage[model]) {
+            conversationIdStorage[model] = generateConversationId();
         }
     });
-
-    modelOptions.forEach(item => {
-        item.addEventListener('click', function () {
-            const newModel = this.getAttribute('data-model');
-
-            // 检查是否是创建智能体菜单项
-            if (newModel === 'create-agent') {
-                window.location.href = '/agent-page';
-                return;
-            }
-
-            // 1. 存储当前对话历史
-            const conversationHistory = document.getElementById('conversation-history');
-            if (currentModel && conversationHistory.children.length > 0) {
-                historyStorage[currentModel] = conversationHistory.innerHTML;
-            }
-
-            // 2. 存储当前模型的conversation_id
-            if (currentModel && currentConversationId) {
-                conversationIdStorage[currentModel] = currentConversationId;
-            }
-
-            // 3. 清空当前对话历史和 playbook
-            conversationHistory.innerHTML = '';
-            document.getElementById('playbook-content').innerHTML = '';
-            const pbContainer = document.getElementById('playbook-container');
-            if (pbContainer) pbContainer.classList.remove('is-visible');
-
-            // 4. 恢复新模型的对话历史和 playbook (如果存在)
-            if (historyStorage[newModel]) {
-                conversationHistory.innerHTML = historyStorage[newModel];
-            }
-            if (playbookStorage[newModel]) {
-                document.getElementById('playbook-content').innerHTML = playbookStorage[newModel];
-                const pbContainer2 = document.getElementById('playbook-container');
-                if (pbContainer2) pbContainer2.classList.add('is-visible');
-            }
-
-            // 5. 恢复或生成新模型的conversation_id
-            if (conversationIdStorage[newModel]) {
-                currentConversationId = conversationIdStorage[newModel];
-            } else {
-                // 为新模型生成新的conversation_id
-                currentConversationId = generateConversationId();
-                conversationIdStorage[newModel] = currentConversationId;
-            }
-
-            // 更新UI状态
-            document.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-            this.classList.add('active');
-            currentModel = newModel;
-            updateIterationDisplay(this);
-            // 同步下拉选择（如果存在）
-            if (modelSelect) {
-                modelSelect.value = newModel;
-            }
-        });
-    });
-
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
     const fileUpload = document.getElementById('file-upload');
@@ -736,7 +787,8 @@ document.addEventListener('DOMContentLoaded', () => {
         userInput.disabled = true;
         sendButton.disabled = true;
         uploadButton.disabled = true;
-        uploadButton.textContent = '上传中...';
+        uploadButton.innerHTML = '<svg class="loading-spinner-svg" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>';
+        uploadButton.classList.add('is-uploading'); // 添加上传中的类
 
         // 为每个文件创建上传中的占位符
         const filesToUpload = Array.from(files);
@@ -803,7 +855,8 @@ document.addEventListener('DOMContentLoaded', () => {
             userInput.disabled = false;
             sendButton.disabled = false;
             uploadButton.disabled = false;
-            uploadButton.textContent = '📎';
+            uploadButton.innerHTML = '📎';
+            uploadButton.classList.remove('is-uploading'); // 移除上传中的类
             fileUpload.value = ''; // 清空文件输入，以便再次选择相同文件
         });
     });
@@ -970,7 +1023,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     userInput.disabled = true;
                     sendButton.disabled = true;
                     uploadButton.disabled = true;
-                    uploadButton.textContent = '上传中...';
+                    uploadButton.innerHTML = '<svg class="loading-spinner-svg" viewBox="0 0 50 50"><circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle></svg>';
+                    uploadButton.classList.add('is-uploading'); // 添加上传中的类
 
                     // 创建上传中的占位符
                     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1027,7 +1081,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         userInput.disabled = false;
                         sendButton.disabled = false;
                         uploadButton.disabled = false;
-                        uploadButton.textContent = '📎';
+                        uploadButton.innerHTML = '📎';
+                        uploadButton.classList.remove('is-uploading'); // 移除上传中的类
                     }
                 }
             }
@@ -1093,8 +1148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function stopExecution() {
         if (!currentChatId) return;
 
-        const selectedModelButton = document.querySelector('.model-option.active');
-        const selectedModel = selectedModelButton.getAttribute('data-model');
+        const selectedModel = document.getElementById('model-select').value
 
         try {
             const response = await fetch(`/stop/${selectedModel}/${currentChatId}`, {
@@ -1206,62 +1260,34 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAnswer = '';
 
         try {
-            // 先发送POST请求创建chat会话
-            const selectedModelButton = document.querySelector('.menu-item.model-option.active');
-            if (!selectedModelButton) {
-                console.error('未选择模型');
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error';
-                errorDiv.textContent = '请先选择模型';
-                answerElement.appendChild(errorDiv);
-                resetUI();
-                return;
-            }
-            const selectedModel = selectedModelButton.getAttribute('data-model');
-
+            const selectedModul = document.getElementById('model-select').value;
+            const conversation_id = conversationIdStorage[selectedModul]
             // 统一读取具体模型下拉（如果存在），并规范化为空值为 undefined
-            const selectedModelNameEl = document.getElementById('model-name-select');
-            const rawSelectedModelName = selectedModelNameEl ? selectedModelNameEl.value : '';
-            const selectedModelName = rawSelectedModelName && rawSelectedModelName.trim() !== '' ? rawSelectedModelName.trim() : undefined;
+            const selectedModelName = document.getElementById('model-name-select').value;
 
             console.log('sendMessage: uploadedFiles array:', uploadedFiles); // 添加日志
 
             let response;
-            if (selectedModel === 'multi-agent') {
-                // 多智能体模式使用 /agents/route 接口
-                // 将 model_name 也一并传递，便于后端区分具体底层模型
-                response = await fetch('/agents/route', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        query: text,
-                        conversation_id: currentConversationId,
-                        max_iterations: parseInt(document.getElementById('itecount').value) || 10,
-                        stream: true,
-                        model_name: selectedModelName,
-                        file_ids: uploadedFiles.map(file => file.id), memory_enabled: isToolInsightEnabled() // 工具洞察开关（会话级）
-                      })
-                });
-            } else {
-                // 其他模式使用 /chat 接口
-                response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        text,
-                        model: selectedModel,
-                        model_name: selectedModelName,
-                        conversation_id: currentConversationId,
-                        itecount: showIterationModels.includes(selectedModel) ? parseInt(document.getElementById('itecount').value) : undefined,
-                        conversation_count: parseInt(document.getElementById('conversation_count').value) || 5,
-                        file_ids: uploadedFiles.map(file => file.id), memory_enabled: isToolInsightEnabled() // 工具洞察开关（会话级）
-                      })
-                });
-            }
+
+            // 其他模式使用 /chat 接口
+            response = await fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text,
+                    modul: selectedModul,
+                    model_name: selectedModelName,
+                    conversation_id: conversation_id,
+                    itecount: parseInt(document.getElementById('itecount').value),
+                    conversation_round: parseInt(document.getElementById('conversation_count').value),
+                    file_ids: uploadedFiles.map(file => file.id),
+                    tool_memory_enabled: document.getElementById('tool-memory-toggle').checked, // 工具洞察开关（会话级）
+                    sop_memory_toggle: document.getElementById('sop-memory-toggle').checked
+                })
+            });
+
 
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
@@ -1311,72 +1337,198 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
-// ===== Memory option for options-bar (persist selections locally, add help tooltip) =====
+// ===== 选项面板缓存功能 (24小时有效期) =====
 document.addEventListener('DOMContentLoaded', () => {
-  try {
-    const optionsBar = document.querySelector('.options-bar');
-    const modelWrapper = optionsBar ? optionsBar.querySelector('.model-select-wrapper') : null;
-    if (!modelWrapper) return;
+    const OPTIONS_CACHE_KEY = 'proteus_options_cache';
+    const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24小时（毫秒）
 
-    // 使用页面内现有的“记忆”开关（优先），若不存在则回退为动态创建
-    let memoryToggle = document.getElementById('memory-toggle');
-    if (!memoryToggle) {
-      const memoryWrapper = document.createElement('div');
-      memoryWrapper.className = 'memory-wrapper';
-      memoryWrapper.style.display = 'inline-flex';
-      memoryWrapper.style.alignItems = 'center';
-      memoryWrapper.style.gap = '8px';
+    // 获取所有选项元素
+    const optionElements = {
+        modelSelect: document.getElementById('model-select'),
+        modelNameSelect: document.getElementById('model-name-select'),
+        itecount: document.getElementById('itecount'),
+        conversationCount: document.getElementById('conversation_count'),
+        toolmemoryToggle: document.getElementById('tool-memory-toggle'),
+        sopMemoryToggle: document.getElementById('sop-memory-toggle')
+    };
 
-      memoryWrapper.innerHTML = `
-        <label class="memory-label" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
-          <input type="checkbox" id="memory-toggle" class="memory-toggle" style="cursor:pointer;">
-          <span>记忆</span>
-        </label>
-        <span class="memory-help" data-title="开启后，将在本次会话记录并分析工具调用，用于优化后续调用；该状态会随请求传给后端参与决策。" aria-label="记忆说明" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--primary-blue);color:#fff;font-weight:600;cursor:help;user-select:none;">?</span>
-      `;
-      if (modelWrapper) modelWrapper.appendChild(memoryWrapper);
-      memoryToggle = memoryWrapper.querySelector('#memory-toggle');
-    } else {
-      // 兜底：使用 data-title 避免原生 title 产生第二种提示
-      const help = document.querySelector('.memory-help');
-      if (help) {
-        if (!help.getAttribute('data-title')) {
-          help.setAttribute('data-title', '开启后，将在本次会话记录并分析工具调用，用于优化后续调用；该状态会随请求传给后端参与决策。');
+    /**
+     * 保存选项到 localStorage，带时间戳
+     */
+    function saveOptionsToCache() {
+        try {
+            const options = {
+                modelSelect: optionElements.modelSelect?.value || '',
+                modelNameSelect: optionElements.modelNameSelect?.value || '',
+                itecount: optionElements.itecount?.value || '25',
+                conversationCount: optionElements.conversationCount?.value || '10',
+                toolmemoryToggle: optionElements.toolmemoryToggle?.checked || false,
+                sopMemoryToggle: optionElements.sopMemoryToggle?.checked || false,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(OPTIONS_CACHE_KEY, JSON.stringify(options));
+            console.log('选项已缓存:', options);
+        } catch (e) {
+            console.warn('保存选项缓存失败:', e);
         }
-        if (help.hasAttribute('title')) help.removeAttribute('title');
-      }
     }
 
-    // 仅控制“工具洞察”开关（会话级），不再持久化 UI 参数
-    const INSIGHT_KEY = 'tool_insight_enabled';
+    /**
+     * 从 localStorage 加载选项（检查24小时有效期）
+     */
+    function loadOptionsFromCache() {
+        try {
+            const cached = localStorage.getItem(OPTIONS_CACHE_KEY);
+            if (!cached) return null;
 
-    function getInsightEnabled() {
-      try { return sessionStorage.getItem(INSIGHT_KEY) === 'true'; } catch { return false; }
+            const options = JSON.parse(cached);
+            const now = Date.now();
+
+            // 检查缓存是否过期（24小时）
+            if (!options.timestamp || (now - options.timestamp) > CACHE_DURATION) {
+                console.log('选项缓存已过期，清除缓存');
+                localStorage.removeItem(OPTIONS_CACHE_KEY);
+                return null;
+            }
+
+            console.log('加载缓存的选项:', options);
+            return options;
+        } catch (e) {
+            console.warn('加载选项缓存失败:', e);
+            return null;
+        }
     }
-    function setInsightEnabled(v) {
-      try { sessionStorage.setItem(INSIGHT_KEY, v ? 'true' : 'false'); } catch {}
+
+    /**
+     * 应用缓存的选项到UI
+     */
+    function applyOptionsToUI(options) {
+        if (!options) return;
+
+        try {
+            // 应用工作模式
+            if (optionElements.modelSelect && options.modelSelect) {
+                optionElements.modelSelect.value = options.modelSelect;
+            }
+
+            // 应用模型名称（需要等待模型列表加载完成）
+            if (optionElements.modelNameSelect && options.modelNameSelect) {
+                // 延迟设置，确保选项已加载
+                const setModelName = () => {
+                    if (optionElements.modelNameSelect.options.length > 0) {
+                        optionElements.modelNameSelect.value = options.modelNameSelect;
+                    } else {
+                        setTimeout(setModelName, 100);
+                    }
+                };
+                setModelName();
+            }
+
+            // 应用迭代轮次
+            if (optionElements.itecount && options.itecount) {
+                optionElements.itecount.value = options.itecount;
+            }
+
+            // 应用会话轮次
+            if (optionElements.conversationCount && options.conversationCount) {
+                optionElements.conversationCount.value = options.conversationCount;
+            }
+
+            // 应用工具记忆开关
+            if (optionElements.memoryToggle && typeof options.memoryToggle === 'boolean') {
+                optionElements.memoryToggle.checked = options.memoryToggle;
+            }
+
+            // 应用SOP记忆开关
+            if (optionElements.sopMemoryToggle && typeof options.sopMemoryToggle === 'boolean') {
+                optionElements.sopMemoryToggle.checked = options.sopMemoryToggle;
+            }
+
+            console.log('选项已应用到UI');
+        } catch (e) {
+            console.warn('应用选项到UI失败:', e);
+        }
     }
 
-     // 初始化 toggle（一次性迁移 legacy 的 localStorage -> sessionStorage）
-     try {
-       const legacy = (localStorage.getItem('options_memory_enabled') === 'true');
-       const current = getInsightEnabled();
-       if (!current && legacy) {
-         setInsightEnabled(true);
-         try { localStorage.removeItem('options_memory_enabled'); } catch {}
-       }
-       memoryToggle.checked = getInsightEnabled();
-     } catch {
-       memoryToggle.checked = getInsightEnabled();
-     }
+    /**
+     * 为所有选项元素添加change事件监听器
+     */
+    function attachChangeListeners() {
+        Object.values(optionElements).forEach(element => {
+            if (!element) return;
 
-    // 切换 -> 更新会话状态（随请求传到后端）
-    memoryToggle.addEventListener('change', () => {
-      setInsightEnabled(memoryToggle.checked);
+            const eventType = element.type === 'checkbox' ? 'change' : 'change';
+            element.addEventListener(eventType, () => {
+                saveOptionsToCache();
+            });
+        });
+    }
+
+    // 初始化：加载缓存的选项
+    const cachedOptions = loadOptionsFromCache();
+    if (cachedOptions) {
+        applyOptionsToUI(cachedOptions);
+    }
+
+    // 附加change监听器以自动保存
+    attachChangeListeners();
+
+    // 页面卸载时保存一次（确保最新状态被保存）
+    window.addEventListener('beforeunload', () => {
+        saveOptionsToCache();
     });
+});
 
-    // 不再保存/恢复模型与参数；“记忆”仅表示开启会话级工具洞察
-  } catch (e) {
-    console.warn('初始化记忆选项失败:', e);
-  }
+// ===== Memory option for options-panel (persist selections locally, add help tooltip) =====
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const optionsPanel = document.getElementById('options-panel');
+        const memoryWrapper = optionsPanel ? optionsPanel.querySelector('.memory-wrapper') : null;
+        if (!memoryWrapper) return;
+
+        // 使用页面内现有的"记忆"开关
+        let toolmemoryToggle = document.getElementById('tool-memory-toggle');
+        if (!toolmemoryToggle) return;
+
+        // 兜底：使用 data-title 避免原生 title 产生第二种提示
+        const help = document.querySelector('.memory-help');
+        if (help) {
+            if (!help.getAttribute('data-title')) {
+                help.setAttribute('data-title', '开启后，将在本次会话记录并分析工具调用，用于优化后续调用；该状态会随请求传给后端参与决策。');
+            }
+            if (help.hasAttribute('title')) help.removeAttribute('title');
+        }
+
+        // 仅控制"工具洞察"开关（会话级），不再持久化 UI 参数
+        const INSIGHT_KEY = 'tool_insight_enabled';
+
+        function getInsightEnabled() {
+            try { return sessionStorage.getItem(INSIGHT_KEY) === 'true'; } catch { return false; }
+        }
+        function setInsightEnabled(v) {
+            try { sessionStorage.setItem(INSIGHT_KEY, v ? 'true' : 'false'); } catch { }
+        }
+
+        // 初始化 toggle（一次性迁移 legacy 的 localStorage -> sessionStorage）
+        try {
+            const legacy = (localStorage.getItem('options_memory_enabled') === 'true');
+            const current = getInsightEnabled();
+            if (!current && legacy) {
+                setInsightEnabled(true);
+                try { localStorage.removeItem('options_memory_enabled'); } catch { }
+            }
+            toolmemoryToggle.checked = getInsightEnabled();
+        } catch {
+            toolmemoryToggle.checked = getInsightEnabled();
+        }
+
+        // 切换 -> 更新会话状态（随请求传到后端）
+        toolmemoryToggle.addEventListener('change', () => {
+            setInsightEnabled(toolmemoryToggle.checked);
+        });
+
+        // 不再保存/恢复模型与参数；"记忆"仅表示开启会话级工具洞察
+    } catch (e) {
+        console.warn('初始化记忆选项失败:', e);
+    }
 });

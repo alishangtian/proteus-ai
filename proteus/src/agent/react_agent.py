@@ -326,7 +326,8 @@ class ReactAgent:
         conversation_round: int = 5,
         include_fields: List[IncludeFields] = None,  # agent 组装 prompt 时要选择的字段
         username: str = None,  # 用户名，用于隔离工具记忆
-        memory_enabled: bool = False,
+        tool_memory_enabled: bool = False,  # 传递工具记忆参数
+        sop_memory_enabled: bool = False,  # 传递 SOP 记忆参数
     ):
         """初始化ReactAgent
 
@@ -382,7 +383,8 @@ class ReactAgent:
         )  # 使用LangfuseWrapper获取追踪对象
         self.include_fields = include_fields  # agent 组装 prompt 时要选择的字段
         self.username = username  # 用户名，用于工具记忆隔离
-        self.memory_enabled = memory_enabled
+        self.tool_memory_enabled = tool_memory_enabled
+        self.sop_memory_enabled = sop_memory_enabled
 
         # 初始化Redis连接管理器
         self._redis_manager = RedisConnectionManager()
@@ -862,7 +864,7 @@ class ReactAgent:
                         tool_desc_parts.append(tool_desc_base)
 
                     # 附加工具的历史错误记忆（修正后的事实），如果存在
-                    if self.memory_enabled and tool.memory:
+                    if self.tool_memory_enabled and tool.memory:
                         memories_str = f"**使用指引** {tool.memory}\n"
                         tool_desc_parts.append(memories_str)
 
@@ -1294,12 +1296,15 @@ class ReactAgent:
 
             # 优化的正则表达式模式，支持多行内容提取
             # 使用非贪婪匹配和更精确的边界检测
-            thought_pattern = r"Thought:\s*(.*?)(?=\n(?:Action|Answer):|$)"
-            action_pattern = r"Action:\s*(.*?)(?=\nAction Input:|$)"
-            action_input_pattern = (
-                r"Action Input:\s*(.*?)(?=\n(?:Thought|Action|Answer):|$)"
+            # 支持中英文冒号，冒号前后可以有 0 个或多个空格
+            thought_pattern = (
+                r"Thought\s*[:：]\s*(.*?)(?=\n(?:Action|Answer)\s*[:：]|$)"
             )
-            answer_pattern = r"Answer:\s*(.*?)(?=\n(?:Thought|Action):|$)"
+            action_pattern = r"Action\s*[:：]\s*(.*?)(?=\nAction Input\s*[:：]|$)"
+            action_input_pattern = (
+                r"Action Input\s*[:：]\s*(.*?)(?=\n(?:Thought|Action|Answer)\s*[:：]|$)"
+            )
+            answer_pattern = r"Answer\s*[:：]\s*(.*?)(?=\n(?:Thought|Action)\s*[:：]|$)"
 
             # 提取 Thought - 支持多行内容
             thought_match = re.search(thought_pattern, text, re.DOTALL | re.IGNORECASE)
@@ -1313,9 +1318,10 @@ class ReactAgent:
                     "tool": {"name": "final_answer", "params": text},
                 }
 
-            # 检查是否包含 Answer（最终答案模式）- 提取所有后续内容
-            answer_match = re.search(answer_pattern, text, re.DOTALL | re.IGNORECASE)
-            if answer_match:
+            if re.search(answer_pattern, text, re.DOTALL | re.IGNORECASE):
+                answer_match = re.search(
+                    answer_pattern, text, re.DOTALL | re.IGNORECASE
+                )
                 tool_name = "final_answer"
                 # 提取Answer后的所有内容，包括换行
                 tool_params = answer_match.group(1).strip()
@@ -1324,7 +1330,8 @@ class ReactAgent:
                 # 格式1：Action: tool_name[param1=value1, param2=value2, ...]
                 # 格式2：Action: tool_name[{"key": "value", ...}]
                 # 使用 DOTALL 标志使 . 能匹配换行符,支持多行JSON
-                action_bracket_pattern = r"Action:\s*([^[\s]+)\[(.*?)\]"
+                # 支持中英文冒号，冒号前后可以有 0 个或多个空格
+                action_bracket_pattern = r"Action\s*[:：]\s*([^[\s]+)\[(.*?)\]"
 
                 # 首先尝试方括号格式的Action (使用DOTALL支持多行JSON)
                 bracket_action_match = re.search(
@@ -1379,7 +1386,8 @@ class ReactAgent:
             # 如果没有找到有效的工具名称，尝试更宽松的匹配
             if not tool_name:
                 # 尝试更宽松的模式匹配，处理可能的格式变化
-                loose_answer_pattern = r"(?:Answer|答案|回答)[:：]\s*(.*)"
+                # 支持中英文冒号，冒号前后可以有 0 个或多个空格
+                loose_answer_pattern = r"(?:Answer|答案|回答)\s*[:：]\s*(.*)"
                 loose_answer_match = re.search(
                     loose_answer_pattern, text, re.DOTALL | re.IGNORECASE
                 )
@@ -2022,6 +2030,9 @@ class ReactAgent:
             user_query: 当前会话的用户输入，用于工具记忆分析
         """
         action_id = str(uuid.uuid4())
+
+        if action == "final_answer":
+            return (action_input, thought, action_id)
         stream = bool(self.stream_manager)
 
         # 发送工具事件
@@ -2102,7 +2113,7 @@ class ReactAgent:
         # 异步处理工具记忆，不阻塞主流程
         # 无论成功或失败都进行记忆总结
         # 传递当前用户输入，同时会在 _process_tool_memory 内部加载历史会话
-        if self.memory_enabled:
+        if self.tool_memory_enabled:
             asyncio.create_task(
                 self._process_tool_memory(
                     tool_name=action,
@@ -2288,7 +2299,7 @@ class ReactAgent:
 
             try:
                 # 为每个工具加载其历史执行记忆（包括成功和失败的经验）
-                if self.memory_enabled:
+                if self.tool_memory_enabled:
                     for tool_name, tool_instance in self.tools.items():
                         tool_instance.memory = await self._load_tool_memory_from_redis(
                             tool_name, username=self.username
@@ -2326,6 +2337,9 @@ class ReactAgent:
                     else:
                         # 兼容旧格式：直接是答案字符串
                         final_answer = action_input
+                    await self._execute_tool_action(
+                        action, action_input, thought, chat_id, None, user_query=query
+                    )
                     # generate playbook
                     # 获取上一步的剧本
                     last_playbook = self._load_playbook_from_redis(self.conversation_id)
