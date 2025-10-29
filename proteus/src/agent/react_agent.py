@@ -2340,19 +2340,12 @@ class ReactAgent:
                     await self._execute_tool_action(
                         action, action_input, thought, chat_id, None, user_query=query
                     )
-                    # generate playbook
-                    # 获取上一步的剧本
-                    last_playbook = self._load_playbook_from_redis(self.conversation_id)
-
-                    # 生成新的剧本
-                    current_playbook = await self._generate_playbook(
-                        last_playbook=last_playbook,
-                        tool_result=f"thought:{thought}\n action:{action}\n final_answer:{final_answer}",
-                        chat_id=chat_id,
-                        model_name=self.model_name or self.reasoner_model_name,
-                        query=query,
+                    # last update_playbook
+                    asyncio.create_task(
+                        self.update_playbook(
+                            chat_id, thought, action, final_answer, query
+                        )
                     )
-                    self._save_playbook_to_redis(self.conversation_id, current_playbook)
                     break
 
                 # 验证工具
@@ -2562,6 +2555,8 @@ class ReactAgent:
     def _save_playbook_to_redis(
         self, conversation_id: str, playbook: str, expire_hours: int = 12
     ):
+        if playbook is None:
+            return
         """将剧本保存到Redis"""
         try:
             with self._redis_manager.get_redis_connection() as redis_cache:
@@ -2608,7 +2603,25 @@ class ReactAgent:
             return playbook
         except Exception as e:
             logger.error(f"生成剧本失败: {e}")
-            return f"生成剧本失败: {str(e)}"
+            return None
+
+    @langfuse_wrapper.observe_decorator(
+        name="update_playbook", capture_input=True, capture_output=True
+    )
+    async def update_playbook(
+        self, chat_id: str, thought: str, action: str, final_answer: str, query: str
+    ):
+        """更新playbook"""
+        last_playbook = self._load_playbook_from_redis(self.conversation_id)
+        # 生成新的剧本
+        current_playbook = await self._generate_playbook(
+            last_playbook=last_playbook,
+            tool_result=f"thought:{thought}\n action:{action}\n final_answer:{final_answer}",
+            chat_id=chat_id,
+            model_name=self.model_name or self.reasoner_model_name,
+            query=query,
+        )
+        self._save_playbook_to_redis(self.conversation_id, current_playbook)
 
     @langfuse_wrapper.observe_decorator(
         name="_check_termination", capture_input=True, capture_output=True

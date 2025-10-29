@@ -532,6 +532,28 @@ async def create_chat(
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     stream_manager.create_stream(chat_id, text)
 
+    # 保存 conversation_id 和 chat_id 的关系到 Redis
+    if conversation_id:
+        redis_conn = get_redis_connection()
+        # 使用 List 存储一个 conversation_id 对应的多个 chat_id
+        conv_chats_key = f"conversation:{conversation_id}:chats"
+        redis_conn.rpush(conv_chats_key, chat_id)
+        # redis_conn.expire(conv_chats_key, 7 * 24 * 3600)  # 7天过期
+
+        # 保存反向映射关系
+        redis_conn.set(f"chat:{chat_id}:conversation", conversation_id, ex=None)
+
+        # 异步保存会话摘要信息
+        asyncio.create_task(
+            save_conversation_summary(
+                conversation_id=conversation_id,
+                chat_id=chat_id,
+                initial_question=text,
+                username=username,
+                modul=modul,
+            )
+        )
+
     if modul in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
         asyncio.create_task(
@@ -844,6 +866,117 @@ async def _cleanup_team_binding(chat_id: str):
 
     except Exception as e:
         logger.error(f"[{chat_id}] 清理 team 绑定关系失败: {str(e)}", exc_info=True)
+
+
+@langfuse_wrapper.observe_decorator(
+    name="generate_conversation_title", capture_input=True, capture_output=True
+)
+async def generate_conversation_title(initial_question: str) -> str:
+    """使用 LLM 生成会话标题
+
+    Args:
+        initial_question: 初始问题
+
+    Returns:
+        生成的会话标题
+    """
+    try:
+        # 构建提示词，要求生成简洁的标题
+        messages = [
+            {
+                "role": "system",
+                "content": "你是一个专业的标题生成助手。请根据用户的问题生成一个简洁、准确的会话标题，不超过20个字。只返回标题文本，不要有任何其他内容。"
+            },
+            {
+                "role": "user",
+                "content": f"请为以下问题生成一个简洁的会话标题：\n\n{initial_question}"
+            }
+        ]
+        
+        # 调用 LLM API 生成标题
+        from src.api.llm_api import call_llm_api
+        title, _ = await call_llm_api(
+            messages=messages,
+            request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            temperature=0.3,  # 使用较低的温度以获得更稳定的输出
+            model_name="deepseek-chat"  # 使用默认模型
+        )
+        
+        # 清理标题，移除可能的引号和多余空格
+        title = title.strip().strip('"').strip("'").strip()
+        
+        # 如果标题过长，截断并添加省略号
+        if len(title) > 20:
+            title = title[:20] + "..."
+        
+        logger.info(f"生成会话标题: {title}")
+        return title
+        
+    except Exception as e:
+        # 如果生成失败，回退到简单截取方式
+        logger.warning(f"使用 LLM 生成标题失败，使用默认方式: {str(e)}")
+        fallback_title = (
+            initial_question[:15] + "..."
+            if len(initial_question) > 15
+            else initial_question
+        )
+        return fallback_title
+
+
+@langfuse_wrapper.observe_decorator(
+    name="save_conversation_summary", capture_input=True, capture_output=True
+)
+async def save_conversation_summary(
+    conversation_id: str,
+    chat_id: str,
+    initial_question: str,
+    username: str = None,
+    modul: str = None,
+):
+    """异步保存会话摘要信息到 Redis
+
+    Args:
+        conversation_id: 会话ID
+        chat_id: 聊天ID
+        initial_question: 初始问题
+        username: 用户名
+        modul: 模型类型
+    """
+    try:
+        redis_conn = get_redis_connection()
+        conversation_key = f"conversation:{conversation_id}:info"
+
+        # 使用 LLM 生成会话标题
+        title = await generate_conversation_title(initial_question)
+
+        # 检查会话是否已存在
+        if not redis_conn.exists(conversation_key):
+            # 新建会话：保存完整信息
+            conversation_data = {
+                "conversation_id": conversation_id,
+                "title": title,
+                "initial_question": initial_question,
+                "username": username or "anonymous",
+                "modul": modul or "unknown",
+                "created_at": datetime.now().isoformat(),
+                "updated_at": datetime.now().isoformat(),
+                "first_chat_id": chat_id,
+            }
+            redis_conn.hmset(conversation_key, mapping=conversation_data)
+            
+            # 添加到用户的会话列表（有序集合，按时间戳排序）
+            user_conversations_key = f"user:{username}:conversations"
+            timestamp = time.time()
+            redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
+            logger.info(f"已创建会话摘要: {conversation_id}, 标题: {title}")
+        else:
+            # 已存在会话：更新标题和时间戳
+            redis_conn.hset(conversation_key, "title", title)
+            redis_conn.hset(conversation_key, "updated_at", datetime.now().isoformat())
+            logger.info(f"已更新会话摘要: {conversation_id}, 新标题: {title}")
+
+    except Exception as e:
+        logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
 
 
 @langfuse_wrapper.observe_decorator(
@@ -1364,3 +1497,170 @@ async def submit_feedback(
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"提交反馈失败: {str(e)}")
+
+
+@langfuse_wrapper.observe_decorator(
+    name="get_conversations", capture_input=True, capture_output=True
+)
+@app.get("/conversations")
+async def get_conversations(request: Request, limit: int = 50):
+    """获取当前用户的会话列表
+
+    Args:
+        request: 请求对象
+        limit: 返回的会话数量限制（默认50）
+
+    Returns:
+        dict: 包含会话列表的响应
+    """
+    try:
+        user = await get_current_user(request)
+        username = user.username if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        user_conversations_key = f"user:{username}:conversations"
+
+        # 从有序集合中获取会话ID列表（按时间倒序）
+        conversation_ids = redis_conn.zrevrange(user_conversations_key, 0, limit - 1)
+
+        conversations = []
+        for conv_id in conversation_ids:
+            conv_id_str = (
+                conv_id.decode("utf-8") if isinstance(conv_id, bytes) else conv_id
+            )
+            conversation_key = f"conversation:{conv_id_str}:info"
+            conv_data = redis_conn.hgetall(conversation_key)
+
+            if conv_data:
+                # 将字节转换为字符串
+                conv_info = {
+                    k.decode("utf-8") if isinstance(k, bytes) else k: (
+                        v.decode("utf-8") if isinstance(v, bytes) else v
+                    )
+                    for k, v in conv_data.items()
+                }
+
+                # 获取该会话的chat数量
+                conv_chats_key = f"conversation:{conv_id_str}:chats"
+                chat_count = redis_conn.llen(conv_chats_key)
+                conv_info["chat_count"] = chat_count
+
+                conversations.append(conv_info)
+
+        return {"success": True, "conversations": conversations}
+
+    except Exception as e:
+        logger.error(f"获取会话列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取会话列表失败: {str(e)}")
+
+
+@langfuse_wrapper.observe_decorator(
+    name="get_conversation_detail", capture_input=True, capture_output=True
+)
+@app.get("/conversations/{conversation_id}")
+async def get_conversation_detail(conversation_id: str, request: Request):
+    """获取指定会话的详细信息
+
+    Args:
+        conversation_id: 会话ID
+        request: 请求对象
+
+    Returns:
+        dict: 包含会话详细信息的响应
+    """
+    try:
+        user = await get_current_user(request)
+        username = user.username if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        conversation_key = f"conversation:{conversation_id}:info"
+        conv_data = redis_conn.hgetall(conversation_key)
+
+        if not conv_data:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 将字节转换为字符串
+        conv_info = {
+            k.decode("utf-8") if isinstance(k, bytes) else k: (
+                v.decode("utf-8") if isinstance(v, bytes) else v
+            )
+            for k, v in conv_data.items()
+        }
+
+        # 验证用户权限
+        if conv_info.get("username") != username:
+            raise HTTPException(status_code=403, detail="无权访问此会话")
+
+        # 获取该会话的所有chat_id
+        conv_chats_key = f"conversation:{conversation_id}:chats"
+        chat_ids = redis_conn.lrange(conv_chats_key, 0, -1)
+        conv_info["chat_ids"] = [
+            chat_id.decode("utf-8") if isinstance(chat_id, bytes) else chat_id
+            for chat_id in chat_ids
+        ]
+
+        return {"success": True, "conversation": conv_info}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取会话详情失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取会话详情失败: {str(e)}")
+
+
+@langfuse_wrapper.observe_decorator(
+    name="delete_conversation", capture_input=True, capture_output=True
+)
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str, request: Request):
+    """删除指定会话
+
+    Args:
+        conversation_id: 会话ID
+        request: 请求对象
+
+    Returns:
+        dict: 删除结果
+    """
+    try:
+        user = await get_current_user(request)
+        username = user.username if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        conversation_key = f"conversation:{conversation_id}:info"
+        conv_data = redis_conn.hgetall(conversation_key)
+
+        if not conv_data:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 将字节转换为字符串
+        conv_info = {
+            k.decode("utf-8") if isinstance(k, bytes) else k: (
+                v.decode("utf-8") if isinstance(v, bytes) else v
+            )
+            for k, v in conv_data.items()
+        }
+
+        # 验证用户权限
+        if conv_info.get("username") != username:
+            raise HTTPException(status_code=403, detail="无权删除此会话")
+
+        # 删除会话信息
+        redis_conn.delete(conversation_key)
+
+        # 删除会话的chat列表
+        conv_chats_key = f"conversation:{conversation_id}:chats"
+        redis_conn.delete(conv_chats_key)
+
+        # 从用户会话列表中移除
+        user_conversations_key = f"user:{username}:conversations"
+        redis_conn.zrem(user_conversations_key, conversation_id)
+
+        logger.info(f"用户 {username} 删除了会话 {conversation_id}")
+        return {"success": True, "message": "会话已删除"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除会话失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除会话失败: {str(e)}")

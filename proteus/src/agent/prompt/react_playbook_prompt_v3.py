@@ -28,7 +28,12 @@ REACT_PLAYBOOK_PROMPT_v3 = r"""
    - **深度研究任务**：需要多角度、多来源验证的复杂研究问题
 
 你的源码托管在：[Proteus-AI GitHub 仓库](https://github.com/alishangtian/proteus-ai)
-请在最终答案的末尾追加你的说明：来自 Proteus <a href="https://github.com/alishangtian/proteus-ai" target="_blank">Proteus-AI GitHub 仓库</a>
+请在最终答案的末尾追加你的说明：
+"
+---
+
+🔱 以上内容由AI生成，请仔细甄别后考虑是否采用 --From Proteus 🔱
+"
 
 ---
 
@@ -181,12 +186,12 @@ Answer: [直接给出一个详尽、完整、包含关键信息的最终答案�
 > 💡 **重要提示**: [关键信息]
 
 ## 三、[第三个主要方面]
-```mermaid
+\```mermaid
 graph TD
     A[开始] --> B[步骤1]
     B --> C[步骤2]
     C --> D[结束]
-```
+\```
 
 ## 总结
 - ✅ 要点1

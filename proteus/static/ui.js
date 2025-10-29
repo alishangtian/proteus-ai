@@ -2,6 +2,9 @@
 export let isScrolling = false;
 let scrollTimeout = null;
 
+// 数学表达式渲染辅助函数已移除
+// 只在 sse-handlers.js 的最终结果中使用数学表达式渲染
+
 // 用于存储当前正在流式输出的文本内容，以便在后续块到达时追加
 let currentStreamedContent = '';
 let streamingInterval = null; // 用于控制流式输出的定时器

@@ -1,3 +1,170 @@
+/* 会话列表样式 */
+.conversation-list-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 16px;
+    overflow: hidden;
+}
+
+.conversation-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color-light);
+}
+
+.conversation-list-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color-dark);
+    margin: 0;
+}
+
+.new-conversation-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-dark) 100%);
+    color: var(--bg-color-white);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
+}
+
+.new-conversation-btn:hover {
+    background: linear-gradient(135deg, var(--primary-blue-dark) 0%, var(--primary-blue-darker) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.new-conversation-btn:active {
+    transform: translateY(0);
+}
+
+.new-conversation-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.conversation-list {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    
+    /* 隐藏滚动条但保持滚动功能 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.conversation-list::-webkit-scrollbar {
+    display: none;
+}
+
+.conversation-item {
+    position: relative;
+    padding: 12px 14px;
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.conversation-item:hover {
+    background: var(--bg-color-lighter-gray);
+    border-color: var(--primary-blue);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+    transform: translateX(2px);
+}
+
+.conversation-item:hover .delete-conversation-btn {
+    opacity: 1;
+}
+
+.conversation-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color-dark);
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding-right: 24px;
+}
+
+.conversation-meta {
+    font-size: 12px;
+    color: var(--text-color-lighter);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.delete-conversation-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: var(--red);
+    color: var(--bg-color-white);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.delete-conversation-btn:hover {
+    background: var(--red-dark);
+    transform: scale(1.1);
+}
+
+.conversation-list-loading,
+.conversation-list-empty,
+.conversation-list-error {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-color-lighter);
+    font-size: 14px;
+}
+
+.conversation-list-error {
+    color: var(--red);
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+    .conversation-list-container {
+        padding: 12px;
+    }
+    
+    .conversation-item {
+        padding: 10px 12px;
+    }
+    
+    .delete-conversation-btn {
+        opacity: 1;
+    }
+}
+
 * {
     box-sizing: border-box;
     margin: 0;
@@ -1141,6 +1308,132 @@ body {
     content: none;
 }
 
+/* Agent Complete 功能按钮样式 */
+.complete-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color-light);
+}
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
+    border-radius: var(--radius-md);
+    color: var(--text-color-lighter);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.action-btn:hover {
+    background: var(--bg-color-light-gray);
+    color: var(--text-color-medium);
+    border-color: var(--border-color-medium);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.action-btn:active {
+    transform: translateY(0);
+}
+
+.action-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 复制按钮成功状态 */
+.action-btn.copy-result-btn.success {
+    background: var(--bg-color-success);
+    color: var(--green-dark);
+    border-color: var(--green);
+}
+
+/* 截图按钮成功状态 */
+.action-btn.screenshot-btn.success {
+    background: var(--bg-color-success);
+    color: var(--green-dark);
+    border-color: var(--green);
+}
+
+/* 点赞按钮激活状态 */
+.action-btn.like-btn.active {
+    background: var(--primary-blue);
+    color: var(--bg-color-white);
+    border-color: var(--primary-blue);
+}
+
+.action-btn.like-btn.active svg {
+    fill: currentColor;
+}
+
+/* 点踩按钮激活状态 */
+.action-btn.dislike-btn.active {
+    background: var(--red);
+    color: var(--bg-color-white);
+    border-color: var(--red);
+}
+
+.action-btn.dislike-btn.active svg {
+    fill: currentColor;
+}
+
+/* 重新生成按钮悬停效果 */
+.action-btn.regenerate-btn:hover {
+    background: var(--primary-blue);
+    color: var(--bg-color-white);
+    border-color: var(--primary-blue);
+}
+
+/* 按钮提示文字 */
+.action-btn::after {
+    content: attr(title);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text-color-dark);
+    color: var(--bg-color-white);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+.action-btn:hover::after {
+    opacity: 1;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .complete-actions {
+        gap: 6px;
+    }
+    
+    .action-btn {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .action-btn svg {
+        width: 14px;
+        height: 14px;
+    }
+}
+
 .agent-complete-content {
     display: none;
     /* 默认隐藏内容 */
@@ -2268,8 +2561,8 @@ body {
     will-change: transform, box-shadow;
 }
 
-/* 增强悬浮效果 */
-.content-wrapper:hover {
+/* 增强悬浮效果 - 已禁用 */
+/* .content-wrapper:hover {
     box-shadow:
         0 45px 120px rgba(15, 23, 42, 0.22),
         0 25px 80px rgba(15, 23, 42, 0.08),
@@ -2277,7 +2570,7 @@ body {
         0 4px 12px rgba(0, 0, 0, 0.04),
         inset 0 1px 0 rgba(255, 255, 255, 0.9);
     transform: translateY(-2px) translateZ(0);
-}
+} */
 
 /* 对话历史区域 */
 #conversation-history {
@@ -2697,6 +2990,48 @@ body {
     display: block;
     margin: 12px auto;
     /* 增加顶部和底部外边距，并居中 */
+}
+
+/* Mermaid 图表样式 */
+.node-content .mermaid,
+.workflow-content .mermaid,
+.result-value .mermaid,
+.explanation .mermaid,
+.answer .mermaid,
+.mermaid {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 16px auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 12px;
+    border: 1px solid #e6eefc;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.mermaid svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Mermaid 图表在暗色主题下的样式调整 */
+@media (prefers-color-scheme: dark) {
+    .mermaid {
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        border-color: #3e4451;
+    }
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .mermaid {
+        padding: 12px;
+        margin: 12px auto;
+    }
 }
 
 /* 强化 node / workflow 卡片的内边距与背景，区分不同类型 */
@@ -4784,4 +5119,95 @@ body {
         padding: 4px 8px;
         font-size: 12px;
     }
+
+/* ===== 删除确认模态框样式 - 精简美观 ===== */
+.modal-confirm {
+    max-width: 420px !important;
+    padding: 24px !important;
+    border-radius: 16px !important;
+}
+
+.modal-confirm .modal-header {
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.modal-confirm .modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-color-dark);
+}
+
+.modal-confirm .modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-color-light);
+    margin: 0 0 20px 0;
+}
+
+.modal-confirm .modal-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    padding-top: 0;
+    border-top: none;
+    margin-top: 0;
+}
+
+.modal-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 80px;
+}
+
+.modal-btn-cancel {
+    background: var(--bg-color-light-gray);
+    color: var(--text-color-medium);
+}
+
+.modal-btn-cancel:hover {
+    background: var(--border-color-light);
+    transform: translateY(-1px);
+}
+
+.modal-btn-confirm {
+    background: linear-gradient(135deg, var(--red) 0%, var(--red-dark) 100%);
+    color: var(--bg-color-white);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+.modal-btn-confirm:hover {
+    background: linear-gradient(135deg, var(--red-dark) 0%, var(--red-darker) 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+}
+
+.modal-btn-confirm:active,
+.modal-btn-cancel:active {
+    transform: translateY(0);
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .modal-confirm {
+        max-width: 90vw !important;
+        padding: 20px !important;
+    }
+    
+    .modal-confirm .modal-actions {
+        flex-direction: column-reverse;
+        gap: 8px;
+    }
+    
+    .modal-btn {
+        width: 100%;
+        min-width: auto;
+    }
+}
 }

@@ -3,7 +3,150 @@
 // ctx 包含需要访问的外部变量与回调：{ answerElement, toolExecutions, currentActionIdRef, currentIterationRef, conversationHelpers }
 // conversationHelpers 可包含：renderNodeResult, renderExplanation, renderAnswer, createQuestionElement, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON
 
-import { downloadFileFromContent, sanitizeFilename, getMimeType } from './utils.js';
+import { downloadFileFromContent, sanitizeFilename, getMimeType, generateConversationId } from './utils.js';
+
+// 配置 marked 渲染器，使所有链接在新标签页打开，并支持 Mermaid
+if (typeof marked !== 'undefined') {
+    const renderer = new marked.Renderer();
+    const originalLinkRenderer = renderer.link.bind(renderer);
+    const originalCodeRenderer = renderer.code.bind(renderer);
+
+    renderer.link = function (href, title, text) {
+        const html = originalLinkRenderer(href, title, text);
+        return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+    };
+
+    // 自定义代码块渲染器以支持 Mermaid
+    renderer.code = function (code, language) {
+        if (language === 'mermaid') {
+            // 为 Mermaid 代码块创建特殊标记
+            return `<div class="mermaid-diagram" data-mermaid-code="${encodeURIComponent(code)}"></div>`;
+        }
+        return originalCodeRenderer(code, language);
+    };
+
+    marked.setOptions({
+        renderer: renderer,
+        breaks: true,
+        gfm: true
+    });
+}
+
+// 初始化 Mermaid（如果可用）
+if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        fontFamily: 'Arial, sans-serif'
+    });
+}
+
+// 辅助函数:渲染 Markdown 并处理数学表达式和 Mermaid 图表(仅用于最终结果)
+function parseMarkdownWithMath(content) {
+    if (!content) return '';
+
+    // 先保护数学表达式，避免被 Markdown 解析器处理
+    const mathBlocks = [];
+    let protectedContent = content;
+
+    // 保护 $$ ... $$ 块级数学表达式（使用唯一标记）
+    protectedContent = protectedContent.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+        const index = mathBlocks.length;
+        mathBlocks.push({ type: 'block', formula: formula.trim(), index });
+        return `<span class="math-placeholder" data-math-index="${index}" data-math-type="block"></span>`;
+    });
+
+    // 保护 $ ... $ 行内数学表达式
+    protectedContent = protectedContent.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
+        const index = mathBlocks.length;
+        mathBlocks.push({ type: 'inline', formula: formula.trim(), index });
+        return `<span class="math-placeholder" data-math-index="${index}" data-math-type="inline"></span>`;
+    });
+
+    // 使用 marked 解析 Markdown
+    let html = '';
+    try {
+        html = marked.parse(protectedContent);
+    } catch (e) {
+        console.warn('Markdown 解析失败:', e);
+        html = protectedContent;
+    }
+
+    // 创建临时元素
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+
+    // 查找所有数学占位符并替换为 KaTeX 渲染结果
+    if (typeof katex !== 'undefined' && mathBlocks.length > 0) {
+        const placeholders = tempDiv.querySelectorAll('.math-placeholder');
+        placeholders.forEach(placeholder => {
+            const index = parseInt(placeholder.getAttribute('data-math-index'));
+            const mathBlock = mathBlocks[index];
+
+            if (mathBlock) {
+                try {
+                    const rendered = katex.renderToString(mathBlock.formula, {
+                        displayMode: mathBlock.type === 'block',
+                        throwOnError: false,
+                        errorColor: '#cc0000',
+                        strict: false,
+                        trust: true
+                    });
+
+                    // 创建一个临时容器来存放渲染结果
+                    const span = document.createElement('span');
+                    span.innerHTML = rendered;
+
+                    // 替换占位符
+                    placeholder.parentNode.replaceChild(span.firstChild, placeholder);
+                } catch (e) {
+                    console.warn(`KaTeX 渲染失败 (${mathBlock.type}, index ${index}):`, e, mathBlock.formula);
+                    // 如果渲染失败，显示原始公式
+                    const original = mathBlock.type === 'block'
+                        ? `$$${mathBlock.formula}$$`
+                        : `$${mathBlock.formula}$`;
+                    placeholder.textContent = original;
+                }
+            }
+        });
+    }
+
+    // 处理 Mermaid 图表
+    if (typeof mermaid !== 'undefined') {
+        const mermaidDiagrams = tempDiv.querySelectorAll('.mermaid-diagram');
+        mermaidDiagrams.forEach((diagram, index) => {
+            try {
+                const code = decodeURIComponent(diagram.getAttribute('data-mermaid-code'));
+                const id = `mermaid-${Date.now()}-${index}`;
+
+                // 创建一个容器用于 Mermaid 渲染
+                const container = document.createElement('div');
+                container.className = 'mermaid';
+                container.textContent = code;
+
+                // 替换占位符
+                diagram.parentNode.replaceChild(container, diagram);
+
+                // 异步渲染 Mermaid 图表
+                setTimeout(() => {
+                    try {
+                        mermaid.run({
+                            nodes: [container]
+                        });
+                    } catch (e) {
+                        console.warn('Mermaid 渲染失败:', e);
+                        container.innerHTML = `<pre><code class="language-mermaid">${code}</code></pre>`;
+                    }
+                }, 0);
+            } catch (e) {
+                console.warn('Mermaid 图表处理失败:', e);
+            }
+        });
+    }
+
+    return tempDiv.innerHTML;
+}
 
 export function registerSSEHandlers(eventSource, ctx = {}) {
     if (!eventSource) return;
@@ -21,7 +164,8 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         updatePlaybook,
         fetchPlaybook, // 添加 fetchPlaybook 到 ctx
         currentModel, // 从 ctx 中获取 currentModel
-        playbookStorage // 从 ctx 中获取 playbookStorage
+        playbookStorage, // 从 ctx 中获取 playbookStorage
+        scheduleConversationListUpdate // 从 ctx 中获取延迟更新会话列表函数
     } = ctx;
 
     // 标记 agent_complete 的流式渲染状态，避免 complete 事件过早重置 UI
@@ -31,6 +175,61 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
 
     // 默认打字机延迟（毫秒），可通过 ctx.typingDelay 覆盖
     const defaultTypingDelay = (ctx && typeof ctx.typingDelay === 'number' ? ctx.typingDelay : 25);
+
+    // agent_start - 渲染用户问题
+    eventSource.addEventListener('agent_start', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const questionText = data.query || data.text || '';
+
+            if (!questionText) {
+                console.warn('agent_start 事件缺少问题文本');
+                return;
+            }
+
+            // 查找当前的 answerElement 的父容器
+            const qaContainer = answerElement ? answerElement.parentElement : null;
+            if (!qaContainer) {
+                console.warn('无法找到 qa-container');
+                return;
+            }
+
+            // 检查是否已经存在问题元素，避免重复渲染
+            if (qaContainer.querySelector('.question')) {
+                console.log('问题已存在，跳过渲染');
+                return;
+            }
+
+            // 创建问题元素（参考 sendMessage 中的渲染方式）
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'question';
+
+            // 添加复制按钮
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn small';
+            copyBtn.innerHTML = `
+                <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"></path>
+                </svg>
+                <span class="copy-tooltip">复制</span>
+            `;
+            questionDiv.appendChild(copyBtn);
+
+            // 添加问题文本（使用 Markdown 渲染）
+            const questionTextDiv = document.createElement('div');
+            questionTextDiv.className = 'question-text';
+            questionTextDiv.innerHTML = marked.parse(questionText);
+            questionDiv.appendChild(questionTextDiv);
+
+            // 将问题插入到 qa-container 的开头（在 answer 之前）
+            qaContainer.insertBefore(questionDiv, answerElement);
+
+            console.log('agent_start: 已渲染用户问题');
+        } catch (error) {
+            console.error('解析 agent_start 事件失败:', error);
+        }
+    });
 
     // agent_selection
     eventSource.addEventListener('agent_selection', event => {
@@ -367,7 +566,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             const data = JSON.parse(event.data);
             const searchDiv = document.createElement('div');
             searchDiv.className = 'serper-search-results';
-            
+
             let resultsHtml = '';
             if (data.results && data.results.length > 0) {
                 resultsHtml = data.results.map(item => `
@@ -435,7 +634,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 // 对于 python_execute 工具，如果有 code 参数，单独渲染代码
                 formattedInput = '<div class="python-code-section">';
                 formattedInput += '<div class="code-label">Python 代码:</div>';
-                
+
                 // 使用 highlight.js 直接高亮代码并添加行号
                 let highlightedCode = data.input.code;
                 if (typeof hljs !== 'undefined') {
@@ -445,16 +644,16 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         console.warn('代码高亮失败，使用原始代码', e);
                     }
                 }
-                
+
                 // 将代码按行分割并添加行号
                 const codeLines = highlightedCode.split('\n');
                 const numberedCode = codeLines.map((line, index) => {
                     const lineNumber = index + 1;
                     return `<span class="code-line"><span class="line-number">${lineNumber}</span>${line}</span>`;
                 }).join('\n');
-                
+
                 formattedInput += `<pre><code class="hljs language-python code-with-line-numbers">${numberedCode}</code></pre>`;
-                
+
                 // 如果还有其他参数，也显示出来
                 const otherParams = Object.keys(data.input).filter(key => key !== 'code');
                 if (otherParams.length > 0) {
@@ -792,7 +991,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             // 直接渲染 Markdown，无需流式或打字机效果
             let renderedHtml = '';
             try {
-                renderedHtml = marked.parse(content || '智能体已完成任务。');
+                renderedHtml = parseMarkdownWithMath(content || '智能体已完成任务。');
             } catch (e) {
                 // 回退为纯文本
                 renderedHtml = (content || '智能体已完成任务。');
@@ -801,8 +1000,387 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             completeDiv.innerHTML = `
                 <div class="complete-info">
                     <div class="action_complete">${renderedHtml}</div>
+                    <div class="complete-actions">
+                        <button class="action-btn copy-result-btn" title="复制">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                            </svg>
+                        </button>
+                        <button class="action-btn screenshot-btn" title="截图">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                <circle cx="12" cy="13" r="4"></circle>
+                            </svg>
+                        </button>
+                        <button class="action-btn pdf-download-btn" title="下载PDF">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="12" y1="18" x2="12" y2="12"></line>
+                                <line x1="9" y1="15" x2="15" y2="15"></line>
+                            </svg>
+                        </button>
+                        <button class="action-btn like-btn" title="点赞">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                            </svg>
+                        </button>
+                        <button class="action-btn dislike-btn" title="点踩">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"></path>
+                            </svg>
+                        </button>
+                        <button class="action-btn regenerate-btn" title="重新生成">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             `;
+
+            if (answerElement) {
+                answerElement.appendChild(completeDiv);
+
+                // 添加按钮事件监听器
+                const copyBtn = completeDiv.querySelector('.copy-result-btn');
+                const screenshotBtn = completeDiv.querySelector('.screenshot-btn');
+                const likeBtn = completeDiv.querySelector('.like-btn');
+                const dislikeBtn = completeDiv.querySelector('.dislike-btn');
+                const regenerateBtn = completeDiv.querySelector('.regenerate-btn');
+
+                // 复制功能
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', () => {
+                        const textToCopy = content || '智能体已完成任务。';
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                            copyBtn.classList.add('success');
+                            setTimeout(() => copyBtn.classList.remove('success'), 2000);
+                        }).catch(err => {
+                            console.error('复制失败:', err);
+                        });
+                    });
+                }
+
+                // 截图功能（使用html2canvas库，如果可用）
+                if (screenshotBtn) {
+                    screenshotBtn.addEventListener('click', async () => {
+                        try {
+                            if (typeof html2canvas !== 'undefined') {
+                                const targetElement = completeDiv.querySelector('.action_complete');
+
+                                // A4纸宽度：210mm = 794px (at 96 DPI)
+                                const A4_WIDTH = 794;
+                                const PADDING = 48; // 左右各24px内边距
+                                const CONTENT_WIDTH = A4_WIDTH - (PADDING * 2);
+
+                                // 截图时设置为A4纸宽度，让内容有足够空间展示
+                                const canvas = await html2canvas(targetElement, {
+                                    backgroundColor: '#f8f9fa', // 设置背景色
+                                    scale: 2, // 提高清晰度
+                                    logging: false,
+                                    width: A4_WIDTH,
+                                    // 通过CSS设置A4宽度和内边距
+                                    onclone: (clonedDoc) => {
+                                        const clonedElement = clonedDoc.querySelector('.action_complete');
+                                        if (clonedElement) {
+                                            // 设置固定宽度为A4纸宽度
+                                            clonedElement.style.width = `${A4_WIDTH}px`;
+                                            clonedElement.style.maxWidth = `${A4_WIDTH}px`;
+                                            clonedElement.style.minWidth = `${A4_WIDTH}px`;
+                                            clonedElement.style.boxSizing = 'border-box';
+
+                                            // 添加内边距和样式
+                                            clonedElement.style.padding = `32px ${PADDING}px`;
+                                            clonedElement.style.backgroundColor = '#ffffff';
+                                            clonedElement.style.borderRadius = '0';
+
+                                            // 确保内部内容不会溢出
+                                            clonedElement.style.overflow = 'visible';
+                                            clonedElement.style.wordWrap = 'break-word';
+                                            clonedElement.style.wordBreak = 'break-word';
+
+                                            // 设置字体和行高，确保可读性
+                                            clonedElement.style.fontSize = '14px';
+                                            clonedElement.style.lineHeight = '1.8';
+                                            clonedElement.style.color = '#333';
+
+                                            // 处理内部所有元素，确保不超出宽度
+                                            const allElements = clonedElement.querySelectorAll('*');
+                                            allElements.forEach(el => {
+                                                el.style.maxWidth = '100%';
+                                                el.style.wordWrap = 'break-word';
+                                            });
+
+                                            // 特别处理代码块
+                                            const codeBlocks = clonedElement.querySelectorAll('pre, code');
+                                            codeBlocks.forEach(block => {
+                                                block.style.whiteSpace = 'pre-wrap';
+                                                block.style.wordBreak = 'break-word';
+                                                block.style.overflowWrap = 'break-word';
+                                            });
+                                        }
+                                    }
+                                });
+
+                                canvas.toBlob(blob => {
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `agent-result-${Date.now()}.png`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                });
+                                screenshotBtn.classList.add('success');
+                                setTimeout(() => screenshotBtn.classList.remove('success'), 2000);
+                            } else {
+                                alert('截图功能需要html2canvas库支持');
+                            }
+                        } catch (err) {
+                            console.error('截图失败:', err);
+                        }
+                    });
+                }
+
+                // PDF下载功能
+                const pdfDownloadBtn = completeDiv.querySelector('.pdf-download-btn');
+                if (pdfDownloadBtn) {
+                    pdfDownloadBtn.addEventListener('click', async () => {
+                        try {
+                            // 检查 jsPDF 是否可用
+                            if (typeof window.jspdf === 'undefined') {
+                                alert('PDF生成库未加载，请刷新页面重试');
+                                return;
+                            }
+
+                            const { jsPDF } = window.jspdf;
+                            const targetElement = completeDiv.querySelector('.action_complete');
+
+                            // 使用 html2canvas 将内容转换为图片
+                            if (typeof html2canvas !== 'undefined') {
+                                // A4纸尺寸（单位：mm）
+                                const A4_WIDTH = 210;
+                                const A4_HEIGHT = 297;
+                                const MARGIN = 15; // 页边距
+                                const CONTENT_WIDTH = A4_WIDTH - (MARGIN * 2);
+
+                                // 创建 PDF 文档
+                                const pdf = new jsPDF({
+                                    orientation: 'portrait',
+                                    unit: 'mm',
+                                    format: 'a4'
+                                });
+
+                                // 将内容转换为 canvas
+                                const canvas = await html2canvas(targetElement, {
+                                    backgroundColor: '#ffffff',
+                                    scale: 2,
+                                    logging: false,
+                                    width: 794, // A4宽度的像素值 (at 96 DPI)
+                                    onclone: (clonedDoc) => {
+                                        const clonedElement = clonedDoc.querySelector('.action_complete');
+                                        if (clonedElement) {
+                                            clonedElement.style.width = '794px';
+                                            clonedElement.style.maxWidth = '794px';
+                                            clonedElement.style.padding = '32px 48px';
+                                            clonedElement.style.backgroundColor = '#ffffff';
+                                            clonedElement.style.fontSize = '14px';
+                                            clonedElement.style.lineHeight = '1.8';
+                                            clonedElement.style.color = '#333';
+                                            clonedElement.style.wordWrap = 'break-word';
+
+                                            // 处理代码块
+                                            const codeBlocks = clonedElement.querySelectorAll('pre, code');
+                                            codeBlocks.forEach(block => {
+                                                block.style.whiteSpace = 'pre-wrap';
+                                                block.style.wordBreak = 'break-word';
+                                            });
+                                        }
+                                    }
+                                });
+
+                                // 计算图片在 PDF 中的尺寸
+                                const imgWidth = CONTENT_WIDTH;
+                                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                                // 将 canvas 转换为图片数据
+                                const imgData = canvas.toDataURL('image/png');
+
+                                // 如果内容高度超过一页，需要分页
+                                let heightLeft = imgHeight;
+                                let position = MARGIN;
+
+                                // 添加第一页
+                                pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
+                                heightLeft -= (A4_HEIGHT - MARGIN * 2);
+
+                                // 如果需要多页
+                                while (heightLeft > 0) {
+                                    position = heightLeft - imgHeight + MARGIN;
+                                    pdf.addPage();
+                                    pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
+                                    heightLeft -= (A4_HEIGHT - MARGIN * 2);
+                                }
+
+                                // 保存 PDF
+                                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                                pdf.save(`agent-result-${timestamp}.pdf`);
+
+                                pdfDownloadBtn.classList.add('success');
+                                setTimeout(() => pdfDownloadBtn.classList.remove('success'), 2000);
+                            } else {
+                                alert('PDF生成需要html2canvas库支持');
+                            }
+                        } catch (err) {
+                            console.error('PDF生成失败:', err);
+                            alert('PDF生成失败，请查看控制台了解详情');
+                        }
+                    });
+                }
+
+                // 点赞功能
+                if (likeBtn) {
+                    likeBtn.addEventListener('click', () => {
+                        likeBtn.classList.toggle('active');
+                        if (dislikeBtn.classList.contains('active')) {
+                            dislikeBtn.classList.remove('active');
+                        }
+                        // TODO: 发送反馈到后端
+                        console.log('用户点赞');
+                    });
+                }
+
+                // 点踩功能
+                if (dislikeBtn) {
+                    dislikeBtn.addEventListener('click', () => {
+                        dislikeBtn.classList.toggle('active');
+                        if (likeBtn.classList.contains('active')) {
+                            likeBtn.classList.remove('active');
+                        }
+                        // TODO: 发送反馈到后端
+                        console.log('用户点踩');
+                    });
+                }
+
+                // 重新生成功能
+                if (regenerateBtn) {
+                    regenerateBtn.addEventListener('click', () => {
+                        try {
+                            // 获取当前问题元素（最近的一个问题）
+                            const historyItems = document.querySelectorAll('.history-item');
+                            if (historyItems.length === 0) {
+                                console.warn('没有找到历史记录');
+                                return;
+                            }
+
+                            // 获取最后一个历史项中的问题文本
+                            const lastHistoryItem = historyItems[historyItems.length - 1];
+                            const questionTextElement = lastHistoryItem.querySelector('.question-text');
+
+                            if (!questionTextElement) {
+                                console.warn('没有找到问题文本');
+                                return;
+                            }
+
+                            // 提取纯文本内容（去除HTML标签）
+                            const questionText = questionTextElement.textContent.trim();
+
+                            if (!questionText) {
+                                console.warn('问题文本为空');
+                                return;
+                            }
+
+                            const selectedModul = document.getElementById('model-select').value;
+                            // 重新生成 conversationId（如果 ctx 中提供了 conversationIdStorage 和 currentModel）
+                            if (ctx.conversationIdStorage) {
+                                const newConversationId = generateConversationId();
+                                ctx.conversationIdStorage[selectedModul] = newConversationId;
+                                console.log('已生成新的 conversationId:', newConversationId);
+                            }
+
+                            // 清空对话历史
+                            const conversationHistory = document.getElementById('conversation-history');
+                            if (conversationHistory) {
+                                conversationHistory.innerHTML = '';
+                            }
+
+                            // 清空右侧 playbook
+                            const playbookContent = document.getElementById('playbook-content');
+                            if (playbookContent) {
+                                playbookContent.innerHTML = '';
+                            }
+
+                            // 清空 playbookStorage 中当前模型的内容
+                            if (playbookStorage && currentModel) {
+                                playbookStorage[currentModel] = '';
+                            }
+
+                            // 将问题文本填入输入框
+                            const userInput = document.getElementById('user-input');
+                            if (userInput) {
+                                userInput.value = questionText;
+                                userInput.disabled = false;
+                            }
+
+                            // 触发发送按钮点击事件
+                            const sendButton = document.getElementById('send-button');
+                            if (sendButton) {
+                                sendButton.disabled = false;
+                                // 使用 setTimeout 确保 DOM 更新完成后再触发点击
+                                setTimeout(() => {
+                                    sendButton.click();
+                                }, 100);
+                            }
+
+                            console.log('重新生成:', questionText);
+                        } catch (err) {
+                            console.error('重新生成失败:', err);
+                            alert('重新生成失败，请查看控制台了解详情');
+                        }
+                    });
+                }
+            }
+
+            // agent_complete 渲染结束后，调用延迟更新会话列表函数
+            if (typeof scheduleConversationListUpdate === 'function') {
+                try {
+                    scheduleConversationListUpdate();
+                    console.log('agent_complete 渲染完成，已启动延迟更新会话列表');
+                } catch (err) {
+                    console.warn('启动延迟更新会话列表失败:', err);
+                }
+            }
+        } catch (error) {
+            console.error('解析agent完成事件失败:', error);
+        }
+    });
+
+    // agent_completed（兼容别名，与 agent_complete 同逻辑）
+    eventSource.addEventListener('agent_completed', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const content = data.result;
+            console.debug('[SSE] agent_completed received, length=', (content || '').length);
+
+            const completeDiv = document.createElement('div');
+            completeDiv.className = 'agent-complete-final';
+
+            // 直接渲染 Markdown，无需流式或打字机效果
+            let renderedHtml = '';
+            try {
+                renderedHtml = parseMarkdownWithMath(content || '智能体已完成任务。');
+            } catch (e) {
+                renderedHtml = (content || '智能体已完成任务。');
+            }
+
+            completeDiv.innerHTML = `
+            <div class="complete-info">
+                <div class="action_complete">${renderedHtml}</div>
+            </div>
+        `;
 
             if (answerElement) {
                 answerElement.appendChild(completeDiv);
@@ -811,38 +1389,6 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             console.error('解析agent完成事件失败:', error);
         }
     });
-
-// agent_completed（兼容别名，与 agent_complete 同逻辑）
-eventSource.addEventListener('agent_completed', event => {
-    try {
-        const data = JSON.parse(event.data);
-        const content = data.result;
-        console.debug('[SSE] agent_completed received, length=', (content || '').length);
-
-        const completeDiv = document.createElement('div');
-        completeDiv.className = 'agent-complete-final';
-
-        // 直接渲染 Markdown，无需流式或打字机效果
-        let renderedHtml = '';
-        try {
-            renderedHtml = marked.parse(content || '智能体已完成任务。');
-        } catch (e) {
-            renderedHtml = (content || '智能体已完成任务。');
-        }
-
-        completeDiv.innerHTML = `
-            <div class="complete-info">
-                <div class="action_complete">${renderedHtml}</div>
-            </div>
-        `;
-
-        if (answerElement) {
-            answerElement.appendChild(completeDiv);
-        }
-    } catch (error) {
-        console.error('解析agent完成事件失败:', error);
-    }
-});
 
 
     // playbook_update
@@ -855,7 +1401,7 @@ eventSource.addEventListener('agent_completed', event => {
                 // 使用提取的任务列表渲染 playbook
                 updatePlaybook(tasks);
                 console.log('Playbook 已更新，任务数量:', tasks.length);
-                
+
                 // 保存 playbook 内容到 playbookStorage，以便在切换模型或第二次 chat 时能够恢复
                 if (playbookStorage && currentModel) {
                     const playbookContent = document.getElementById('playbook-content');

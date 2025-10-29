@@ -3,6 +3,32 @@ import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFrom
 import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent, updatePlaybook as uiUpdatePlaybook } from './ui.js';
 import { registerSSEHandlers } from './sse-handlers.js';
 
+// 辅助函数:渲染数学表达式
+function renderMathInElement(element) {
+    if (typeof window.renderMathInElement !== 'undefined' && typeof katex !== 'undefined') {
+        try {
+            // 使用 KaTeX 的 auto-render 扩展来渲染数学表达式
+            window.renderMathInElement(element, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\[', right: '\\]', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ],
+                throwOnError: false,
+                errorColor: '#cc0000',
+                strict: false,
+                trust: true
+            });
+        } catch (e) {
+            console.warn('KaTeX 渲染失败:', e);
+        }
+    }
+}
+
+// 这些辅助函数已不再需要,因为只在最终结果中使用数学表达式渲染
+// 所有其他地方直接使用 marked.parse()
+
 
 // 临时存储历史对话数据 {model: htmlContent}
 const historyStorage = {};
@@ -147,6 +173,10 @@ let currentModel = null; // 当前选择的菜单模式
 let currentConversationId = null; // 当前会话的conversation_id
 const showIterationModels = ["super-agent", "agent", "mcp-agent", "multi-agent", "browser-agent", "deep-research", "codeact-agent"];
 
+// 会话列表延迟更新机制
+let conversationListUpdateTimer = null; // 延迟更新定时器
+const CONVERSATION_LIST_UPDATE_DELAY = 8000; // 8秒延迟
+
 // 会话级“工具洞察”开关读取（仅以当前会话为准）
 // 说明：避免被历史 localStorage 的 options_memory_enabled 干扰
 function isToolInsightEnabled() {
@@ -219,6 +249,10 @@ marked.use({
     langPrefix: 'hljs ', // 调整语言前缀匹配highlight.js
     sanitize: false,     // 这里仍让 marked 输出 HTML，由我们在渲染前进行安全过滤
     highlight: (code, lang) => {
+        // 对于 Mermaid 代码块，不进行语法高亮
+        if (lang === 'mermaid') {
+            return code;
+        }
         try {
             return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value;
         } catch (e) {
@@ -228,6 +262,32 @@ marked.use({
     baseUrl: null,
     listItemIndent: '1' // 规范列表缩进
 });
+
+// 自定义 marked 渲染器以支持 Mermaid
+if (typeof marked !== 'undefined') {
+    const renderer = new marked.Renderer();
+    const originalCodeRenderer = renderer.code.bind(renderer);
+    
+    renderer.code = function(code, language) {
+        if (language === 'mermaid') {
+            // 为 Mermaid 代码块创建特殊容器
+            return `<div class="mermaid">${code}</div>`;
+        }
+        return originalCodeRenderer(code, language);
+    };
+    
+    marked.use({ renderer });
+}
+
+// 初始化 Mermaid（如果可用）
+if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'default',
+        securityLevel: 'loose',
+        fontFamily: 'Arial, sans-serif'
+    });
+}
 
 // 显示文件解析结果的弹框
 function showFileAnalysisModal(filename, content, fileType) {
@@ -541,7 +601,367 @@ document.addEventListener('click', function (e) {
     }
 });
 
+// 会话列表相关函数
+/**
+ * 启动延迟更新会话列表
+ * 如果已有定时器在运行，则清除旧定时器，重新计时
+ * 确保只在最后一次调用后的8秒执行一次更新
+ */
+function scheduleConversationListUpdate() {
+    // 清除之前的定时器（如果存在）
+    if (conversationListUpdateTimer) {
+        clearTimeout(conversationListUpdateTimer);
+        conversationListUpdateTimer = null;
+    }
+    
+    // 设置新的延迟更新定时器
+    conversationListUpdateTimer = setTimeout(() => {
+        loadConversationList();
+        conversationListUpdateTimer = null;
+        console.log('延迟更新会话列表已执行');
+    }, CONVERSATION_LIST_UPDATE_DELAY);
+    
+    console.log('已启动会话列表延迟更新，将在8秒后执行');
+}
+
+async function loadConversationList() {
+    const conversationList = document.getElementById('conversation-list');
+    if (!conversationList) return;
+    
+    try {
+        const response = await fetch('/conversations?limit=50');
+        const data = await response.json();
+        
+        if (data.success && data.conversations && data.conversations.length > 0) {
+            conversationList.innerHTML = '';
+            data.conversations.forEach(conv => {
+                const convItem = document.createElement('div');
+                convItem.className = 'conversation-item';
+                convItem.dataset.conversationId = conv.conversation_id;
+                
+                const convTitle = document.createElement('div');
+                convTitle.className = 'conversation-title';
+                convTitle.textContent = conv.title || '未命名会话';
+                convTitle.title = conv.initial_question || '';
+                
+                const convMeta = document.createElement('div');
+                convMeta.className = 'conversation-meta';
+                const createdDate = new Date(conv.created_at);
+                
+                // 判断是否为当天
+                const now = new Date();
+                const isToday = createdDate.getFullYear() === now.getFullYear() &&
+                               createdDate.getMonth() === now.getMonth() &&
+                               createdDate.getDate() === now.getDate();
+                
+                // 当天显示时分秒，非当天显示日期
+                const timeStr = isToday
+                    ? createdDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : createdDate.toLocaleDateString('zh-CN');
+                
+                convMeta.textContent = `${timeStr} · ${conv.chat_count || 0} 条消息`;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-conversation-btn';
+                deleteBtn.innerHTML = '×';
+                deleteBtn.title = '删除会话';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    showDeleteConfirmModal(conv.conversation_id, conv.title || '未命名会话');
+                };
+                
+                convItem.appendChild(convTitle);
+                convItem.appendChild(convMeta);
+                convItem.appendChild(deleteBtn);
+                
+                convItem.onclick = () => loadConversation(conv.conversation_id);
+                
+                conversationList.appendChild(convItem);
+            });
+        } else {
+            conversationList.innerHTML = '<div class="conversation-list-empty">暂无会话历史</div>';
+        }
+    } catch (error) {
+        console.error('加载会话列表失败:', error);
+        conversationList.innerHTML = '<div class="conversation-list-error">加载失败</div>';
+    }
+}
+
+async function loadConversation(conversationId) {
+    // 如果正在处理问题，不允许加载会话
+    if (isProcessing) {
+        console.warn('当前正在处理问题，无法加载会话');
+        showErrorMessage('当前正在处理问题，请等待完成后再加载历史会话');
+        return;
+    }
+    
+    try {
+        // 1. 获取会话详情，包含chat_ids列表
+        const response = await fetch(`/conversations/${conversationId}`);
+        const data = await response.json();
+        
+        if (!data.success || !data.conversation) {
+            console.error('获取会话详情失败');
+            return;
+        }
+        
+        const conversation = data.conversation;
+        const chatIds = conversation.chat_ids || [];
+        
+        if (chatIds.length === 0) {
+            console.warn('该会话没有聊天记录');
+            return;
+        }
+        
+        // 2. 更新 conversationIdStorage
+        const selectedModul = document.getElementById('model-select').value;
+        conversationIdStorage[selectedModul] = conversationId;
+        
+        // 3. 清空当前对话历史
+        const conversationHistory = document.getElementById('conversation-history');
+        if (conversationHistory) {
+            conversationHistory.innerHTML = '';
+        }
+        
+        // 4. 清空右侧 playbook
+        const playbookContent = document.getElementById('playbook-content');
+        if (playbookContent) {
+            playbookContent.innerHTML = '';
+        }
+        
+        // 5. 遍历chat_ids，依次回放每个chat
+        for (let i = 0; i < chatIds.length; i++) {
+            const chatId = chatIds[i];
+            console.log(`正在回放第 ${i + 1}/${chatIds.length} 个chat: ${chatId}`);
+            
+            // 为每个chat创建一个容器
+            const chatContainer = document.createElement('div');
+            chatContainer.className = 'history-item';
+            chatContainer.setAttribute('data-chat-id', chatId);
+            
+            // 创建qa-container
+            const qaContainer = document.createElement('div');
+            qaContainer.className = 'qa-container';
+            
+            // 添加回答容器
+            const answerElement = document.createElement('div');
+            answerElement.className = 'answer';
+            qaContainer.appendChild(answerElement);
+            
+            chatContainer.appendChild(qaContainer);
+            conversationHistory.appendChild(chatContainer);
+            
+            // 等待回放完成
+            await replayChat(chatId, answerElement);
+        }
+        
+        console.log('会话回放完成:', conversationId);
+        
+    } catch (error) {
+        console.error('加载会话失败:', error);
+        alert('加载会话失败: ' + error.message);
+    }
+}
+
+// 回放单个chat的函数
+async function replayChat(chatId, answerElement) {
+    return new Promise((resolve, reject) => {
+        try {
+            // 建立SSE连接到回放接口
+            const eventSource = new EventSource(`/replay/stream/${chatId}`);
+            
+            // 注册SSE事件处理器
+            const toolExecutions = {};
+            const currentActionIdRef = { value: null };
+            const currentIterationRef = { value: 1 };
+            
+            registerSSEHandlers(eventSource, {
+                answerElement: answerElement,
+                toolExecutions: toolExecutions,
+                currentActionIdRef: currentActionIdRef,
+                currentIterationRef: currentIterationRef,
+                renderNodeResult: uiRenderNodeResult,
+                renderExplanation: uiRenderExplanation,
+                renderAnswer: uiRenderAnswer,
+                createQuestionElement: createQuestionElement,
+                Icons: Icons,
+                submitUserInput: submitUserInput,
+                streamTextContent: uiStreamTextContent,
+                updatePlaybook: uiUpdatePlaybook,
+                fetchPlaybook: fetchPlaybook,
+                currentModel: currentModel,
+                playbookStorage: playbookStorage,
+                conversationIdStorage: conversationIdStorage,
+                scheduleConversationListUpdate: scheduleConversationListUpdate,
+                onComplete: () => {
+                    console.log(`Chat ${chatId} 回放完成`);
+                    resolve();
+                },
+                onError: () => {
+                    console.error(`Chat ${chatId} 回放出错`);
+                    reject(new Error(`Chat ${chatId} 回放失败`));
+                }
+            });
+            
+        } catch (error) {
+            console.error(`回放chat ${chatId} 失败:`, error);
+            reject(error);
+        }
+    });
+}
+
+// 显示删除确认模态框
+function showDeleteConfirmModal(conversationId, conversationTitle) {
+    const modal = document.getElementById('deleteConversationModal');
+    const closeBtn = modal.querySelector('.close-modal-btn');
+    const cancelBtn = modal.querySelector('.modal-btn-cancel');
+    const confirmBtn = modal.querySelector('.modal-btn-confirm');
+    const messageEl = modal.querySelector('.modal-message');
+    
+    // 更新消息内容
+    messageEl.textContent = `确定要删除会话"${conversationTitle}"吗？此操作无法撤销。`;
+    
+    // 显示模态框
+    modal.style.display = 'block';
+    modal.classList.add('visible');
+    
+    // 关闭模态框的函数
+    const closeModal = () => {
+        modal.style.display = 'none';
+        modal.classList.remove('visible');
+        // 移除事件监听器
+        closeBtn.onclick = null;
+        cancelBtn.onclick = null;
+        confirmBtn.onclick = null;
+        window.onclick = null;
+    };
+    
+    // 关闭按钮事件
+    closeBtn.onclick = closeModal;
+    
+    // 取消按钮事件
+    cancelBtn.onclick = closeModal;
+    
+    // 确认删除按钮事件
+    confirmBtn.onclick = async () => {
+        closeModal();
+        await deleteConversation(conversationId);
+    };
+    
+    // 点击模态框外部关闭
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            closeModal();
+        }
+    };
+}
+
+async function deleteConversation(conversationId) {
+    try {
+        const response = await fetch(`/conversations/${conversationId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            // 重新加载会话列表
+            await loadConversationList();
+        } else {
+            // 使用友好的错误提示
+            showErrorMessage('删除失败: ' + (data.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('删除会话失败:', error);
+        showErrorMessage('删除失败，请稍后重试');
+    }
+}
+
+// 显示错误消息（使用模态框）
+function showErrorMessage(message) {
+    const modal = document.getElementById('deleteConversationModal');
+    const closeBtn = modal.querySelector('.close-modal-btn');
+    const messageEl = modal.querySelector('.modal-message');
+    const actionsDiv = modal.querySelector('.modal-actions');
+    const titleEl = modal.querySelector('.modal-title');
+    
+    // 更新标题和消息
+    titleEl.textContent = '错误';
+    messageEl.textContent = message;
+    
+    // 隐藏操作按钮，只显示关闭按钮
+    actionsDiv.style.display = 'none';
+    
+    // 显示模态框
+    modal.style.display = 'block';
+    modal.classList.add('visible');
+    
+    // 关闭模态框的函数
+    const closeModal = () => {
+        modal.style.display = 'none';
+        modal.classList.remove('visible');
+        // 恢复标题和操作按钮
+        titleEl.textContent = '确认删除';
+        actionsDiv.style.display = 'flex';
+        closeBtn.onclick = null;
+        window.onclick = null;
+    };
+    
+    // 关闭按钮事件
+    closeBtn.onclick = closeModal;
+    
+    // 点击模态框外部关闭
+    window.onclick = (event) => {
+        if (event.target === modal) {
+            closeModal();
+        }
+    };
+}
+
+function createNewConversation() {
+    // 清空对话历史
+    const conversationHistory = document.getElementById('conversation-history');
+    if (conversationHistory) {
+        conversationHistory.innerHTML = '';
+    }
+    
+    // 清空右侧 playbook 区域
+    const playbookContent = document.getElementById('playbook-content');
+    if (playbookContent) {
+        playbookContent.innerHTML = '';
+    }
+    
+    // 清空 playbookStorage 中当前模型的内容
+    const selectedModul = document.getElementById('model-select').value;
+    if (playbookStorage && selectedModul) {
+        playbookStorage[selectedModul] = '';
+    }
+    
+    // 生成新的 conversationId
+    conversationIdStorage[selectedModul] = generateConversationId();
+    
+    // 清空输入框
+    const userInput = document.getElementById('user-input');
+    if (userInput) {
+        userInput.value = '';
+        userInput.focus();
+    }
+    
+    // 重新加载会话列表
+    loadConversationList();
+    
+    console.log('已创建新会话');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // 初始化会话列表
+    loadConversationList();
+    
+    // 新建会话按钮事件
+    const newConversationBtn = document.getElementById('new-conversation-btn');
+    if (newConversationBtn) {
+        newConversationBtn.addEventListener('click', createNewConversation);
+    }
+    
     // 选项面板显示/隐藏逻辑
     const optionsButton = document.getElementById('options-button');
     const optionsPanel = document.getElementById('options-panel');
@@ -1300,6 +1720,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 保存chat_id并建立SSE连接
             currentChatId = result.chat_id;
+            
+            // 启动延迟更新会话列表（8秒后执行，只调用一次）
+            scheduleConversationListUpdate();
+            
             const eventSource = new EventSource(`stream/${result.chat_id}`);
 
             // 将 SSE 事件处理委托到 sse-handlers 模块
@@ -1322,6 +1746,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     fetchPlaybook: fetchPlaybook, // 传递 fetchPlaybook
                     currentModel: currentModel, // 传递当前模型
                     playbookStorage: playbookStorage, // 传递 playbook 存储对象
+                    conversationIdStorage: conversationIdStorage, // 传递 conversationId 存储对象
+                    scheduleConversationListUpdate: scheduleConversationListUpdate, // 传递延迟更新会话列表函数
                     onComplete: () => { resetUI(); },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });

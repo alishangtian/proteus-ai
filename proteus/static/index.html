@@ -9,8 +9,19 @@
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="/static/card-styles.css">
+    <!-- KaTeX CSS for math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <script src="/static/highlightjs/highlight.min.js"></script>
     <script src="/static/marked.min.js"></script>
+    <!-- KaTeX JS for math rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+    <!-- KaTeX auto-render extension -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+    <!-- Mermaid JS for diagram rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="/static/main.js" type="module"></script>
     <script src="/static/card-view.js"></script>
 </head>
@@ -18,11 +29,20 @@
 <body>
     <!-- 左侧边栏 -->
     <div class="sidebar left-sidebar" id="leftSidebar">
-        <!-- <div class="user-info">
-            {% if logged_in %}
-            <span class="username">{{ username }}</span>
-            {% endif %}
-        </div> -->
+        <div class="conversation-list-container">
+            <div class="conversation-list-header">
+                <h3>会话历史</h3>
+                <button id="new-conversation-btn" class="new-conversation-btn" title="新建会话">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="conversation-list" class="conversation-list">
+                <div class="conversation-list-loading">加载中...</div>
+            </div>
+        </div>
     </div>
 
     <!-- 左侧分隔线 -->
@@ -141,6 +161,23 @@
                         </svg>
                         <span class="copy-tooltip">复制原始结果</span>
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除会话弹框 -->
+    <div id="deleteConversationModal" class="modal">
+        <div class="modal-content modal-confirm">
+            <div class="modal-header">
+                <h3 class="modal-title">确认删除</h3>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-message">确定要删除这个会话吗？此操作无法撤销。</p>
+                <div class="modal-actions">
+                    <button class="modal-btn modal-btn-cancel">取消</button>
+                    <button class="modal-btn modal-btn-confirm">确认删除</button>
                 </div>
             </div>
         </div>

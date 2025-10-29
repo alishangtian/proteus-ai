@@ -147,6 +147,15 @@ class RedisCache:
             logger.error(f"设置哈希值失败: {e}")
             return False
 
+    def hmset(self, name: str, mapping: dict) -> bool:
+        """设置哈希表字段值"""
+        try:
+            client = self._get_client()
+            client.hmset(name, mapping)
+        except redis.RedisError as e:
+            logger.error(f"设置哈希值失败: {e}")
+            return False
+
     def hget(self, name: str, key: str) -> str:
         """获取哈希表字段值"""
         try:
@@ -222,6 +231,15 @@ class RedisCache:
             return client.zremrangebyrank(key, start, end)
         except redis.RedisError as e:
             logger.error(f"根据排名删除有序集合成员失败: {e}")
+            return 0
+
+    def zrem(self, key: str, *members) -> int:
+        """从有序集合中删除一个或多个成员"""
+        try:
+            client = self._get_client()
+            return client.zrem(key, *members)
+        except redis.RedisError as e:
+            logger.error(f"从有序集合删除成员失败: {e}")
             return 0
 
     def lpop(self, key: str) -> Optional[str]:
