@@ -15,6 +15,9 @@ class NoopGeneration:
     def update(self, *args, **kwargs):
         return None
 
+    def end(self, *args, **kwargs):
+        return None
+
     def score(self, *args, **kwargs):
         return None
 

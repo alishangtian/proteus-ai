@@ -2341,11 +2341,18 @@ class ReactAgent:
                         action, action_input, thought, chat_id, None, user_query=query
                     )
                     # last update_playbook
-                    asyncio.create_task(
-                        self.update_playbook(
-                            chat_id, thought, action, final_answer, query
-                        )
+                    # self.update_playbook(chat_id, thought, action, final_answer, query)
+                    """更新playbook"""
+                    last_playbook = self._load_playbook_from_redis(self.conversation_id)
+                    # 生成新的剧本
+                    current_playbook = await self._generate_playbook(
+                        last_playbook=last_playbook,
+                        tool_result=f"thought:{thought}\n action:{action}\n final_answer:{final_answer}",
+                        chat_id=chat_id,
+                        model_name=self.model_name or self.reasoner_model_name,
+                        query=query,
                     )
+                    self._save_playbook_to_redis(self.conversation_id, current_playbook)
                     break
 
                 # 验证工具

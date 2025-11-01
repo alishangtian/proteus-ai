@@ -1,8 +1,7 @@
 import threading
 import logging
 from typing import List, Dict
-
-from proteus.src.agent.langfuse_wrapper import langfuse_wrapper
+from src.utils.langfuse_wrapper import langfuse_wrapper
 
 logger = logging.getLogger(__name__)
 

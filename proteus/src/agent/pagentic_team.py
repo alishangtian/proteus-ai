@@ -175,7 +175,8 @@ class PagenticTeam:
             f"[{chat_id}] 启动团队工作流程，任务发起人为：{self.startRole.value}"
         )
         start_agent = self.agents[self.startRole]
-        await start_agent.run(query, chat_id, stream)
+        result = await start_agent.run(query, chat_id, stream)
+        return result
 
     @langfuse_wrapper.observe_decorator(
         name="stop", capture_input=True, capture_output=True

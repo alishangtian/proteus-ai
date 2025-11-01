@@ -11,10 +11,10 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
-from src.api.llm_api import call_multimodal_llm_api
+from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
 from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
+from src.utils.tool_converter import load_tools_from_yaml
 import uuid  # 导入 uuid 用于生成唯一 ID
-from src.utils.redis_cache import RedisCache  # 导入 RedisCache
 from src.utils.file_parser import parse_file  # 导入文件解析函数
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -29,36 +29,22 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
-from src.agent.prompt.react_prompt import REACT_PROMPT
-from src.agent.prompt.react_prompt_v3 import REACT_PROMPT_V3
-from src.agent.prompt.react_prompt_v2 import REACT_PROMPT_V2
-from src.agent.prompt.react_prompt_v4 import REACT_PROMPT_V4
-from src.agent.prompt.react_prompt_v5 import REACT_PROMPT_V5
-from src.agent.prompt.react_prompt_v6 import REACT_PROMPT_V6
-from src.agent.prompt.react_prompt_v7 import REACT_PROMPT_V7
-from src.agent.prompt.react_prompt_v8 import REACT_PROMPT_V8
-from src.agent.prompt.react_playbook_prompt import REACT_PLAYBOOK_PROMPT
 from src.agent.prompt.react_playbook_prompt_v2 import REACT_PLAYBOOK_PROMPT_v2
 from src.agent.prompt.react_playbook_prompt_v3 import REACT_PLAYBOOK_PROMPT_v3
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
-from src.agent.prompt.cot_workflow_prompt import COT_WORKFLOW_PROMPT_TEMPLATES
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.coder import CODER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.coordinator import COORDINATOR_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.paper import PAPER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.planner import PLANNER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.reporter import REPORTER_PROMPT_TEMPLATES
-from src.agent.prompt.deep_research.researcher import RESEARCHER_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
-from src.nodes.node_config import NodeConfigManager
 from src.agent.agent import Agent
 from src.agent.react_agent import ReactAgent
+from src.agent.chat_agent import ChatAgent
 from src.agent.common.configuration import AgentConfiguration
 from src.agent.base_agent import IncludeFields
 from src.manager.multi_agent_manager import get_multi_agent_manager
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.api.events import (
     create_complete_event,
+    create_agent_complete_event,
+    create_agent_stream_thinking_event,
 )
 
 # 加载环境变量
@@ -87,13 +73,13 @@ stream_manager = StreamManager.get_instance()
 agent_dict = {}
 
 agent_model_list = [
+    "chat",
     "workflow",
     "super-agent",
-    "agent",
     "mcp-agent",
-    "multi-agent",
     "browser-agent",
     "deep-research",
+    "deep-research-multi",
     "codeact-agent",
 ]
 
@@ -512,6 +498,8 @@ async def create_chat(
     file_ids: Optional[List[str]] = Body(None, embed=True),  # 新增文件 ID 列表参数
     tool_memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
     sop_memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
+    enable_tools: bool = Body(False, embed=True),  # 新增工具调用开关
+    tool_choices: Optional[List[str]] = Body(None, embed=True),  # 新增工具选择参数
 ):
     """创建新的聊天会话
 
@@ -554,6 +542,8 @@ async def create_chat(
             )
         )
 
+    tool_choices = ["serper_search", "web_crawler", "python_execute"]
+
     if modul in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
         asyncio.create_task(
@@ -571,6 +561,8 @@ async def create_chat(
                 username=username,  # 传递用户名
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递SOP记忆参数
+                enable_tools=enable_tools,  # 传递工具调用开关
+                tool_choices=tool_choices,  # 传递工具选择参数
             )
         )
     else:
@@ -885,33 +877,34 @@ async def generate_conversation_title(initial_question: str) -> str:
         messages = [
             {
                 "role": "system",
-                "content": "你是一个专业的标题生成助手。请根据用户的问题生成一个简洁、准确的会话标题，不超过20个字。只返回标题文本，不要有任何其他内容。"
+                "content": "你是一个专业的标题生成助手。请根据用户的问题生成一个简洁、准确的会话标题，不超过20个字。只返回标题文本，不要有任何其他内容。",
             },
             {
                 "role": "user",
-                "content": f"请为以下问题生成一个简洁的会话标题：\n\n{initial_question}"
-            }
+                "content": f"请为以下问题生成一个简洁的会话标题：\n\n{initial_question}",
+            },
         ]
-        
+
         # 调用 LLM API 生成标题
         from src.api.llm_api import call_llm_api
+
         title, _ = await call_llm_api(
             messages=messages,
             request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
             temperature=0.3,  # 使用较低的温度以获得更稳定的输出
-            model_name="deepseek-chat"  # 使用默认模型
+            model_name="deepseek-chat",  # 使用默认模型
         )
-        
+
         # 清理标题，移除可能的引号和多余空格
         title = title.strip().strip('"').strip("'").strip()
-        
+
         # 如果标题过长，截断并添加省略号
         if len(title) > 20:
             title = title[:20] + "..."
-        
+
         logger.info(f"生成会话标题: {title}")
         return title
-        
+
     except Exception as e:
         # 如果生成失败，回退到简单截取方式
         logger.warning(f"使用 LLM 生成标题失败，使用默认方式: {str(e)}")
@@ -945,6 +938,7 @@ async def save_conversation_summary(
     try:
         redis_conn = get_redis_connection()
         conversation_key = f"conversation:{conversation_id}:info"
+        username = username or "anonymous"
 
         # 使用 LLM 生成会话标题
         title = await generate_conversation_title(initial_question)
@@ -956,14 +950,14 @@ async def save_conversation_summary(
                 "conversation_id": conversation_id,
                 "title": title,
                 "initial_question": initial_question,
-                "username": username or "anonymous",
+                "username": username,
                 "modul": modul or "unknown",
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
                 "first_chat_id": chat_id,
             }
             redis_conn.hmset(conversation_key, mapping=conversation_data)
-            
+
             # 添加到用户的会话列表（有序集合，按时间戳排序）
             user_conversations_key = f"user:{username}:conversations"
             timestamp = time.time()
@@ -973,6 +967,12 @@ async def save_conversation_summary(
             # 已存在会话：更新标题和时间戳
             redis_conn.hset(conversation_key, "title", title)
             redis_conn.hset(conversation_key, "updated_at", datetime.now().isoformat())
+
+            # 更新用户在有序集合中的时间戳，确保按更新时间排序
+            user_conversations_key = f"user:{username}:conversations"
+            timestamp = time.time()
+            redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
+
             logger.info(f"已更新会话摘要: {conversation_id}, 新标题: {title}")
 
     except Exception as e:
@@ -996,6 +996,8 @@ async def process_agent(
     username: str = None,  # 新增用户名参数
     tool_memory_enabled: bool = False,  # 新增工具记忆参数
     sop_memory_enabled: bool = False,  # 新增 SOP 记忆参数
+    enable_tools: bool = False,  # 新增工具调用开关
+    tool_choices: Optional[List[str]] = None,  # 新增工具选择参数
 ):
     """处理Agent请求的异步函数
 
@@ -1012,6 +1014,7 @@ async def process_agent(
     )
     team = None
     agent = None
+    final_result = None
     try:
         logger.info(f"[{chat_id}] process_agent 接收到的 file_ids: {file_ids}")
         file_analysis_context = ""
@@ -1040,7 +1043,30 @@ async def process_agent(
             else:
                 logger.info(f"[{chat_id}] 没有文件解析内容需要添加到文本中。")
 
-        if agentmodul == "deep-research":
+        if agentmodul == "chat":
+            # chat 模式：使用 ChatAgent 类处理
+            logger.info(
+                f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {enable_tools}"
+            )
+
+            # 创建 ChatAgent 实例
+            chat_agent = ChatAgent(
+                stream_manager=stream_manager,
+                model_name=model_name,
+                enable_tools=enable_tools,
+                tool_choices=tool_choices,
+                max_tool_iterations=itecount,
+                conversation_id=conversation_id,
+                conversation_round=conversation_round,
+            )
+
+            # 运行 ChatAgent
+            final_result = await chat_agent.run(
+                chat_id=chat_id,
+                text=text,
+                file_analysis_context=file_analysis_context,
+            )
+        elif agentmodul == "deep-research-multi":
             # 建立 team 和 chatid 的绑定关系
             await _register_team_binding(
                 chat_id, team_name or "deep_research", agentmodul
@@ -1116,7 +1142,7 @@ async def process_agent(
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents(chat_id)
             logger.info(f"[{chat_id}] PagenticTeam开始运行")
-            await team.run(text, chat_id)
+            final_result = await team.run(text, chat_id)
         elif agentmodul == "super-agent":
             # 超级智能体，智能组建team并完成任务
             logger.info(f"[{chat_id}] 开始超级智能体请求")
@@ -1138,8 +1164,7 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id)
-
+            result = await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "codeact-agent":
 
@@ -1176,8 +1201,7 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id, context=file_analysis_context)
-
+            final_result = await agent.run(text, chat_id, context=file_analysis_context)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -1203,9 +1227,9 @@ async def process_agent(
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id)
+            final_result = await agent.run(text, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
-        else:
+        elif agentmodul == "deep-research":
             all_tools = [
                 "python_execute",
                 "serper_search",
@@ -1231,8 +1255,12 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            await agent.run(text, chat_id, context=file_analysis_context)
+            final_result = await agent.run(text, chat_id, context=file_analysis_context)
             await stream_manager.send_message(chat_id, await create_complete_event())
+        else:
+            await stream_manager.send_message(
+                chat_id, await create_error_event("工作模式未定义")
+            )
     except Exception as e:
         from src.api.events import create_error_event
 
@@ -1241,6 +1269,8 @@ async def process_agent(
         await stream_manager.send_message(chat_id, await create_error_event(error_msg))
         if team is not None:
             await team.stop()
+    finally:
+        return {"status": "success", "final_result": final_result, "text": text}
 
 
 @langfuse_wrapper.observe_decorator(

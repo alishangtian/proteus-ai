@@ -1519,6 +1519,286 @@ body {
     /* 隐藏时间显示 */
 }
 
+/* 流式思考容器样式 - 可折叠版本 */
+.agent-thinking-stream {
+    margin: var(--spacing-md) 0;
+    padding: 0;
+    background: var(--bg-color-white);
+    border: 1px solid var(--border-color-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* 思考中状态 - 添加动态边框效果 */
+.agent-thinking-stream.thinking {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1), var(--shadow-sm);
+    animation: thinkingPulse 2s ease-in-out infinite;
+}
+
+/* 思考完成状态 */
+.agent-thinking-stream.completed {
+    border-color: var(--green);
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1), var(--shadow-sm);
+}
+
+@keyframes thinkingPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1), var(--shadow-sm);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2), var(--shadow-md);
+    }
+}
+
+/* 思考过程标题栏 */
+.thinking-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-color-lighter-gray);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    user-select: none;
+}
+
+.thinking-header:hover {
+    background: var(--bg-color-light-gray);
+}
+
+.thinking-header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    flex: 1;
+}
+
+.thinking-header-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color-medium);
+    transition: color 0.3s ease;
+}
+
+/* 思考中状态的标题颜色 */
+.agent-thinking-stream.thinking .thinking-header-title {
+    color: var(--primary-blue);
+}
+
+/* 思考完成状态的标题颜色 */
+.agent-thinking-stream.completed .thinking-header-title {
+    color: var(--green-dark);
+}
+
+/* 思考中的动态点动画 */
+.thinking-dots {
+    display: inline-block;
+    margin-left: 2px;
+}
+
+.thinking-dots span {
+    animation: thinkingDotFade 1.4s infinite;
+    opacity: 0;
+}
+
+.thinking-dots span:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.thinking-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.thinking-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes thinkingDotFade {
+    0%, 100% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+/* 思考完成后隐藏动画点 */
+.agent-thinking-stream.completed .thinking-dots {
+    display: none;
+}
+
+.thinking-duration {
+    font-size: 12px;
+    color: var(--text-color-lighter);
+    margin-left: var(--spacing-xs);
+    font-weight: 600;
+}
+
+/* 折叠指示器 */
+.thinking-header::after {
+    content: '▼';
+    font-size: 12px;
+    color: var(--text-color-lighter);
+    transition: transform 0.3s ease;
+}
+
+.agent-thinking-stream.collapsed .thinking-header::after {
+    transform: rotate(-90deg);
+}
+
+/* 思考内容区域 */
+.thinking-content-stream {
+    padding: var(--spacing-lg);
+    background: rgba(255, 255, 255, 0.6);
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text-color-light);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    max-height: 500px;
+    overflow-y: auto;
+    opacity: 1;
+    visibility: visible;
+    transform: scaleY(1);
+    transform-origin: top;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s linear 0s;
+}
+
+/* 思考内容中的段落样式 */
+.thinking-content-stream p {
+    margin: 0 0 12px 0;
+    text-indent: 0;
+}
+
+/* 思考内容中的列表项样式 - 使用蓝色圆点 */
+.thinking-content-stream::before {
+    content: '';
+    display: block;
+    margin-bottom: 8px;
+}
+
+/* 思考内容项样式 - 移除项目符号 */
+.thinking-content-stream-item {
+    position: relative;
+    padding-left: 0;
+    margin-bottom: 12px;
+}
+
+/* 折叠状态 - 平滑收起并完全隐藏 */
+.agent-thinking-stream.collapsed .thinking-content-stream {
+    max-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    overflow: hidden !important;
+    transform: scaleY(0) !important;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                padding 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                opacity 0.3s ease,
+                transform 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s linear 0.4s;
+}
+
+.thinking-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+.thinking-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.thinking-label {
+    font-weight: 600;
+    color: var(--primary-blue-darker);
+    font-size: 14px;
+    flex: 1;
+}
+
+.thinking-content-stream {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-color-medium);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    padding: var(--spacing-md);
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-md);
+    min-height: 40px;
+}
+
+/* 流式内容容器样式 */
+.agent-content-stream {
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-lg);
+    background: var(--bg-color-white);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.content-stream-text {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-color-dark);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    min-height: 20px;
+}
+
+/* 流式输出时的光标效果 */
+.content-stream-text::after {
+    content: '▊';
+    color: var(--primary-blue);
+    animation: blink 1s infinite;
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    0%, 49% {
+        opacity: 1;
+    }
+    50%, 100% {
+        opacity: 0;
+    }
+}
+
+/* 当流式输出完成后移除光标 */
+.agent-content-stream.completed .content-stream-text::after {
+    content: none;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+    .agent-thinking-stream,
+    .agent-content-stream {
+        padding: var(--spacing-md);
+        margin: var(--spacing-sm) 0;
+    }
+    
+    .thinking-content-stream,
+    .content-stream-text {
+        font-size: 13px;
+        padding: var(--spacing-sm);
+    }
+}
+
 /* 工作流信息样式 */
 .workflow-info {
     background: var(--bg-color-lighter-gray);

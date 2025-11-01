@@ -2,6 +2,36 @@ let isProcessing = false; // 标记是否正在处理消息
 let eventSource = null; // 用于SSE连接
 let chatContainer = null; // 聊天消息容器
 
+// 辅助函数：格式化时间戳，当天显示时分秒，非当天显示年月日时分秒
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    
+    // 判断是否为当天
+    const isToday = date.getFullYear() === now.getFullYear() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getDate() === now.getDate();
+    
+    if (isToday) {
+        // 当天只显示时分秒
+        return date.toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } else {
+        // 非当天显示年月日时分秒
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+}
+
 // 读取会话级“工具洞察”开关（与主界面保持一致）
 function isToolInsightEnabled() {
     try {
@@ -462,7 +492,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <div class="error-info">
                             <span class="error-icon">⚠️</span>
                             <span class="error-message">${data.error}</span>
-                            <span class="error-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                            <span class="error-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                         </div>
                     `;
                     answerElement.appendChild(errorDiv);

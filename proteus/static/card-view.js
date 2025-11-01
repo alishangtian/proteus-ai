@@ -1,3 +1,33 @@
+// 辅助函数：格式化时间戳，当天显示时分秒，非当天显示年月日时分秒
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    
+    // 判断是否为当天
+    const isToday = date.getFullYear() === now.getFullYear() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getDate() === now.getDate();
+    
+    if (isToday) {
+        // 当天只显示时分秒
+        return date.toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } else {
+        // 非当天显示年月日时分秒
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+}
+
 function renderSearchResults(action, data, currentActionId) {
     console.log('Rendering search results...', action, data);
     if (action !== 'serper_search' || !Array.isArray(data)) {
@@ -109,7 +139,7 @@ function renderSearchResults(action, data, currentActionId) {
         // 添加结果标签和时间戳
         completeDiv.innerHTML = `
             <span class="result-label">结果：</span>
-            <span class="action-timestamp">${new Date().toLocaleTimeString()}</span>
+            <span class="action-timestamp">${formatTimestamp(Date.now())}</span>
         `;
 
         // 添加搜索结果卡片容器

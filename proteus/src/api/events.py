@@ -31,6 +31,8 @@ class EventType:
     AGENT_EXECUTION = "agent_execution"  # 智能体执行事件
     AGENT_EVALUATION = "agent_evaluation"  # 智能体结果评估事件
     PLAYBOOK_UPDATE = "playbook_update"  # playbook 更新事件
+    AGENT_STREAM_CONTENT = "agent_stream_content"  # agent流式内容事件
+    AGENT_STREAM_THINKING = "agent_stream_thinking"  # agent流式思考事件
 
 
 async def create_event(event_type: str, data: Any) -> Dict:
@@ -299,6 +301,36 @@ async def create_agent_evaluation_event(
             "timestamp": time.time(),
             "agent_name": agent_name,
         },
+    )
+
+
+async def create_agent_stream_content_event(content: str) -> Dict:
+    """创建agent流式内容事件
+    
+    Args:
+        content: 流式输出的内容片段
+        
+    Returns:
+        Dict: 事件字典
+    """
+    return await create_event(
+        EventType.AGENT_STREAM_CONTENT,
+        {"content": content, "timestamp": time.time()}
+    )
+
+
+async def create_agent_stream_thinking_event(thinking: str) -> Dict:
+    """创建agent流式思考事件
+    
+    Args:
+        thinking: 流式输出的思考内容片段
+        
+    Returns:
+        Dict: 事件字典
+    """
+    return await create_event(
+        EventType.AGENT_STREAM_THINKING,
+        {"thinking": thinking, "timestamp": time.time()}
     )
 
 

@@ -10,18 +10,23 @@
     <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="/static/card-styles.css">
     <!-- KaTeX CSS for math rendering -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <link rel="stylesheet" href="/static/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
     <script src="/static/highlightjs/highlight.min.js"></script>
     <script src="/static/marked.min.js"></script>
     <!-- KaTeX JS for math rendering -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8" crossorigin="anonymous"></script>
+    <script defer src="/static/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
     <!-- KaTeX auto-render extension -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05" crossorigin="anonymous"></script>
+    <script defer src="/static/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script>
     <!-- Mermaid JS for diagram rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="/static/mermaid.min.js"></script>
+    <script src="/static/html2canvas.min.js"></script>
     <!-- jsPDF for PDF generation -->
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script src="/static/jspdf.umd.min.js"></script>
     <script src="/static/main.js" type="module"></script>
     <script src="/static/card-view.js"></script>
 </head>
@@ -85,15 +90,24 @@
                             <div class="model-select-wrapper">
                                 <label for="model-select"><span>📚 工作模式</span></label>
                                 <select id="model-select" class="select-control" aria-label="工作模式" title="选择工作模式">
-                                    <option value="agent" selected>智能体</option>
-                                    <!-- <option value="super-agent" selected>超级智能体</option> -->
+                                    <option value="chat" selected>智能助手</option>
                                     <option value="deep-research">深度研究</option>
+                                    <option value="deep-research-multi">深度研究-多智能体</option>
+                                    <option value="super-agent">超级智能体</option>
                                     <option value="codeact-agent">CodeAct智能体</option>
                                     <option value="mcp-agent">MCP智能体</option>
                                     <option value="browser-agent">Browser智能体</option>
                                 </select>
                             </div>
-
+                            <div id="tool-call-container">
+                                <div class="memory-wrapper">
+                                    <label for="tool-call-toggle">
+                                        <span>🔧 工具调用</span>
+                                    </label>
+                                    <input type="checkbox" id="tool-call-toggle" class="memory-toggle" checked
+                                        title="搜索、爬虫和代码执行器">
+                                </div>
+                            </div>
                             <div class="model-select-wrapper">
                                 <label for="model-name-select"><span>👨‍🔬 模型</span></label>
                                 <select id="model-name-select" class="select-control" aria-label="模型"
@@ -111,7 +125,6 @@
                                 <input type="number" id="conversation_count" class="select-control" min="1" value="10"
                                     placeholder="会话轮次" />
                             </div>
-
                             <div class="memory-wrapper">
                                 <label for="tool-memory-toggle">
                                     <span>🔧 工具记忆</span>

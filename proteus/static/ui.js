@@ -35,6 +35,12 @@ export function resetUI(userInput, sendButton) {
         clearInterval(streamingInterval);
         streamingInterval = null;
     }
+    
+    // 将所有运行中的思考指示器标记为完成
+    document.querySelectorAll('.thinking-indicator.running').forEach(indicator => {
+        indicator.classList.remove('running');
+        indicator.classList.add('completed');
+    });
 }
 
 /**

@@ -5,6 +5,36 @@
 
 import { downloadFileFromContent, sanitizeFilename, getMimeType, generateConversationId } from './utils.js';
 
+// 辅助函数：格式化时间戳，当天显示时分秒，非当天显示年月日时分秒
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+
+    // 判断是否为当天
+    const isToday = date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth() &&
+        date.getDate() === now.getDate();
+
+    if (isToday) {
+        // 当天只显示时分秒
+        return date.toLocaleTimeString('zh-CN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } else {
+        // 非当天显示年月日时分秒
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+}
+
 // 配置 marked 渲染器，使所有链接在新标签页打开，并支持 Mermaid
 if (typeof marked !== 'undefined') {
     const renderer = new marked.Renderer();
@@ -19,8 +49,9 @@ if (typeof marked !== 'undefined') {
     // 自定义代码块渲染器以支持 Mermaid
     renderer.code = function (code, language) {
         if (language === 'mermaid') {
-            // 为 Mermaid 代码块创建特殊标记
-            return `<div class="mermaid-diagram" data-mermaid-code="${encodeURIComponent(code)}"></div>`;
+            // 使用特殊的 data 属性标记 Mermaid 代码，避免被 highlight.js 处理
+            const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return `<pre class="mermaid-container"><code class="mermaid-code" data-mermaid-src="${btoa(encodeURIComponent(code))}">${escapedCode}</code></pre>`;
         }
         return originalCodeRenderer(code, language);
     };
@@ -112,40 +143,53 @@ function parseMarkdownWithMath(content) {
         });
     }
 
-    // 处理 Mermaid 图表
+    // 处理 Mermaid 图表 - 将标记的代码块转换为可渲染的 div
     if (typeof mermaid !== 'undefined') {
-        const mermaidDiagrams = tempDiv.querySelectorAll('.mermaid-diagram');
-        mermaidDiagrams.forEach((diagram, index) => {
+        const mermaidCodes = tempDiv.querySelectorAll('.mermaid-code[data-mermaid-src]');
+        mermaidCodes.forEach((codeElement) => {
             try {
-                const code = decodeURIComponent(diagram.getAttribute('data-mermaid-code'));
-                const id = `mermaid-${Date.now()}-${index}`;
+                // 从 data 属性中解码 Mermaid 代码
+                const encodedCode = codeElement.getAttribute('data-mermaid-src');
+                const code = decodeURIComponent(atob(encodedCode));
 
-                // 创建一个容器用于 Mermaid 渲染
-                const container = document.createElement('div');
-                container.className = 'mermaid';
-                container.textContent = code;
+                // 创建 Mermaid 渲染容器
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = code;
 
-                // 替换占位符
-                diagram.parentNode.replaceChild(container, diagram);
-
-                // 异步渲染 Mermaid 图表
-                setTimeout(() => {
-                    try {
-                        mermaid.run({
-                            nodes: [container]
-                        });
-                    } catch (e) {
-                        console.warn('Mermaid 渲染失败:', e);
-                        container.innerHTML = `<pre><code class="language-mermaid">${code}</code></pre>`;
-                    }
-                }, 0);
+                // 替换原来的 pre/code 元素
+                const preElement = codeElement.parentElement;
+                if (preElement && preElement.tagName === 'PRE') {
+                    preElement.parentNode.replaceChild(mermaidDiv, preElement);
+                }
             } catch (e) {
-                console.warn('Mermaid 图表处理失败:', e);
+                console.warn('Mermaid 代码解析失败:', e);
             }
         });
     }
 
-    return tempDiv.innerHTML;
+    // 返回 HTML 内容
+    const finalHtml = tempDiv.innerHTML;
+
+    // 在下一个事件循环中渲染 Mermaid 图表
+    if (typeof mermaid !== 'undefined') {
+        setTimeout(() => {
+            // 查找所有新添加的 mermaid 元素并渲染
+            const mermaidElements = document.querySelectorAll('.mermaid:not([data-processed])');
+            if (mermaidElements.length > 0) {
+                mermaidElements.forEach(el => el.setAttribute('data-processed', 'true'));
+                try {
+                    mermaid.run({
+                        nodes: Array.from(mermaidElements)
+                    });
+                } catch (e) {
+                    console.warn('Mermaid 渲染失败:', e);
+                }
+            }
+        }, 100);
+    }
+
+    return finalHtml;
 }
 
 export function registerSSEHandlers(eventSource, ctx = {}) {
@@ -165,7 +209,8 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         fetchPlaybook, // 添加 fetchPlaybook 到 ctx
         currentModel, // 从 ctx 中获取 currentModel
         playbookStorage, // 从 ctx 中获取 playbookStorage
-        scheduleConversationListUpdate // 从 ctx 中获取延迟更新会话列表函数
+        scheduleConversationListUpdate, // 从 ctx 中获取延迟更新会话列表函数
+        scrollToBottom // 从 ctx 中获取滚动到底部函数
     } = ctx;
 
     // 标记 agent_complete 的流式渲染状态，避免 complete 事件过早重置 UI
@@ -257,7 +302,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             </div>
                         </div>
                         <div class="agent-footer">
-                            <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                            <span class="agent-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                         </div>
                     </div>
                 </div>
@@ -294,7 +339,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 </div>
                             </div>
                             <div class="agent-footer">
-                                <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                                <span class="agent-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                             </div>
                         </div>
                     </div>`;
@@ -320,7 +365,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 </div>
                             </div>
                             <div class="agent-footer">
-                                <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                                <span class="agent-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                             </div>
                         </div>
                     </div>`;
@@ -458,6 +503,12 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             const inputDiv = document.createElement('div');
             inputDiv.className = 'user-input-container';
 
+            // 为容器添加 data-action-id 属性，便于 action_complete 事件中查找
+            const currentActionId = currentActionIdRef && currentActionIdRef.value;
+            if (currentActionId) {
+                inputDiv.setAttribute('data-action-id', currentActionId);
+            }
+
             let inputHtml = `
                 <div class="input-prompt">${marked.parse(data.prompt)}</div>
                 <div class="input-form">
@@ -584,7 +635,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 <div class="search-header">
                     <span class="search-icon">🔍</span>
                     <span class="search-query">Serper 搜索: ${data.query}</span>
-                    <span class="search-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                    <span class="search-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                 </div>
                 <div class="search-content">
                     ${resultsHtml}
@@ -697,7 +748,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         <div class="action-group-item-metrics">
                             <div class="action-group-item-metric">
                                 <span class="action-group-item-metric-label">开始时间:</span>
-                                <span class="action-group-item-metric-value">${new Date(toolExecutions[actionId].startTime).toLocaleTimeString()}</span>
+                                <span class="action-group-item-metric-value">${formatTimestamp(toolExecutions[actionId].startTime)}</span>
                             </div>
                         </div>
                     </div>
@@ -736,6 +787,37 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 if (currentActionIdRef) currentActionIdRef.value = actionId;
             }
 
+            // 特殊处理：如果是 user_input 工具的完成事件，将 result 填写到已渲染的输入框中
+            if (data.action === 'user_input' && data.result) {
+                try {
+                    // 查找对应的用户输入容器
+                    const userInputContainer = document.querySelector(`.user-input-container[data-action-id="${actionId}"]`);
+                    if (userInputContainer) {
+                        const inputField = userInputContainer.querySelector('.input-field');
+                        if (inputField) {
+                            // 将 result 填写到输入框中
+                            inputField.value = data.result;
+                            // 禁用输入框，因为这是回放场景
+                            inputField.disabled = true;
+
+                            // 禁用提交按钮
+                            const submitButton = userInputContainer.querySelector('.submit-input');
+                            if (submitButton) {
+                                submitButton.disabled = true;
+                                submitButton.textContent = '已提交';
+                                submitButton.classList.add('submitted');
+                            }
+
+                            console.log(`已填充 user_input 结果到输入框: ${data.result}`);
+                        }
+                    } else {
+                        console.warn(`未找到对应的 user_input 容器，actionId: ${actionId}`);
+                    }
+                } catch (error) {
+                    console.error('处理 user_input 完成事件失败:', error);
+                }
+            }
+
             const actionGroup = document.querySelector(`.action-group[data-action-id="${actionId}"]`);
 
             if (actionGroup) {
@@ -768,7 +850,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         metricsEl.innerHTML += `
                             <div class="action-group-item-metric">
                                 <span class="action-group-item-metric-label">结束时间:</span>
-                                <span class="action-group-item-metric-value">${new Date(toolExecutions[actionId].endTime).toLocaleTimeString()}</span>
+                                <span class="action-group-item-metric-value">${formatTimestamp(toolExecutions[actionId].endTime)}</span>
                             </div>
                             <div class="action-group-item-metric">
                                 <span class="action-group-item-metric-label">执行耗时:</span>
@@ -897,7 +979,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 <div class="thinking-info">
                     <span class="thinking-indicator running"></span>
                     <span class="thinking-content"></span> <!-- 内容将直接填充 -->
-                    <span class="thinking-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                    <span class="thinking-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                 </div>
             `;
             if (answerElement) {
@@ -924,7 +1006,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 <div class="error-info">
                     <span class="error-icon">⚠️</span>
                     <span class="error-message">${data.error}</span>
-                    <span class="error-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                    <span class="error-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                 </div>
             `;
             if (answerElement) answerElement.appendChild(errorDiv);
@@ -967,7 +1049,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             ${data.feedback ? `<div class="agent-detail"><span class="detail-label">反馈:</span><span class="detail-value">${data.feedback}</span></div>` : ''}
                         </div>
                         <div class="agent-footer">
-                            <span class="agent-timestamp">${new Date(data.timestamp * 1000).toLocaleTimeString()}</span>
+                            <span class="agent-timestamp">${formatTimestamp(data.timestamp * 1000)}</span>
                         </div>
                     </div>
                 </div>
@@ -978,29 +1060,207 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         }
     });
 
-    // agent_complete
+    // agent_stream_thinking - 处理流式思考内容
+    eventSource.addEventListener('agent_stream_thinking', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const thinkingContent = data.thinking || '';
+            const timestamp = data.timestamp; // 获取时间戳
+
+            if (!thinkingContent) return;
+
+            // 检查是否包含思考完成标志
+            const isThinkingDone = thinkingContent.includes('[THINKING_DONE]');
+            const cleanContent = thinkingContent.replace('[THINKING_DONE]', '');
+
+            // 查找或创建思考容器
+            let thinkingContainer = answerElement.querySelector('.agent-thinking-stream:last-of-type');
+
+            if (!thinkingContainer) {
+                // 创建新的思考容器(默认展开，添加thinking类表示正在思考)
+                thinkingContainer = document.createElement('div');
+                thinkingContainer.className = 'agent-thinking-stream thinking'; // 添加thinking类
+                // 使用响应体中的timestamp作为开始时间（转换为毫秒）
+                thinkingContainer.dataset.startTimestamp = timestamp ? (timestamp * 1000) : Date.now();
+                thinkingContainer.dataset.thinkingBuffer = ''; // 用于累积思考内容
+                thinkingContainer.innerHTML = `
+                    <div class="thinking-header">
+                        <div class="thinking-header-left">
+                            <span class="thinking-icon">💭</span>
+                            <span class="thinking-header-title">正在深度思考<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                        </div>
+                    </div>
+                    <div class="thinking-content-stream"></div>
+                `;
+
+                // 添加点击事件切换折叠状态
+                const header = thinkingContainer.querySelector('.thinking-header');
+                header.addEventListener('click', () => {
+                    thinkingContainer.classList.toggle('collapsed');
+                });
+
+                if (answerElement) {
+                    answerElement.appendChild(thinkingContainer);
+                }
+            }
+
+            // 如果收到思考完成标志
+            if (isThinkingDone) {
+                // 移除thinking类，添加completed类
+                thinkingContainer.classList.remove('thinking');
+                thinkingContainer.classList.add('completed');
+
+                // 使用响应体中的timestamp计算思考时间
+                const startTimestamp = parseFloat(thinkingContainer.dataset.startTimestamp);
+                const endTimestamp = timestamp ? (timestamp * 1000) : Date.now();
+                const duration = Math.round((endTimestamp - startTimestamp) / 1000); // 转换为秒
+
+                // 更新标题显示思考完成和时间
+                const titleSpan = thinkingContainer.querySelector('.thinking-header-title');
+                if (titleSpan) {
+                    titleSpan.textContent = `思考完成（用时 ${duration} 秒）`;
+                }
+
+                // 标记为已完成，避免重复处理
+                thinkingContainer.dataset.completed = 'true';
+            }
+
+            // 累积思考内容（排除标志位）
+            if (cleanContent) {
+                thinkingContainer.dataset.thinkingBuffer = (thinkingContainer.dataset.thinkingBuffer || '') + cleanContent;
+            }
+
+            // 将累积的内容使用 Markdown 渲染
+            const contentDiv = thinkingContainer.querySelector('.thinking-content-stream');
+            if (contentDiv) {
+                const buffer = thinkingContainer.dataset.thinkingBuffer;
+
+                // 使用 Markdown 渲染累积的内容
+                try {
+                    const renderedHtml = marked.parse(buffer);
+                    contentDiv.innerHTML = renderedHtml;
+                } catch (e) {
+                    console.warn('Markdown 渲染失败，使用纯文本:', e);
+                    contentDiv.textContent = buffer;
+                }
+            }
+
+            // 自动滚动到底部
+            if (typeof ctx.scrollToBottom === 'function') {
+                ctx.scrollToBottom();
+            }
+
+        } catch (error) {
+            console.error('解析agent流式思考事件失败:', error);
+        }
+    });
+
+    // agent_complete - 支持增量数据渲染（后端可能多次发送）
     eventSource.addEventListener('agent_complete', event => {
         try {
             const data = JSON.parse(event.data);
-            const content = data.result;
-            console.debug('[SSE] agent_complete received, length=', (content || '').length);
+            const content = data.result || '';
 
-            const completeDiv = document.createElement('div');
-            completeDiv.className = 'agent-complete-final';
+            console.debug('[SSE] agent_complete received, content length=', content.length);
 
-            // 直接渲染 Markdown，无需流式或打字机效果
-            let renderedHtml = '';
-            try {
-                renderedHtml = parseMarkdownWithMath(content || '智能体已完成任务。');
-            } catch (e) {
-                // 回退为纯文本
-                renderedHtml = (content || '智能体已完成任务。');
+            // 查找或创建 agent_complete 专用容器
+            let completeContainer = answerElement.querySelector('.agent-complete-container:last-of-type');
+
+            if (!completeContainer) {
+                // 创建新的完成容器
+                completeContainer = document.createElement('div');
+                completeContainer.className = 'agent-complete-container';
+                completeContainer.dataset.contentBuffer = ''; // 用于累积内容
+                completeContainer.innerHTML = `
+                    <div class="agent-complete-final">
+                        <div class="complete-info">
+                            <div class="action_complete"></div>
+                        </div>
+                    </div>
+                `;
+
+                if (answerElement) {
+                    answerElement.appendChild(completeContainer);
+                }
+
+                // 如果存在思考容器，标记思考完成
+                const thinkingContainer = answerElement.querySelector('.agent-thinking-stream:last-of-type');
+                if (thinkingContainer && !thinkingContainer.dataset.completed) {
+                    thinkingContainer.dataset.completed = 'true';
+                    const startTime = parseInt(thinkingContainer.dataset.startTime);
+                    if (startTime) {
+                        const duration = Math.round((Date.now() - startTime) / 1000);
+                        const titleSpan = thinkingContainer.querySelector('.thinking-header-title');
+                        if (titleSpan) {
+                            titleSpan.textContent = `已深度思考（用时 ${duration} 秒）`;
+                        }
+                    }
+
+                    const thinkingIndicator = thinkingContainer.querySelector('.thinking-indicator');
+                    if (thinkingIndicator) {
+                        thinkingIndicator.classList.remove('running');
+                        thinkingIndicator.classList.add('completed');
+                    }
+                }
             }
 
-            completeDiv.innerHTML = `
-                <div class="complete-info">
-                    <div class="action_complete">${renderedHtml}</div>
-                    <div class="complete-actions">
+            // 累积内容到 buffer
+            if (content) {
+                completeContainer.dataset.contentBuffer = (completeContainer.dataset.contentBuffer || '') + content;
+            }
+
+            // 获取内容显示区域
+            const actionCompleteDiv = completeContainer.querySelector('.action_complete');
+            if (!actionCompleteDiv) return;
+
+            const accumulatedContent = completeContainer.dataset.contentBuffer || '智能体已完成任务。';
+
+            // 增量渲染：使用基础 Markdown 渲染
+            try {
+                const renderedHtml = marked.parse(accumulatedContent);
+                actionCompleteDiv.innerHTML = renderedHtml;
+            } catch (e) {
+                console.warn('Markdown 增量渲染失败，使用纯文本:', e);
+                actionCompleteDiv.textContent = accumulatedContent;
+            }
+
+            // 自动滚动到底部
+            if (typeof ctx.scrollToBottom === 'function') {
+                ctx.scrollToBottom();
+            }
+
+        } catch (error) {
+            console.error('解析agent完成事件失败:', error);
+        }
+    });
+
+    // complete 事件 - 在所有数据接收完成后触发最终渲染和添加操作按钮
+    eventSource.addEventListener('complete', event => {
+        // 查找 agent_complete 容器，进行最终渲染
+        const completeContainer = answerElement.querySelector('.agent-complete-container:last-of-type');
+        if (completeContainer && !completeContainer.dataset.finalized) {
+            completeContainer.dataset.finalized = 'true';
+
+            const actionCompleteDiv = completeContainer.querySelector('.action_complete');
+            const accumulatedContent = completeContainer.dataset.contentBuffer || '智能体已完成任务。';
+
+            // 最终渲染：使用完整的 Markdown 渲染（包括数学公式和 Mermaid）
+            let renderedHtml = '';
+            try {
+                renderedHtml = parseMarkdownWithMath(accumulatedContent);
+            } catch (e) {
+                console.warn('Markdown 最终渲染失败，使用纯文本:', e);
+                renderedHtml = accumulatedContent;
+            }
+
+            actionCompleteDiv.innerHTML = renderedHtml;
+
+            // 添加操作按钮（仅在最终渲染时添加）
+            const completeInfo = completeContainer.querySelector('.complete-info');
+            if (completeInfo && !completeInfo.querySelector('.complete-actions')) {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'complete-actions';
+                actionsDiv.innerHTML = `
                         <button class="action-btn copy-result-btn" title="复制">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1038,24 +1298,20 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                             </svg>
                         </button>
-                    </div>
-                </div>
-            `;
-
-            if (answerElement) {
-                answerElement.appendChild(completeDiv);
+                    `;
+                completeInfo.appendChild(actionsDiv);
 
                 // 添加按钮事件监听器
-                const copyBtn = completeDiv.querySelector('.copy-result-btn');
-                const screenshotBtn = completeDiv.querySelector('.screenshot-btn');
-                const likeBtn = completeDiv.querySelector('.like-btn');
-                const dislikeBtn = completeDiv.querySelector('.dislike-btn');
-                const regenerateBtn = completeDiv.querySelector('.regenerate-btn');
+                const copyBtn = actionsDiv.querySelector('.copy-result-btn');
+                const screenshotBtn = actionsDiv.querySelector('.screenshot-btn');
+                const likeBtn = actionsDiv.querySelector('.like-btn');
+                const dislikeBtn = actionsDiv.querySelector('.dislike-btn');
+                const regenerateBtn = actionsDiv.querySelector('.regenerate-btn');
 
                 // 复制功能
                 if (copyBtn) {
                     copyBtn.addEventListener('click', () => {
-                        const textToCopy = content || '智能体已完成任务。';
+                        const textToCopy = accumulatedContent;
                         navigator.clipboard.writeText(textToCopy).then(() => {
                             copyBtn.classList.add('success');
                             setTimeout(() => copyBtn.classList.remove('success'), 2000);
@@ -1070,7 +1326,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     screenshotBtn.addEventListener('click', async () => {
                         try {
                             if (typeof html2canvas !== 'undefined') {
-                                const targetElement = completeDiv.querySelector('.action_complete');
+                                const targetElement = actionCompleteDiv;
 
                                 // A4纸宽度：210mm = 794px (at 96 DPI)
                                 const A4_WIDTH = 794;
@@ -1146,7 +1402,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 }
 
                 // PDF下载功能
-                const pdfDownloadBtn = completeDiv.querySelector('.pdf-download-btn');
+                const pdfDownloadBtn = actionsDiv.querySelector('.pdf-download-btn');
                 if (pdfDownloadBtn) {
                     pdfDownloadBtn.addEventListener('click', async () => {
                         try {
@@ -1157,7 +1413,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             }
 
                             const { jsPDF } = window.jspdf;
-                            const targetElement = completeDiv.querySelector('.action_complete');
+                            const targetElement = actionCompleteDiv;
 
                             // 使用 html2canvas 将内容转换为图片
                             if (typeof html2canvas !== 'undefined') {
@@ -1344,79 +1600,24 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 }
             }
 
-            // agent_complete 渲染结束后，调用延迟更新会话列表函数
+            // 处理所有运行中的思考指示器
+            const allRunningIndicators = answerElement.querySelectorAll('.thinking-indicator.running');
+            allRunningIndicators.forEach(indicator => {
+                indicator.classList.remove('running');
+                indicator.classList.add('completed');
+            });
+
+            // agent_complete 最终渲染结束后，调用延迟更新会话列表函数
             if (typeof scheduleConversationListUpdate === 'function') {
                 try {
                     scheduleConversationListUpdate();
-                    console.log('agent_complete 渲染完成，已启动延迟更新会话列表');
+                    console.log('agent_complete 最终渲染完成，已启动延迟更新会话列表');
                 } catch (err) {
                     console.warn('启动延迟更新会话列表失败:', err);
                 }
             }
-        } catch (error) {
-            console.error('解析agent完成事件失败:', error);
         }
-    });
 
-    // agent_completed（兼容别名，与 agent_complete 同逻辑）
-    eventSource.addEventListener('agent_completed', event => {
-        try {
-            const data = JSON.parse(event.data);
-            const content = data.result;
-            console.debug('[SSE] agent_completed received, length=', (content || '').length);
-
-            const completeDiv = document.createElement('div');
-            completeDiv.className = 'agent-complete-final';
-
-            // 直接渲染 Markdown，无需流式或打字机效果
-            let renderedHtml = '';
-            try {
-                renderedHtml = parseMarkdownWithMath(content || '智能体已完成任务。');
-            } catch (e) {
-                renderedHtml = (content || '智能体已完成任务。');
-            }
-
-            completeDiv.innerHTML = `
-            <div class="complete-info">
-                <div class="action_complete">${renderedHtml}</div>
-            </div>
-        `;
-
-            if (answerElement) {
-                answerElement.appendChild(completeDiv);
-            }
-        } catch (error) {
-            console.error('解析agent完成事件失败:', error);
-        }
-    });
-
-
-    // playbook_update
-    eventSource.addEventListener('playbook_update', event => {
-        try {
-            const data = JSON.parse(event.data);
-            const tasks = data.tasks || [];
-
-            if (tasks.length > 0 && typeof updatePlaybook === 'function') {
-                // 使用提取的任务列表渲染 playbook
-                updatePlaybook(tasks);
-                console.log('Playbook 已更新，任务数量:', tasks.length);
-
-                // 保存 playbook 内容到 playbookStorage，以便在切换模型或第二次 chat 时能够恢复
-                if (playbookStorage && currentModel) {
-                    const playbookContent = document.getElementById('playbook-content');
-                    if (playbookContent) {
-                        playbookStorage[currentModel] = playbookContent.innerHTML;
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('解析 playbook 更新事件失败:', error);
-        }
-    });
-
-    // complete
-    eventSource.addEventListener('complete', event => {
         eventSource.close();
         // 在会话完成时，将所有 .agent-thinking 中的 .thinking-indicator 从 running 变为 completed
         document.querySelectorAll('.agent-thinking .thinking-indicator.running').forEach(indicator => {
@@ -1434,6 +1635,33 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 if (typeof ctx.onComplete === 'function') ctx.onComplete();
             }
         }, Math.max(defaultTypingDelay * 12, 300));
+    });
+
+    eventSource.addEventListener('playbook_update', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const tasks = data.tasks || [];
+            // 检查 updatePlaybook 函数是否可用
+            if (typeof updatePlaybook !== 'function') {
+                console.error('updatePlaybook 函数未定义，无法渲染 playbook');
+                return;
+            }
+
+            if (tasks.length > 0) {
+                // 使用提取的任务列表渲染 playbook
+                updatePlaybook(tasks);
+                // 保存 playbook 内容到 playbookStorage，以便在切换模型或第二次 chat 时能够恢复
+                if (playbookStorage && currentModel) {
+                    const playbookContent = document.getElementById('playbook-content');
+                    if (playbookContent) {
+                        playbookStorage[currentModel] = playbookContent.innerHTML;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('解析 playbook 更新事件失败:', error);
+            console.error('事件数据:', event.data);
+        }
     });
 
     // onerror
