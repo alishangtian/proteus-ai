@@ -1387,6 +1387,19 @@ body {
     fill: currentColor;
 }
 
+/* Usage按钮样式 - 简化设计 */
+.action-btn.usage-info-btn {
+    background: var(--bg-color-white);
+    color: var(--primary-blue);
+    border-color: var(--primary-blue);
+}
+
+.action-btn.usage-info-btn:hover {
+    background: var(--primary-blue);
+    color: var(--bg-color-white);
+    border-color: var(--primary-blue);
+}
+
 /* 重新生成按钮悬停效果 */
 .action-btn.regenerate-btn:hover {
     background: var(--primary-blue);

@@ -474,6 +474,9 @@ async def call_llm_api_stream(
                         # 提取usage信息（如果存在）
                         if "usage" in chunk:
                             accumulated_usage = chunk["usage"]
+                            # 返回usage信息
+                            if accumulated_usage:
+                                yield {"type": "usage", "usage": accumulated_usage}
 
                         # 处理choices中的内容
                         if "choices" in chunk and len(chunk["choices"]) > 0:
@@ -498,9 +501,6 @@ async def call_llm_api_stream(
                             # 检查是否完成
                             if choice.get("finish_reason") == "stop":
                                 logger.info(f"[{request_id}] 流式API调用完成")
-                                # 返回usage信息
-                                if accumulated_usage:
-                                    yield {"type": "usage", "usage": accumulated_usage}
 
                     except json.JSONDecodeError as e:
                         logger.warning(
@@ -675,9 +675,7 @@ async def call_llm_api_with_tools(
             raise
 
 
-@langfuse_wrapper.observe_decorator(
-    name="call_llm_api_with_tools_stream", capture_input=True, capture_output=True
-)
+@langfuse_wrapper.dynamic_observe()
 async def call_llm_api_with_tools_stream(
     messages: List[Dict[str, str]],
     tools: List[Dict] = None,
@@ -801,6 +799,8 @@ async def call_llm_api_with_tools_stream(
                         # 提取usage信息（如果存在）
                         if "usage" in chunk:
                             accumulated_usage = chunk["usage"]
+                            if accumulated_usage:
+                                yield {"type": "usage", "usage": accumulated_usage}
 
                         # 处理choices中的内容
                         if "choices" in chunk and len(chunk["choices"]) > 0:
@@ -885,11 +885,6 @@ async def call_llm_api_with_tools_stream(
                                         "type": "tool_calls",
                                         "tool_calls": accumulated_tool_calls,
                                     }
-
-                                # 返回usage信息
-                                if accumulated_usage:
-                                    yield {"type": "usage", "usage": accumulated_usage}
-
                     except json.JSONDecodeError as e:
                         logger.warning(
                             f"[{request_id}] 解析JSON失败: {line}, 错误: {str(e)}"

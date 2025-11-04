@@ -3,11 +3,14 @@
 import logging
 import json
 import time
+from string import Template
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 from src.api.stream_manager import StreamManager
 from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
 from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
+from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
 from src.utils.redis_cache import get_redis_connection
 from src.api.events import (
     create_agent_start_event,
@@ -15,6 +18,7 @@ from src.api.events import (
     create_agent_stream_thinking_event,
     create_complete_event,
     create_error_event,
+    create_usage_event,
 )
 
 logger = logging.getLogger(__name__)
@@ -58,9 +62,209 @@ class ChatAgent:
         self.conversation_id = conversation_id
         self.conversation_round = conversation_round
 
-    @langfuse_wrapper.observe_decorator(
-        name="load_tools_with_tracking", capture_input=True, capture_output=True
-    )
+    @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
+    async def run(
+        self,
+        chat_id: str,
+        text: str,
+        file_analysis_context: str = "",
+    ) -> str:
+        """运行 Chat Agent
+
+        Args:
+            chat_id: 聊天会话ID
+            text: 用户输入文本
+            file_analysis_context: 文件分析上下文
+            conversation_id: 会话ID（用于保存历史）
+
+        Returns:
+            str: 最终响应文本
+        """
+        self.logger.info(
+            f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {self.enable_tools}"
+        )
+
+        try:
+            # 发送 agent_start 事件
+            if self.stream_manager:
+                event = await create_agent_start_event(text)
+                await self.stream_manager.send_message(chat_id, event)
+
+            # 构建消息列表
+            messages = []
+
+            # 1. 先加载历史会话
+            if self.conversation_id:
+                conversation_history = self._load_conversation_history()
+                if conversation_history:
+                    messages.extend(conversation_history)
+            file_added = False
+            # 如果messages为空就添加到第一条角色为 system
+            all_values = {"CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+            if not messages:
+                system_message = {
+                    "role": "system",
+                    "content": CHAT_AGENT_SYSTEM_PROMPT,
+                }
+                if file_analysis_context:
+                    system_message["content"] = (
+                        f"{system_message['content']} {file_analysis_context}"
+                    )
+                    file_added = True
+                # 立即保存 system 消息到 Redis
+                if self.conversation_id:
+                    self._save_conversation_to_redis(message=system_message)
+                    self.logger.info(f"[{chat_id}] 已保存文件上下文消息到 Redis")
+                system_message["content"] = Template(
+                    system_message["content"]
+                ).safe_substitute(all_values)
+                messages.append(system_message)
+            else:
+                # 包含变量需要替换的 system content 需要进行替换
+                system_message = messages[0]
+                system_message["content"] = Template(
+                    system_message["content"]
+                ).safe_substitute(all_values)
+
+            user_message = {
+                "role": "user",
+                "content": text,
+            }
+
+            # 2. 添加文件上下文（如果有）
+            if not file_added and file_analysis_context:
+                user_message = {
+                    "role": "user",
+                    "content": f" {file_analysis_context}\n\n请根据文件内容回答用户问题：{text}",
+                }
+
+            # 3. 添加当前用户消息
+            messages.append(user_message)
+
+            # 立即保存用户消息到 Redis（保存完整的 message 对象）
+            if self.conversation_id:
+                self._save_conversation_to_redis(message=user_message)
+                self.logger.info(f"[{chat_id}] 已保存用户消息到 Redis")
+
+            # 加载工具（如果启用）
+            tools = None
+            tool_map = {}
+            if self.enable_tools:
+                tools, tool_map = await self._load_tools_with_tracking(chat_id)
+
+            # chat 模式下，始终传递 enable_thinking=True，让 API 层根据响应决定
+            enable_thinking = True
+
+            self.logger.info(
+                f"[{chat_id}] chat 模式使用模型: {self.model_name}，将根据 API 响应自动处理 thinking 内容"
+            )
+
+            # 工具调用循环
+            max_iterations = (
+                self.max_tool_iterations if self.enable_tools and tools else 1
+            )
+            tool_iteration = 0
+            final_response_text = ""
+            final_thinking_text = ""
+            accumulated_usage = {}
+
+            while tool_iteration < max_iterations:
+                # 执行一次 LLM 生成迭代
+                (
+                    response_text,
+                    thinking_text,
+                    tool_calls,
+                    accumulated_usage,
+                ) = await self._execute_llm_generation(
+                    chat_id=chat_id,
+                    messages=messages,
+                    tools=tools,
+                    enable_thinking=enable_thinking,
+                    tool_iteration=tool_iteration,
+                )
+
+                # 保存最终响应
+                final_response_text = response_text
+                final_thinking_text = thinking_text
+
+                # 如果没有工具调用，说明模型返回了最终答案，退出循环
+                if not tool_calls:
+                    self.logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
+                    break
+
+                # 执行工具调用
+                tool_messages = await self._execute_tools(
+                    chat_id=chat_id,
+                    tool_calls=tool_calls,
+                    tool_iteration=tool_iteration,
+                )
+
+                # 将助手消息（包含工具调用）添加到messages
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response_text if response_text else None,
+                    "tool_calls": tool_calls,
+                }
+                messages.append(assistant_message)
+
+                # 立即保存助手消息到 Redis（保存完整的 message 对象）
+                if self.conversation_id:
+                    self._save_conversation_to_redis(message=assistant_message)
+                    self.logger.info(
+                        f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
+                    )
+
+                # 将工具结果添加到messages，并立即保存到 Redis
+                for tool_msg in tool_messages:
+                    messages.append(tool_msg)
+                    # 立即保存每个工具调用结果到 Redis（保存完整的 message 对象）
+                    if self.conversation_id:
+                        self._save_conversation_to_redis(message=tool_msg)
+
+                if self.conversation_id and tool_messages:
+                    self.logger.info(
+                        f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
+                    )
+
+                # 增加迭代计数
+                tool_iteration += 1
+                self.logger.info(
+                    f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
+                )
+
+            # 发送完成事件
+            if self.stream_manager:
+                await self.stream_manager.send_message(
+                    chat_id, await create_complete_event()
+                )
+
+            # 如果没有工具调用，保存最终的助手回答到 Redis
+            # （如果有工具调用，助手消息已经在工具调用循环中保存了）
+            if self.conversation_id and tool_iteration == 0:
+                # 构建最终助手消息对象
+                final_assistant_message = {
+                    "role": "assistant",
+                    "content": final_response_text,
+                }
+
+                self._save_conversation_to_redis(message=final_assistant_message)
+                self.logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
+
+            self.logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
+
+            return final_response_text
+
+        except Exception as e:
+            error_msg = f"chat 模式处理失败: {str(e)}"
+            self.logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+
+            if self.stream_manager:
+                await self.stream_manager.send_message(
+                    chat_id, await create_error_event(error_msg)
+                )
+            raise
+
+    @langfuse_wrapper.dynamic_observe()
     async def _load_tools_with_tracking(
         self, chat_id: str
     ) -> tuple[Optional[List[Dict]], Dict[str, Dict]]:
@@ -202,6 +406,11 @@ class ChatAgent:
                                 self.logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
                                 )
+                                if self.stream_manager and accumulated_usage:
+                                    event = await create_usage_event(accumulated_usage)
+                                    await self.stream_manager.send_message(
+                                        chat_id, event
+                                    )
 
                             elif chunk_type == "error":
                                 error_msg = chunk.get("error", "未知错误")
@@ -263,6 +472,11 @@ class ChatAgent:
                                 self.logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
                                 )
+                                if self.stream_manager and accumulated_usage:
+                                    event = await create_usage_event(accumulated_usage)
+                                    await self.stream_manager.send_message(
+                                        chat_id, event
+                                    )
 
                             elif chunk_type == "error":
                                 error_msg = chunk.get("error", "未知错误")
@@ -334,9 +548,7 @@ class ChatAgent:
             self.logger.error(f"[{chat_id}] LLM生成失败: {str(e)}", exc_info=True)
             raise
 
-    @langfuse_wrapper.observe_decorator(
-        name="execute_tools", capture_input=True, capture_output=True
-    )
+    @langfuse_wrapper.dynamic_observe()
     async def _execute_tools(
         self,
         chat_id: str,
@@ -374,188 +586,7 @@ class ChatAgent:
 
         return tool_messages
 
-    @langfuse_wrapper.observe_decorator(
-        name="chat_agent_run", capture_input=True, capture_output=True
-    )
-    async def run(
-        self,
-        chat_id: str,
-        text: str,
-        file_analysis_context: str = "",
-    ) -> str:
-        """运行 Chat Agent
-
-        Args:
-            chat_id: 聊天会话ID
-            text: 用户输入文本
-            file_analysis_context: 文件分析上下文
-            conversation_id: 会话ID（用于保存历史）
-
-        Returns:
-            str: 最终响应文本
-        """
-        self.logger.info(
-            f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {self.enable_tools}"
-        )
-
-        try:
-            # 发送 agent_start 事件
-            if self.stream_manager:
-                event = await create_agent_start_event(text)
-                await self.stream_manager.send_message(chat_id, event)
-
-            # 构建消息列表
-            messages = []
-
-            # 1. 先加载历史会话
-            if self.conversation_id:
-                conversation_history = self._load_conversation_history()
-                if conversation_history:
-                    messages.extend(conversation_history)
-
-            # 2. 添加文件上下文（如果有）
-            if file_analysis_context:
-                system_message = {
-                    "role": "system",
-                    "content": f"用户上传了以下文件内容：\n{file_analysis_context}",
-                }
-                messages.append(system_message)
-
-                # 立即保存 system 消息到 Redis
-                if self.conversation_id:
-                    self._save_conversation_to_redis(message=system_message)
-                    self.logger.info(f"[{chat_id}] 已保存文件上下文消息到 Redis")
-
-            # 3. 添加当前用户消息
-            user_message = {"role": "user", "content": text}
-            messages.append(user_message)
-
-            # 立即保存用户消息到 Redis（保存完整的 message 对象）
-            if self.conversation_id:
-                self._save_conversation_to_redis(message=user_message)
-                self.logger.info(f"[{chat_id}] 已保存用户消息到 Redis")
-
-            # 加载工具（如果启用）
-            tools = None
-            tool_map = {}
-            if self.enable_tools:
-                tools, tool_map = await self._load_tools_with_tracking(chat_id)
-
-            # chat 模式下，始终传递 enable_thinking=True，让 API 层根据响应决定
-            enable_thinking = True
-
-            self.logger.info(
-                f"[{chat_id}] chat 模式使用模型: {self.model_name}，将根据 API 响应自动处理 thinking 内容"
-            )
-
-            # 工具调用循环
-            max_iterations = (
-                self.max_tool_iterations if self.enable_tools and tools else 1
-            )
-            tool_iteration = 0
-            final_response_text = ""
-            final_thinking_text = ""
-            accumulated_usage = {}
-
-            while tool_iteration < max_iterations:
-                # 执行一次 LLM 生成迭代
-                (
-                    response_text,
-                    thinking_text,
-                    tool_calls,
-                    accumulated_usage,
-                ) = await self._execute_llm_generation(
-                    chat_id=chat_id,
-                    messages=messages,
-                    tools=tools,
-                    enable_thinking=enable_thinking,
-                    tool_iteration=tool_iteration,
-                )
-
-                # 保存最终响应
-                final_response_text = response_text
-                final_thinking_text = thinking_text
-
-                # 如果没有工具调用，说明模型返回了最终答案，退出循环
-                if not tool_calls:
-                    self.logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
-                    break
-
-                # 执行工具调用
-                tool_messages = await self._execute_tools(
-                    chat_id=chat_id,
-                    tool_calls=tool_calls,
-                    tool_iteration=tool_iteration,
-                )
-
-                # 将助手消息（包含工具调用）添加到messages
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response_text if response_text else None,
-                    "tool_calls": tool_calls,
-                }
-                messages.append(assistant_message)
-
-                # 立即保存助手消息到 Redis（保存完整的 message 对象）
-                if self.conversation_id:
-                    self._save_conversation_to_redis(message=assistant_message)
-                    self.logger.info(
-                        f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
-                    )
-
-                # 将工具结果添加到messages，并立即保存到 Redis
-                for tool_msg in tool_messages:
-                    messages.append(tool_msg)
-                    # 立即保存每个工具调用结果到 Redis（保存完整的 message 对象）
-                    if self.conversation_id:
-                        self._save_conversation_to_redis(message=tool_msg)
-
-                if self.conversation_id and tool_messages:
-                    self.logger.info(
-                        f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
-                    )
-
-                # 增加迭代计数
-                tool_iteration += 1
-                self.logger.info(
-                    f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
-                )
-
-            # 发送完成事件
-            if self.stream_manager:
-                await self.stream_manager.send_message(
-                    chat_id, await create_complete_event()
-                )
-
-            # 如果没有工具调用，保存最终的助手回答到 Redis
-            # （如果有工具调用，助手消息已经在工具调用循环中保存了）
-            if self.conversation_id and tool_iteration == 0:
-                # 构建最终助手消息对象
-                final_assistant_message = {
-                    "role": "assistant",
-                    "content": final_response_text,
-                }
-
-                self._save_conversation_to_redis(message=final_assistant_message)
-                self.logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
-
-            self.logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
-
-            return final_response_text
-
-        except Exception as e:
-            error_msg = f"chat 模式处理失败: {str(e)}"
-            self.logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
-
-            if self.stream_manager:
-                await self.stream_manager.send_message(
-                    chat_id, await create_error_event(error_msg)
-                )
-            raise
-
-    @langfuse_wrapper.observe_decorator(
-        name="_save_conversation_to_redis", capture_input=True, capture_output=True
-    )
+    @langfuse_wrapper.dynamic_observe()
     def _save_conversation_to_redis(
         self,
         message: Dict[str, Any],
@@ -625,9 +656,7 @@ class ChatAgent:
         )
         raise last_exception
 
-    @langfuse_wrapper.observe_decorator(
-        name="_load_conversation_history", capture_input=True, capture_output=True
-    )
+    @langfuse_wrapper.dynamic_observe()
     def _load_conversation_history(
         self, expire_hours: int = 12
     ) -> List[Dict[str, Any]]:

@@ -218,6 +218,7 @@ function sanitizeHTML(html) {
     return template.innerHTML;
 }
 
+
 // 将 Markdown 渲染为 HTML 并通过 sanitizeHTML 过滤后返回安全的 HTML
 function renderMarkdownSafe(mdText) {
     try {
@@ -1236,11 +1237,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         name: result.filename,
                         type: result.file_type, // 添加文件类型
                         fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
-                        status: 'completed'
+                        status: 'completed',
+                        sent: false // 初始化为未发送状态
                     };
                 } else {
                     // 如果没有找到临时文件（例如，多文件上传时只返回一个结果），则作为新文件添加
-                    uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
+                    uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed', sent: false });
                 }
                 renderUploadedFiles(); // 更新文件列表UI
 
@@ -1466,10 +1468,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 name: result.filename,
                                 type: result.file_type, // 添加文件类型
                                 fileAnalysis: result.file_analysis, // 使用更通用的 fileAnalysis
-                                status: 'completed'
+                                status: 'completed',
+                                sent: false // 初始化为未发送状态
                             };
                         } else {
-                            uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed' });
+                            uploadedFiles.push({ id: result.id, name: result.filename, type: result.file_type, fileAnalysis: result.file_analysis, status: 'completed', sent: false });
                         }
                         renderUploadedFiles(); // 更新文件列表UI
 
@@ -1609,11 +1612,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let text = userInput.value.trim();
-        if (!text && uploadedFiles.length === 0) return;
+        let query = userInput.value.trim();
+        if (!query && uploadedFiles.length === 0) return;
 
-        if (!text && uploadedFiles.length > 0) {
-            text = '请总结文件内容。'; // 更通用的提示
+        if (!query && uploadedFiles.length > 0) {
+            query = '请总结文件内容。'; // 更通用的提示
         }
 
         // 禁用输入并切换按钮状态
@@ -1651,7 +1654,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 添加问题文本（使用 Markdown 渲染，且做安全过滤）
         const questionTextDiv = document.createElement('div');
         questionTextDiv.className = 'question-text'; // 新增一个 div 来包裹问题文本
-        questionTextDiv.innerHTML = renderMarkdownSafe(text);
+        questionTextDiv.innerHTML = renderMarkdownSafe(query);
         questionDiv.appendChild(questionTextDiv); // 将问题文本添加到 questionDiv 内部
 
         qaContainer.appendChild(questionDiv);
@@ -1682,13 +1685,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 其他模式使用 /chat 接口
             const requestBody = {
-                text,
+                query,
                 modul: selectedModul,
                 model_name: selectedModelName,
                 conversation_id: conversation_id,
                 itecount: parseInt(document.getElementById('itecount').value),
                 conversation_round: parseInt(document.getElementById('conversation_count').value),
-                file_ids: uploadedFiles.map(file => file.id),
+                file_ids: uploadedFiles.filter(file => !file.sent).map(file => file.id), // 只发送未发送过的文件
                 tool_memory_enabled: document.getElementById('tool-memory-toggle').checked, // 工具洞察开关（会话级）
                 sop_memory_toggle: document.getElementById('sop-memory-toggle').checked
             };
@@ -1721,6 +1724,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 保存chat_id并建立SSE连接
             currentChatId = result.chat_id;
+
+            // 标记已发送的文件，避免下次重复发送
+            uploadedFiles.forEach(file => {
+                if (!file.sent) {
+                    file.sent = true;
+                }
+            });
 
             // 启动延迟更新会话列表（8秒后执行，只调用一次）
             scheduleConversationListUpdate();

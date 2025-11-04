@@ -288,9 +288,7 @@ async def serve_login_page():
 templates = Jinja2Templates(directory=static_path)
 
 
-@langfuse_wrapper.observe_decorator(
-    name="uploadfile", capture_input=True, capture_output=True
-)
+@langfuse_wrapper.dynamic_observe()
 @app.post("/uploadfile/")
 async def create_upload_file(file: UploadFile = File(...)):
     """
@@ -481,13 +479,11 @@ async def get_newui_page(request: Request):
     )
 
 
-@langfuse_wrapper.observe_decorator(
-    name="create_chat", capture_input=True, capture_output=True
-)
+@langfuse_wrapper.dynamic_observe()
 @app.post("/chat")
 async def create_chat(
     request: Request,
-    text: str = Body(..., embed=True),
+    query: str = Body(..., embed=True),
     modul: str = Body(..., embed=True),
     model_name: str = Body(None, embed=True),
     itecount: int = Body(5, embed=True),
@@ -518,7 +514,7 @@ async def create_chat(
     username = user.username if user else None
 
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    stream_manager.create_stream(chat_id, text)
+    stream_manager.create_stream(chat_id, query)
 
     # 保存 conversation_id 和 chat_id 的关系到 Redis
     if conversation_id:
@@ -536,7 +532,7 @@ async def create_chat(
             save_conversation_summary(
                 conversation_id=conversation_id,
                 chat_id=chat_id,
-                initial_question=text,
+                initial_question=query,
                 username=username,
                 modul=modul,
             )
@@ -549,7 +545,7 @@ async def create_chat(
         asyncio.create_task(
             process_agent(
                 chat_id,
-                text,
+                query,
                 itecount,
                 agentid,
                 agentmodul=modul,
@@ -979,12 +975,13 @@ async def save_conversation_summary(
         logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
 
 
-@langfuse_wrapper.observe_decorator(
-    name="process_agent", capture_input=True, capture_output=True
-)
+# @langfuse_wrapper.observe_decorator(
+#     name="process_agent", capture_input=True, capture_output=True
+# )
+@langfuse_wrapper.dynamic_observe()
 async def process_agent(
     chat_id: str,
-    text: str,
+    query: str,
     itecount: int,
     agentid: str = None,
     agentmodul: str = None,
@@ -1010,7 +1007,7 @@ async def process_agent(
         username: 用户名(可选)，用于工具记忆隔离
     """
     logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {text[:100]}... (agentid={agentid}, username={username})"
+        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, username={username})"
     )
     team = None
     agent = None
@@ -1038,7 +1035,7 @@ async def process_agent(
                     )
             if file_analysis_context:
                 logger.info(
-                    f"[{chat_id}] 已将文件解析内容添加到context中。长度: {len(text)}"
+                    f"[{chat_id}] 已将文件解析内容添加到context中。长度: {len(file_analysis_context)}"
                 )
             else:
                 logger.info(f"[{chat_id}] 没有文件解析内容需要添加到文本中。")
@@ -1063,7 +1060,7 @@ async def process_agent(
             # 运行 ChatAgent
             final_result = await chat_agent.run(
                 chat_id=chat_id,
-                text=text,
+                text=query,
                 file_analysis_context=file_analysis_context,
             )
         elif agentmodul == "deep-research-multi":
@@ -1142,7 +1139,7 @@ async def process_agent(
             logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
             await team.register_agents(chat_id)
             logger.info(f"[{chat_id}] PagenticTeam开始运行")
-            final_result = await team.run(text, chat_id)
+            final_result = await team.run(query, chat_id)
         elif agentmodul == "super-agent":
             # 超级智能体，智能组建team并完成任务
             logger.info(f"[{chat_id}] 开始超级智能体请求")
@@ -1164,7 +1161,7 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            result = await agent.run(text, chat_id)
+            result = await agent.run(query, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "codeact-agent":
 
@@ -1201,7 +1198,9 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(text, chat_id, context=file_analysis_context)
+            final_result = await agent.run(
+                query, chat_id, context=file_analysis_context
+            )
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
@@ -1227,7 +1226,7 @@ async def process_agent(
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
             # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(text, chat_id)
+            final_result = await agent.run(query, chat_id)
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "deep-research":
             all_tools = [
@@ -1255,7 +1254,9 @@ async def process_agent(
             )
 
             # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(text, chat_id, context=file_analysis_context)
+            final_result = await agent.run(
+                query, chat_id, context=file_analysis_context
+            )
             await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             await stream_manager.send_message(
@@ -1270,7 +1271,7 @@ async def process_agent(
         if team is not None:
             await team.stop()
     finally:
-        return {"status": "success", "final_result": final_result, "text": text}
+        return {"status": "success", "final_result": final_result, "text": query}
 
 
 @langfuse_wrapper.observe_decorator(

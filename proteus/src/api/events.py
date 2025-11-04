@@ -15,6 +15,7 @@ class EventType:
     USER_INPUT_REQUIRED = "user_input_required"  # 用户输入请求事件
     EXPLANATION = "explanation"
     ANSWER = "answer"
+    USAGE = "usage"
     COMPLETE = "complete"
     ERROR = "error"
     ACTION_START = "action_start"
@@ -89,6 +90,11 @@ async def create_explanation_event(content: str) -> Dict:
 async def create_answer_event(content: str) -> Dict:
     """创建回答事件"""
     return await create_event(EventType.ANSWER, content)
+
+
+async def create_usage_event(content: str) -> Dict:
+    """创建回答事件"""
+    return await create_event(EventType.USAGE, content)
 
 
 async def create_complete_event() -> Dict:
@@ -306,31 +312,30 @@ async def create_agent_evaluation_event(
 
 async def create_agent_stream_content_event(content: str) -> Dict:
     """创建agent流式内容事件
-    
+
     Args:
         content: 流式输出的内容片段
-        
+
     Returns:
         Dict: 事件字典
     """
     return await create_event(
-        EventType.AGENT_STREAM_CONTENT,
-        {"content": content, "timestamp": time.time()}
+        EventType.AGENT_STREAM_CONTENT, {"content": content, "timestamp": time.time()}
     )
 
 
 async def create_agent_stream_thinking_event(thinking: str) -> Dict:
     """创建agent流式思考事件
-    
+
     Args:
         thinking: 流式输出的思考内容片段
-        
+
     Returns:
         Dict: 事件字典
     """
     return await create_event(
         EventType.AGENT_STREAM_THINKING,
-        {"thinking": thinking, "timestamp": time.time()}
+        {"thinking": thinking, "timestamp": time.time()},
     )
 
 

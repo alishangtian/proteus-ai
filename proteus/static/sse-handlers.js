@@ -1260,7 +1260,28 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             if (completeInfo && !completeInfo.querySelector('.complete-actions')) {
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'complete-actions';
+                
+                // 检查是否有usage信息
+                let usageButtonsHtml = '';
+                try {
+                    const usageData = answerElement.dataset.usageInfo ? JSON.parse(answerElement.dataset.usageInfo) : null;
+                    if (usageData) {
+                        // 添加usage信息按钮，点击显示详细信息
+                        usageButtonsHtml = `
+                            <button class="action-btn usage-info-btn" title="查看Usage信息">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"></path>
+                                </svg>
+                            </button>
+                        `;
+                    }
+                } catch (e) {
+                    console.warn('解析usage数据失败:', e);
+                }
+                
                 actionsDiv.innerHTML = `
+                        ${usageButtonsHtml}
                         <button class="action-btn copy-result-btn" title="复制">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1598,6 +1619,42 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         }
                     });
                 }
+
+                // 为usage信息按钮添加点击事件
+                const usageBtn = actionsDiv.querySelector('.usage-info-btn');
+                if (usageBtn) {
+                    usageBtn.addEventListener('click', () => {
+                        try {
+                            const usageData = answerElement.dataset.usageInfo ? JSON.parse(answerElement.dataset.usageInfo) : null;
+                            if (usageData) {
+                                const modal = document.getElementById('toolResultModal');
+                                const modalTitle = modal.querySelector('.modal-title');
+                                const modalContent = modal.querySelector('.modal-result-content');
+                                const closeBtn = modal.querySelector('.close-modal-btn');
+
+                                modalTitle.textContent = 'Usage 信息';
+                                modalContent.innerHTML = `<pre><code class="hljs language-json">${JSON.stringify(usageData, null, 2)}</code></pre>`;
+                                modal.classList.add('visible');
+
+                                // 关闭弹框逻辑
+                                closeBtn.onclick = () => {
+                                    modal.classList.remove('visible');
+                                    modalContent.innerHTML = '';
+                                };
+
+                                // 点击外部关闭弹框
+                                window.onclick = (event) => {
+                                    if (event.target === modal) {
+                                        modal.classList.remove('visible');
+                                        modalContent.innerHTML = '';
+                                    }
+                                };
+                            }
+                        } catch (e) {
+                            console.error('显示usage信息失败:', e);
+                        }
+                    });
+                }
             }
 
             // 处理所有运行中的思考指示器
@@ -1635,6 +1692,22 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 if (typeof ctx.onComplete === 'function') ctx.onComplete();
             }
         }, Math.max(defaultTypingDelay * 12, 300));
+    });
+
+    // usage 事件监听器 - 处理使用情况信息
+    eventSource.addEventListener('usage', event => {
+        try {
+            const data = JSON.parse(event.data);
+            console.log('收到usage事件:', data);
+            
+            // 将usage信息存储到全局变量中，供complete事件使用
+            if (answerElement) {
+                // 在answerElement上存储usage数据，供complete事件使用
+                answerElement.dataset.usageInfo = JSON.stringify(data);
+            }
+        } catch (error) {
+            console.error('解析usage事件失败:', error);
+        }
     });
 
     eventSource.addEventListener('playbook_update', event => {

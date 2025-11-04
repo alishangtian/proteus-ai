@@ -2130,9 +2130,7 @@ class ReactAgent:
 
         return observation, thought, action_id
 
-    @langfuse_wrapper.observe_decorator(
-        name="run", capture_input=True, capture_output=True
-    )
+    @langfuse_wrapper.dynamic_observe(name="react_agent_run")
     async def run(
         self,
         query: str,
