@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识库 - Proteus AI</title>
+    <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="/static/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <script src="/static/highlightjs/highlight.min.js"></script>
+    <script src="/static/marked.min.js"></script>
+    <script defer src="/static/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
+    <script defer src="/static/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script>
+    <script src="/static/mermaid.min.js"></script>
+
+    <!-- KaTeX CSS for math rendering -->
+    <link rel="stylesheet" href="/static/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <script src="/static/highlightjs/highlight.min.js"></script>
+    <script src="/static/marked.min.js"></script>
+    <!-- KaTeX JS for math rendering -->
+    <script defer src="/static/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
+    <!-- KaTeX auto-render extension -->
+    <script defer src="/static/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script>
+    <!-- Mermaid JS for diagram rendering -->
+    <script src="/static/mermaid.min.js"></script>
+    <script src="/static/html2canvas.min.js"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="/static/jspdf.umd.min.js"></script>
+    <script src="/static/main.js" type="module"></script>
+    <script src="/static/card-view.js"></script>
+    <!-- 思源黑体字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* 重置样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #FFFFFF;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        /* 主容器 */
+        .knowledge-base-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100vw;
+            /* 确保容器占满整个视口宽度 */
+            margin: 0;
+            padding: 0;
+        }
+
+        /* 左侧导航栏 - 占20%宽度 */
+        .sidebar {
+            width: 20%;
+            min-width: 200px;
+            max-width: 300px;
+            background-color: #FFFFFF;
+            height: 100vh;
+            overflow-y: hidden;
+            /* 移除滚动条 */
+            border-right: 1px solid #E0E0E0;
+            display: flex;
+            flex-direction: column;
+            position: sticky;
+            top: 0;
+            flex-shrink: 0;
+            /* 防止侧边栏被压缩 */
+        }
+
+
+        /* 目录树 */
+        .directory-tree {
+            flex: 1;
+            padding: 16px 0;
+            overflow-y: hidden;
+            /* 移除滚动条 */
+        }
+
+        .tree-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            position: relative;
+            font-weight: 400;
+            color: #333;
+        }
+
+        .tree-item.active {
+            background-color: #E6F7FF;
+            border-left: 2px solid #1677FF;
+        }
+
+        .tree-item.active .tree-item-text {
+            color: #1677FF;
+            font-weight: 600;
+        }
+
+        .tree-item:hover:not(.active) {
+            background-color: #F5F5F5;
+        }
+
+        .tree-item-text {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 14px;
+        }
+
+        /* 右侧主内容区 - 占80%宽度 */
+        .main-content {
+            flex: 1;
+            min-height: 100vh;
+            background-color: #FFFFFF;
+            padding: 40px;
+            overflow-y: auto;
+            display: flex;
+            justify-content: center;
+            width: 80%;
+            /* 明确指定80%宽度 */
+            flex-grow: 1;
+            /* 确保主内容区填满剩余空间 */
+        }
+
+        /* 知识库展示区域 - 占右侧区域的60% */
+        .knowledge-display-area {
+            width: 60%;
+            max-width: 1200px;
+            min-width: 800px;
+        }
+
+        /* 知识库内容区域 */
+        .tutorial-content {
+            width: 100%;
+        }
+
+
+        /* 教程内容区 */
+        .tutorial-content {
+            max-width: 100%;
+            padding-bottom: 40px;
+        }
+
+        /* 知识库内容样式 */
+        .knowledge-content {
+            background-color: #FFFFFF;
+            line-height: 1.6;
+            word-wrap: break-word;
+            word-break: break-word;
+        }
+
+        .knowledge-content h1,
+        .knowledge-content h2,
+        .knowledge-content h3,
+        .knowledge-content h4,
+        .knowledge-content h5,
+        .knowledge-content h6 {
+            font-family: 'Noto Sans SC', sans-serif;
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            line-height: 1.2;
+            color: #333;
+        }
+
+        .knowledge-content h1 {
+            font-size: 2em;
+        }
+
+        .knowledge-content h2 {
+            font-size: 1.75em;
+        }
+
+        .knowledge-content h3 {
+            font-size: 1.5em;
+        }
+
+        .knowledge-content h4 {
+            font-size: 1.25em;
+        }
+
+        .knowledge-content h5 {
+            font-size: 1em;
+        }
+
+        .knowledge-content h6 {
+            font-size: 0.875em;
+        }
+
+        .knowledge-content p {
+            margin-bottom: 1em;
+        }
+
+        .knowledge-content ul,
+        .knowledge-content ol {
+            margin-left: 20px;
+            margin-bottom: 1em;
+        }
+
+        .knowledge-content li {
+            margin-bottom: 0.5em;
+        }
+
+        .knowledge-content pre {
+            background-color: #282c34;
+            /* atom-one-dark background */
+            color: #abb2bf;
+            /* atom-one-dark foreground */
+            padding: 1em;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-bottom: 1em;
+        }
+
+        .knowledge-content code {
+            font-family: 'Fira Code', 'Cascadia Code', 'Source Code Pro', monospace;
+            font-size: 0.9em;
+        }
+
+        .knowledge-content pre code {
+            display: block;
+            padding: 0;
+            background: none;
+            color: inherit;
+        }
+
+        .knowledge-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1em;
+        }
+
+        .knowledge-content th,
+        .knowledge-content td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .knowledge-content th {
+            background-color: #f2f2f2;
+        }
+
+        .knowledge-content blockquote {
+            border-left: 4px solid #ccc;
+            padding-left: 1em;
+            margin-left: 0;
+            color: #666;
+            margin-bottom: 1em;
+        }
+
+        .knowledge-content img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 1em 0;
+            border-radius: 4px;
+        }
+
+        /* 标题和元信息样式 */
+        .main-title {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+
+        .meta-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .meta-separator {
+            color: #999;
+        }
+
+        /* 按钮样式 */
+        .complete-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+            justify-content: flex-end;
+            /* 按钮靠右对齐 */
+        }
+
+        .action-btn {
+            background-color: #f0f0f0;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            color: #333;
+            transition: all 0.2s ease;
+        }
+
+        .action-btn:hover {
+            background-color: #e6e6e6;
+            border-color: #bfbfbf;
+        }
+
+        .action-btn.success {
+            background-color: #52c41a;
+            border-color: #52c41a;
+            color: #fff;
+        }
+
+        .action-btn.success svg {
+            color: #fff;
+        }
+
+        .action-btn svg {
+            width: 16px;
+            height: 16px;
+            color: #666;
+        }
+
+        /* 内容区块样式 */
+        .content-section {
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+            line-height: 1.4;
+        }
+
+        .section-content {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 15px;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .step-list {
+            list-style-type: decimal;
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+
+        .step-item {
+            margin-bottom: 12px;
+        }
+
+        /* 查看全部按钮样式 */
+        .view-all-btn:hover {
+            background-color: #e6e6e6 !important;
+            border-color: #bfbfbf !important;
+        }
+
+        /* 全部知识列表样式 */
+        .all-knowledge-list {
+            width: 100%;
+        }
+
+        .knowledge-list-container {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            border: 1px solid #f0f0f0;
+            border-radius: 6px;
+        }
+
+        .knowledge-list-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .knowledge-list-item:hover {
+            background-color: #f5f5f5;
+        }
+
+        .knowledge-list-item.active {
+            background-color: #E6F7FF;
+            border-left: 3px solid #1677FF;
+        }
+
+        .knowledge-list-item:last-child {
+            border-bottom: none;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1200px) {
+            .screenshot {
+                width: 720px;
+                height: 405px;
+            }
+
+            .template-card {
+                width: 200px;
+                height: 140px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+                z-index: 1000;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 0 24px;
+                width: 100%;
+                /* 移动端主内容区占满全屏 */
+            }
+
+            .screenshot {
+                width: 100%;
+                height: auto;
+                aspect-ratio: 16/9;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 主容器 -->
+    <div class="knowledge-base-container">
+        <!-- 左侧导航栏 -->
+        <div class="sidebar">
+            <div class="directory-tree">
+            </div>
+        </div>
+
+        <!-- 右侧主内容区 -->
+        <div class="main-content">
+            <div class="knowledge-display-area">
+                <!-- 教程内容区 -->
+                <div class="tutorial-content">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置 marked 渲染器，使所有链接在新标签页打开，并支持 Mermaid
+        if (typeof marked !== 'undefined') {
+            const renderer = new marked.Renderer();
+            const originalLinkRenderer = renderer.link.bind(renderer);
+            const originalCodeRenderer = renderer.code.bind(renderer);
+
+            renderer.link = function (href, title, text) {
+                const html = originalLinkRenderer(href, title, text);
+                return html.replace(/^<a /, '<a target="_blank" rel="noopener noreferrer" ');
+            };
+
+            // 自定义代码块渲染器以支持 Mermaid
+            renderer.code = function (code, language) {
+                if (language === 'mermaid') {
+                    // 使用特殊的 data 属性标记 Mermaid 代码，避免被 highlight.js 处理
+                    const escapedCode = code.replace(/</g, '<').replace(/>/g, '>');
+                    return `<pre class="mermaid-container"><code class="mermaid-code" data-mermaid-src="${btoa(encodeURIComponent(code))}">${escapedCode}</code></pre>`;
+                }
+                return originalCodeRenderer(code, language);
+            };
+
+            marked.setOptions({
+                renderer: renderer,
+                breaks: true,
+                gfm: true
+            });
+        }
+
+        // 初始化 Mermaid（如果可用）
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                securityLevel: 'loose',
+                fontFamily: 'Arial, sans-serif'
+            });
+        }
+
+        // 辅助函数:渲染 Markdown 并处理数学表达式和 Mermaid 图表(参考 agent_complete 事件)
+        function parseMarkdownWithMath(content) {
+            if (!content) return '';
+
+            // 先保护数学表达式，避免被 Markdown 解析器处理
+            const mathBlocks = [];
+            let protectedContent = content;
+
+            // 保护 $$ ... $$ 块级数学表达式（使用唯一标记）
+            protectedContent = protectedContent.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+                const index = mathBlocks.length;
+                mathBlocks.push({ type: 'block', formula: formula.trim(), index });
+                return `<span class="math-placeholder" data-math-index="${index}" data-math-type="block"></span>`;
+            });
+
+            // 保护 $ ... $ 行内数学表达式
+            protectedContent = protectedContent.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
+                const index = mathBlocks.length;
+                mathBlocks.push({ type: 'inline', formula: formula.trim(), index });
+                return `<span class="math-placeholder" data-math-index="${index}" data-math-type="inline"></span>`;
+            });
+
+            // 使用 marked 解析 Markdown
+            let html = '';
+            try {
+                html = marked.parse(protectedContent);
+            } catch (e) {
+                console.warn('Markdown 解析失败:', e);
+                html = protectedContent;
+            }
+
+            // 创建临时元素
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+
+            // 查找所有数学占位符并替换为 KaTeX 渲染结果
+            if (typeof katex !== 'undefined' && mathBlocks.length > 0) {
+                const placeholders = tempDiv.querySelectorAll('.math-placeholder');
+                placeholders.forEach(placeholder => {
+                    const index = parseInt(placeholder.getAttribute('data-math-index'));
+                    const mathBlock = mathBlocks[index];
+
+                    if (mathBlock) {
+                        try {
+                            const rendered = katex.renderToString(mathBlock.formula, {
+                                displayMode: mathBlock.type === 'block',
+                                throwOnError: false,
+                                errorColor: '#cc0000',
+                                strict: false,
+                                trust: true
+                            });
+
+                            // 创建一个临时容器来存放渲染结果
+                            const span = document.createElement('span');
+                            span.innerHTML = rendered;
+
+                            // 替换占位符
+                            placeholder.parentNode.replaceChild(span.firstChild, placeholder);
+                        } catch (e) {
+                            console.warn(`KaTeX 渲染失败 (${mathBlock.type}, index ${index}):`, e, mathBlock.formula);
+                            // 如果渲染失败，显示原始公式
+                            const original = mathBlock.type === 'block'
+                                ? `$$${mathBlock.formula}$$`
+                                : `$${mathBlock.formula}$`;
+                            placeholder.textContent = original;
+                        }
+                    }
+                });
+            }
+
+            // 处理 Mermaid 图表 - 将标记的代码块转换为可渲染的 div
+            if (typeof mermaid !== 'undefined') {
+                const mermaidCodes = tempDiv.querySelectorAll('.mermaid-code[data-mermaid-src]');
+                mermaidCodes.forEach((codeElement) => {
+                    try {
+                        // 从 data 属性中解码 Mermaid 代码
+                        const encodedCode = codeElement.getAttribute('data-mermaid-src');
+                        const code = decodeURIComponent(atob(encodedCode));
+
+                        // 创建 Mermaid 渲染容器
+                        const mermaidDiv = document.createElement('div');
+                        mermaidDiv.className = 'mermaid';
+                        mermaidDiv.textContent = code;
+
+                        // 替换原来的 pre/code 元素
+                        const preElement = codeElement.parentElement;
+                        if (preElement && preElement.tagName === 'PRE') {
+                            preElement.parentNode.replaceChild(mermaidDiv, preElement);
+                        }
+                    } catch (e) {
+                        console.warn('Mermaid 代码解析失败:', e);
+                    }
+                });
+            }
+
+            // 返回 HTML 内容
+            const finalHtml = tempDiv.innerHTML;
+
+            // 在下一个事件循环中渲染 Mermaid 图表
+            if (typeof mermaid !== 'undefined') {
+                setTimeout(() => {
+                    // 查找所有新添加的 mermaid 元素并渲染
+                    const mermaidElements = document.querySelectorAll('.mermaid:not([data-processed])');
+                    if (mermaidElements.length > 0) {
+                        mermaidElements.forEach(el => el.setAttribute('data-processed', 'true'));
+                        try {
+                            mermaid.run({
+                                nodes: Array.from(mermaidElements)
+                            });
+                        } catch (e) {
+                            console.warn('Mermaid 渲染失败:', e);
+                        }
+                    }
+                }, 100);
+            }
+
+            return finalHtml;
+        }
+
+        class KnowledgeBaseManager {
+            constructor() {
+                this.knowledgeItems = [];
+                this.currentItemId = null;
+                this.showingAllItems = false;
+                this.init();
+            }
+
+            async init() {
+                await this.loadKnowledgeList();
+                this.setupEventListeners();
+            }
+
+            async loadKnowledgeList() {
+                try {
+                    const response = await fetch('/knowledge_base/list');
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.knowledgeItems = data.knowledge_base_items || [];
+                        this.renderKnowledgeList();
+
+                        // 默认展开第一个知识库 - 使用 setTimeout 确保 DOM 已准备好
+                        if (this.knowledgeItems.length > 0) {
+                            setTimeout(() => {
+                                const firstItemId = this.knowledgeItems[0].id;
+                                this.selectKnowledgeItem(firstItemId);
+                            }, 100);
+                        }
+                    } else {
+                        this.showError('加载知识库列表失败');
+                    }
+                } catch (error) {
+                    console.error('加载知识库列表失败:', error);
+                    this.showError('加载知识库列表失败: ' + error.message);
+                }
+            }
+
+            renderKnowledgeList() {
+                const treeContainer = document.querySelector('.directory-tree');
+
+                if (this.knowledgeItems.length === 0) {
+                    treeContainer.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            暂无知识库内容
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 限制显示前10条知识项
+                const displayItems = this.knowledgeItems.slice(0, 10);
+                const hasMore = this.knowledgeItems.length > 10;
+
+                let html = '';
+                displayItems.forEach(item => {
+                    const isActive = this.currentItemId === item.id ? 'active' : '';
+                    html += `
+                        <div class="tree-item ${isActive}" data-id="${item.id}">
+                            <div class="tree-item-text">${this.escapeHtml(item.title)}</div>
+                        </div>
+                    `;
+                });
+
+                // 如果超过10条，添加"查看全部"按钮
+                if (hasMore) {
+                    html += `
+                        <div class="view-all-container" style="padding: 8px 16px;">
+                            <button class="view-all-btn" style="width: 100%; padding: 8px 12px; background: #f0f0f0; border: 1px solid #d9d9d9; border-radius: 6px; cursor: pointer; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; color: #333; transition: all 0.2s ease;">
+                                查看全部 (${this.knowledgeItems.length})
+                            </button>
+                        </div>
+                    `;
+                }
+
+                treeContainer.innerHTML = html;
+
+                // 添加知识项点击事件
+                treeContainer.querySelectorAll('.tree-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const itemId = item.getAttribute('data-id');
+                        this.selectKnowledgeItem(itemId);
+                    });
+                });
+
+                // 添加"查看全部"按钮点击事件
+                const viewAllBtn = treeContainer.querySelector('.view-all-btn');
+                if (viewAllBtn) {
+                    viewAllBtn.addEventListener('click', () => {
+                        this.showAllKnowledgeItems();
+                    });
+                }
+            }
+
+
+            async selectKnowledgeItem(itemId) {
+                this.currentItemId = itemId;
+                this.renderKnowledgeList(); // 更新激活状态
+
+                // 如果当前正在显示全部知识列表，则隐藏它
+                if (this.showingAllItems) {
+                    this.hideAllKnowledgeItems();
+                }
+
+                try {
+                    const response = await fetch(`/knowledge_base/item/${itemId}`);
+                    const data = await response.json();
+
+                    if (data.success) {
+                        this.renderKnowledgeContent(data.knowledge_base_item);
+                    } else {
+                        this.showError('加载知识库内容失败');
+                    }
+                } catch (error) {
+                    console.error('加载知识库内容失败:', error);
+                    this.showError('加载知识库内容失败: ' + error.message);
+                }
+            }
+
+            // 显示全部知识列表
+            showAllKnowledgeItems() {
+                this.showingAllItems = true;
+                const contentContainer = document.querySelector('.tutorial-content');
+
+                let html = `
+                    <div class="all-knowledge-list">
+                        <h2 class="main-title">全部知识库 (${this.knowledgeItems.length})</h2>
+                        <div class="knowledge-list-container" style="margin-top: 20px;">
+                `;
+
+                this.knowledgeItems.forEach(item => {
+                    const isActive = this.currentItemId === item.id ? 'active' : '';
+                    html += `
+                        <div class="knowledge-list-item ${isActive}" data-id="${item.id}" style="padding: 12px 16px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background-color 0.2s ease; border-left: 3px solid transparent;">
+                            <div style="font-weight: 500; font-family: 'Noto Sans SC', sans-serif; color: #333;">${this.escapeHtml(item.title)}</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">${this.formatTime(item.updated_at || item.timestamp)}</div>
+                        </div>
+                    `;
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+
+                contentContainer.innerHTML = html;
+
+                // 添加点击事件
+                contentContainer.querySelectorAll('.knowledge-list-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const itemId = item.getAttribute('data-id');
+                        this.selectKnowledgeItem(itemId);
+                    });
+                });
+            }
+
+            // 隐藏全部知识列表
+            hideAllKnowledgeItems() {
+                this.showingAllItems = false;
+                const contentContainer = document.querySelector('.tutorial-content');
+                contentContainer.innerHTML = '';
+            }
+
+            renderKnowledgeContent(item) {
+                const contentContainer = document.querySelector('.tutorial-content');
+
+                if (!contentContainer) {
+                    console.error('找不到内容容器元素');
+                    return;
+                }
+
+                // 使用 parseMarkdownWithMath 渲染 Markdown 内容
+                let renderedContent = '';
+                try {
+                    renderedContent = parseMarkdownWithMath(item.content);
+                } catch (error) {
+                    console.warn('Markdown 渲染失败，使用原始内容:', error);
+                    renderedContent = item.content;
+                }
+
+                contentContainer.innerHTML = `
+                    <div class="knowledge-content">
+                        <h1 class="main-title">${this.escapeHtml(item.title)}</h1>
+                        <div class="meta-info">
+                            <span class="meta-author">${this.escapeHtml(item.author || '未知作者')}</span>
+                            <span class="meta-separator">·</span>
+                            <span class="meta-date">${this.formatTime(item.updated_at || item.timestamp)}</span>
+                        </div>
+                        <div class="knowledge-content-text">${renderedContent}</div>
+                        <div class="complete-actions">
+                            <button class="action-btn copy-result-btn" title="复制">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                            </button>
+                            <button class="action-btn screenshot-btn" title="截图">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                            </button>
+                            <button class="action-btn pdf-download-btn" title="下载PDF">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="12" y1="18" x2="12" y2="12"></line>
+                                    <line x1="9" y1="15" x2="15" y2="15"></line>
+                                </svg>
+                            </button>
+                            <button class="action-btn edit-kb-btn" title="编辑">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </button>
+                            <button class="action-btn delete-kb-btn" title="删除">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // 应用代码高亮和数学/Mermaid 渲染
+                this.applyPostRenderEffects();
+
+                // 添加按钮事件监听器
+                const copyBtn = contentContainer.querySelector('.copy-result-btn');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', () => {
+                        navigator.clipboard.writeText(item.content).then(() => {
+                            copyBtn.classList.add('success');
+                            setTimeout(() => copyBtn.classList.remove('success'), 2000);
+                        }).catch(err => {
+                            console.error('复制失败:', err);
+                        });
+                    });
+                }
+
+                // 截图功能
+                const screenshotBtn = contentContainer.querySelector('.screenshot-btn');
+                if (screenshotBtn) {
+                    screenshotBtn.addEventListener('click', async () => {
+                        try {
+                            if (typeof html2canvas !== 'undefined') {
+                                const targetElement = contentContainer.querySelector('.knowledge-content-text');
+
+                                // 使用更宽的画布尺寸，确保内容完整显示
+                                const CANVAS_WIDTH = 1000; // 增加宽度到1000px，提供更多空间
+                                const PADDING_LEFT = 20; // 左侧内边距20px
+                                const PADDING_RIGHT = 20; // 右侧内边距20px
+                                const PADDING_VERTICAL = 20; // 上下内边距20px
+
+                                // 截图时使用更宽的画布，让内容有足够空间展示
+                                const canvas = await html2canvas(targetElement, {
+                                    backgroundColor: '#ffffff', // 使用白色背景
+                                    scale: 2, // 提高清晰度
+                                    logging: false,
+                                    width: CANVAS_WIDTH,
+                                    windowWidth: CANVAS_WIDTH,
+                                    // 通过CSS设置宽度和内边距
+                                    onclone: (clonedDoc) => {
+                                        const clonedElement = clonedDoc.querySelector('.knowledge-content-text');
+                                        if (clonedElement) {
+                                            // 设置固定宽度
+                                            clonedElement.style.width = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.maxWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.minWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.boxSizing = 'border-box';
+
+                                            // 添加充足且对称的内边距
+                                            clonedElement.style.padding = `${PADDING_VERTICAL}px ${PADDING_RIGHT}px ${PADDING_VERTICAL}px ${PADDING_LEFT}px`;
+                                            clonedElement.style.backgroundColor = '#ffffff';
+                                            clonedElement.style.borderRadius = '0';
+
+                                            // 确保内部内容不会溢出
+                                            clonedElement.style.overflow = 'visible';
+                                            clonedElement.style.wordWrap = 'break-word';
+                                            clonedElement.style.wordBreak = 'break-word';
+
+                                            // 设置字体和行高，确保可读性
+                                            clonedElement.style.fontSize = '16px';
+                                            clonedElement.style.lineHeight = '1.8';
+                                            clonedElement.style.color = '#1a1a1a';
+
+                                            // 处理内部所有元素，确保不超出宽度
+                                            const allElements = clonedElement.querySelectorAll('*');
+                                            allElements.forEach(el => {
+                                                el.style.maxWidth = '100%';
+                                                el.style.wordWrap = 'break-word';
+                                                el.style.boxSizing = 'border-box';
+                                            });
+
+                                            // 特别处理表格
+                                            const tables = clonedElement.querySelectorAll('table');
+                                            tables.forEach(table => {
+                                                table.style.width = '100%';
+                                                table.style.tableLayout = 'auto';
+                                                table.style.wordBreak = 'break-word';
+                                            });
+
+                                            // 特别处理代码块
+                                            const codeBlocks = clonedElement.querySelectorAll('pre, code');
+                                            codeBlocks.forEach(block => {
+                                                block.style.whiteSpace = 'pre-wrap';
+                                                block.style.wordBreak = 'break-word';
+                                                block.style.overflowWrap = 'break-word';
+                                                block.style.maxWidth = '100%';
+                                            });
+
+                                            // 处理图片
+                                            const images = clonedElement.querySelectorAll('img');
+                                            images.forEach(img => {
+                                                img.style.maxWidth = '100%';
+                                                img.style.height = 'auto';
+                                            });
+                                        }
+                                    }
+                                });
+
+                                canvas.toBlob(blob => {
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = `knowledge-${this.escapeHtml(item.title).replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}.png`;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                });
+                                screenshotBtn.classList.add('success');
+                                setTimeout(() => screenshotBtn.classList.remove('success'), 2000);
+                            } else {
+                                alert('截图功能需要html2canvas库支持');
+                            }
+                        } catch (err) {
+                            console.error('截图失败:', err);
+                            alert('截图失败，请查看控制台了解详情');
+                        }
+                    });
+                }
+
+                // PDF下载功能
+                const pdfDownloadBtn = contentContainer.querySelector('.pdf-download-btn');
+                if (pdfDownloadBtn) {
+                    pdfDownloadBtn.addEventListener('click', async () => {
+                        try {
+                            // 检查 jsPDF 是否可用
+                            if (typeof window.jspdf === 'undefined') {
+                                alert('PDF生成库未加载，请刷新页面重试');
+                                return;
+                            }
+
+                            const { jsPDF } = window.jspdf;
+                            const targetElement = contentContainer.querySelector('.knowledge-content-text');
+
+                            // 使用 html2canvas 将内容转换为图片
+                            if (typeof html2canvas !== 'undefined') {
+                                // A4纸尺寸（单位：mm）
+                                const A4_WIDTH = 210;
+                                const A4_HEIGHT = 297;
+                                const MARGIN = 12; // 减小页边距到12mm，增加内容区域
+                                const CONTENT_WIDTH = A4_WIDTH - (MARGIN * 2);
+
+                                // 创建 PDF 文档
+                                const pdf = new jsPDF({
+                                    orientation: 'portrait',
+                                    unit: 'mm',
+                                    format: 'a4'
+                                });
+
+                                // 使用更宽的画布宽度，确保内容完整
+                                const CANVAS_WIDTH = 1000; // 增加画布宽度到1000px
+                                const PADDING_LEFT = 20; // 左侧内边距20px
+                                const PADDING_RIGHT = 20; // 右侧内边距20px
+                                const PADDING_VERTICAL = 20; // 上下内边距20px
+
+                                // 将内容转换为 canvas
+                                const canvas = await html2canvas(targetElement, {
+                                    backgroundColor: '#ffffff',
+                                    scale: 2, // 提高分辨率
+                                    logging: false,
+                                    width: CANVAS_WIDTH,
+                                    windowWidth: CANVAS_WIDTH,
+                                    onclone: (clonedDoc) => {
+                                        const clonedElement = clonedDoc.querySelector('.knowledge-content-text');
+                                        if (clonedElement) {
+                                            // 设置固定宽度
+                                            clonedElement.style.width = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.maxWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.minWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.boxSizing = 'border-box';
+
+                                            // 添加充足且对称的内边距
+                                            clonedElement.style.padding = `${PADDING_VERTICAL}px ${PADDING_RIGHT}px ${PADDING_VERTICAL}px ${PADDING_LEFT}px`;
+                                            clonedElement.style.backgroundColor = '#ffffff';
+                                            clonedElement.style.fontSize = '16px';
+                                            clonedElement.style.lineHeight = '1.8';
+                                            clonedElement.style.color = '#1a1a1a';
+                                            clonedElement.style.wordWrap = 'break-word';
+                                            clonedElement.style.wordBreak = 'break-word';
+
+                                            // 处理所有元素
+                                            const allElements = clonedElement.querySelectorAll('*');
+                                            allElements.forEach(el => {
+                                                el.style.maxWidth = '100%';
+                                                el.style.wordWrap = 'break-word';
+                                                el.style.boxSizing = 'border-box';
+                                            });
+
+                                            // 处理表格
+                                            const tables = clonedElement.querySelectorAll('table');
+                                            tables.forEach(table => {
+                                                table.style.width = '100%';
+                                                table.style.tableLayout = 'auto';
+                                                table.style.wordBreak = 'break-word';
+                                            });
+
+                                            // 处理代码块
+                                            const codeBlocks = clonedElement.querySelectorAll('pre, code');
+                                            codeBlocks.forEach(block => {
+                                                block.style.whiteSpace = 'pre-wrap';
+                                                block.style.wordBreak = 'break-word';
+                                                block.style.overflowWrap = 'break-word';
+                                                block.style.maxWidth = '100%';
+                                            });
+
+                                            // 处理图片
+                                            const images = clonedElement.querySelectorAll('img');
+                                            images.forEach(img => {
+                                                img.style.maxWidth = '100%';
+                                                img.style.height = 'auto';
+                                            });
+                                        }
+                                    }
+                                });
+
+                                // 计算图片在 PDF 中的尺寸
+                                const imgWidth = CONTENT_WIDTH;
+                                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                                // 将 canvas 转换为图片数据
+                                const imgData = canvas.toDataURL('image/png', 1.0); // 使用最高质量
+
+                                // 如果内容高度超过一页，需要分页
+                                let heightLeft = imgHeight;
+                                let position = MARGIN;
+                                const pageHeight = A4_HEIGHT - (MARGIN * 2);
+
+                                // 添加第一页
+                                pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
+                                heightLeft -= pageHeight;
+
+                                // 如果需要多页
+                                while (heightLeft > 0) {
+                                    position = heightLeft - imgHeight + MARGIN;
+                                    pdf.addPage();
+                                    pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
+                                    heightLeft -= pageHeight;
+                                }
+
+                                // 保存 PDF
+                                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                                const fileName = `knowledge-${this.escapeHtml(item.title).replace(/[^a-zA-Z0-9]/g, '-')}-${timestamp}.pdf`;
+                                pdf.save(fileName);
+
+                                pdfDownloadBtn.classList.add('success');
+                                setTimeout(() => pdfDownloadBtn.classList.remove('success'), 2000);
+                            } else {
+                                alert('PDF生成需要html2canvas库支持');
+                            }
+                        } catch (err) {
+                            console.error('PDF生成失败:', err);
+                            alert('PDF生成失败，请查看控制台了解详情');
+                        }
+                    });
+                }
+
+                const editBtn = contentContainer.querySelector('.edit-kb-btn');
+                if (editBtn) {
+                    editBtn.addEventListener('click', () => {
+                        this.showEditModal(item);
+                    });
+                }
+
+                const deleteBtn = contentContainer.querySelector('.delete-kb-btn');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', () => {
+                        this.deleteKnowledgeItem(item);
+                    });
+                }
+            }
+
+            applyPostRenderEffects() {
+                // 应用代码高亮
+                document.querySelectorAll('.knowledge-content pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+
+                // 渲染数学公式 (由 parseMarkdownWithMath 处理，这里不需要重复调用 auto-render)
+                if (window.renderMathInElement) {
+                    renderMathInElement(document.querySelector('.knowledge-content-text'), { // 仅渲染知识库内容区域
+                        delimiters: [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '$', right: '$', display: false },
+                            { left: '\\(', right: '\\)', display: false },
+                            { left: '\\[', right: '\\]', display: true }
+                        ]
+                    });
+                }
+
+                // 渲染 Mermaid 图表
+                if (typeof mermaid !== 'undefined') {
+                    setTimeout(() => {
+                        const mermaidElements = document.querySelectorAll('.knowledge-content .mermaid:not([data-processed])');
+                        if (mermaidElements.length > 0) {
+                            mermaidElements.forEach(el => el.setAttribute('data-processed', 'true'));
+                            try {
+                                mermaid.run({
+                                    nodes: Array.from(mermaidElements)
+                                });
+                            } catch (e) {
+                                console.warn('Mermaid 渲染失败:', e);
+                            }
+                        }
+                    }, 100);
+                }
+            }
+
+            setupEventListeners() {
+                // 搜索功能已移除，无需设置事件监听器
+            }
+
+            filterKnowledgeList(searchTerm) {
+                const filteredItems = this.knowledgeItems.filter(item =>
+                    item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    item.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
+                );
+
+                const treeContainer = document.querySelector('.directory-tree');
+
+                if (filteredItems.length === 0) {
+                    treeContainer.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            未找到匹配内容
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 直接展示所有过滤后的知识库项，不按分类分组
+                let html = '';
+                filteredItems.forEach(item => {
+                    const isActive = this.currentItemId === item.id ? 'active' : '';
+                    html += `
+                        <div class="tree-item ${isActive}" data-id="${item.id}">
+                            <div class="tree-item-text">${this.escapeHtml(item.title)}</div>
+                        </div>
+                    `;
+                });
+
+                treeContainer.innerHTML = html;
+
+                // 重新添加点击事件
+                treeContainer.querySelectorAll('.tree-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const itemId = item.getAttribute('data-id');
+                        this.selectKnowledgeItem(itemId);
+                    });
+                });
+            }
+
+            showError(message) {
+                const contentContainer = document.querySelector('.tutorial-content');
+                if (contentContainer) {
+                    contentContainer.innerHTML = `
+                        <div style="padding: 20px; background: #FFF2F0; border: 1px solid #FFCCC7; border-radius: 6px; color: #A8071A;">
+                            ${this.escapeHtml(message)}
+                        </div>
+                    `;
+                } else {
+                    console.error('显示错误时找不到内容容器:', message);
+                }
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            formatTime(timestamp) {
+                const date = new Date(timestamp);
+                return date.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            }
+
+            // 编辑知识库条目的模态框
+            showEditModal(item) {
+                // 创建模态框HTML
+                const modalHtml = `
+                    <div class="edit-modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+                        <div class="edit-modal" style="background: white; padding: 24px; border-radius: 8px; width: 600px; max-width: 90vw; max-height: 80vh; overflow-y: auto;">
+                            <h3 style="margin-bottom: 16px; font-family: 'Noto Sans SC', sans-serif;">编辑知识库</h3>
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500;">标题</label>
+                                <input type="text" id="edit-title" value="${this.escapeHtml(item.title)}" style="width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif;">
+                            </div>
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500;">内容</label>
+                                <textarea id="edit-content" style="width: 100%; height: 300px; padding: 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; resize: vertical;">${this.escapeHtml(item.content)}</textarea>
+                            </div>
+                            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                <button class="action-btn cancel-edit" style="background: #f5f5f5; border: 1px solid #d9d9d9;">取消</button>
+                                <button class="action-btn save-edit" style="background: #1677FF; color: white; border: 1px solid #1677FF;">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // 添加模态框到页面
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+                // 获取模态框元素
+                const modal = document.querySelector('.edit-modal-overlay');
+                const titleInput = document.getElementById('edit-title');
+                const contentTextarea = document.getElementById('edit-content');
+                const cancelBtn = modal.querySelector('.cancel-edit');
+                const saveBtn = modal.querySelector('.save-edit');
+
+                // 取消按钮事件
+                cancelBtn.addEventListener('click', () => {
+                    modal.remove();
+                });
+
+                // 保存按钮事件
+                saveBtn.addEventListener('click', async () => {
+                    const newTitle = titleInput.value.trim();
+                    const newContent = contentTextarea.value.trim();
+
+                    if (!newTitle) {
+                        alert('请输入标题');
+                        return;
+                    }
+
+                    if (!newContent) {
+                        alert('请输入内容');
+                        return;
+                    }
+
+                    try {
+                        saveBtn.disabled = true;
+                        saveBtn.textContent = '保存中...';
+
+                        const response = await fetch(`/knowledge_base/item/${item.id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                title: newTitle,
+                                content: newContent
+                            })
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            modal.remove();
+                            // 重新加载当前知识库内容以显示更新后的内容
+                            await this.selectKnowledgeItem(item.id);
+                            this.showSuccess('知识库条目已成功更新');
+                        } else {
+                            throw new Error(result.error || '更新失败');
+                        }
+                    } catch (error) {
+                        console.error('更新知识库失败:', error);
+                        alert('更新失败: ' + error.message);
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = '保存';
+                    }
+                });
+
+                // 点击模态框外部关闭
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                    }
+                });
+            }
+
+            // 删除知识库条目
+            async deleteKnowledgeItem(item) {
+                if (!confirm(`确定要删除知识库条目 "${item.title}" 吗？此操作不可恢复。`)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/knowledge_base/item/${item.id}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        this.showSuccess('知识库条目已成功删除');
+                        // 重新加载知识库列表
+                        await this.loadKnowledgeList();
+                        // 清空当前内容
+                        const contentContainer = document.querySelector('.tutorial-content');
+                        if (contentContainer) {
+                            contentContainer.innerHTML = '';
+                        }
+                    } else {
+                        throw new Error(result.error || '删除失败');
+                    }
+                } catch (error) {
+                    console.error('删除知识库失败:', error);
+                    alert('删除失败: ' + error.message);
+                }
+            }
+
+            // 显示成功消息
+            showSuccess(message) {
+                // 创建成功提示
+                const successDiv = document.createElement('div');
+                successDiv.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #52c41a;
+                    color: white;
+                    padding: 12px 16px;
+                    border-radius: 6px;
+                    font-family: 'Noto Sans SC', sans-serif;
+                    z-index: 1001;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                `;
+                successDiv.textContent = message;
+
+                document.body.appendChild(successDiv);
+
+                // 3秒后自动移除
+                setTimeout(() => {
+                    if (successDiv.parentNode) {
+                        successDiv.parentNode.removeChild(successDiv);
+                    }
+                }, 3000);
+            }
+        }
+
+        // 初始化知识库管理器
+        document.addEventListener('DOMContentLoaded', () => {
+            new KnowledgeBaseManager();
+        });
+    </script>
+</body>
+
+</html>

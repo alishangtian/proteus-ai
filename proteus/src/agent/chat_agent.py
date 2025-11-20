@@ -12,6 +12,10 @@ from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
 from src.utils.redis_cache import get_redis_connection
+from src.manager.tool_memory_manager import ToolMemoryManager
+from src.manager.sop_memory_manager import SopMemoryManager
+from src.manager.conversation_manager import conversation_manager
+import uuid
 from src.api.events import (
     create_agent_start_event,
     create_agent_complete_event,
@@ -43,6 +47,9 @@ class ChatAgent:
         max_tool_iterations: int = 5,
         conversation_id: Optional[str] = None,
         conversation_round: int = 5,
+        enable_tool_memory: bool = True,
+        enable_sop_memory: bool = True,
+        user_name: Optional[str] = None,
     ):
         """初始化 ChatAgent
 
@@ -52,17 +59,25 @@ class ChatAgent:
             enable_tools: 是否启用工具调用
             tool_choices: 指定的工具列表
             max_tool_iterations: 最大工具调用迭代次数
+            enable_tool_memory: 是否启用工具记忆功能
         """
         self.stream_manager = stream_manager
         self.model_name = model_name or "deepseek-chat"
         self.enable_tools = enable_tools
         self.tool_choices = tool_choices
         self.max_tool_iterations = max_tool_iterations
-        self.logger = logger
         self.conversation_id = conversation_id
         self.conversation_round = conversation_round
+        self.enable_tool_memory = enable_tool_memory
+        self.enable_sop_memory = enable_sop_memory
 
-    @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
+        # 初始化工具记忆管理器
+        self.tool_memory_manager = ToolMemoryManager()
+
+        # 初始化SOP记忆管理器
+        self.sop_memory_manager = SopMemoryManager()
+        self.user_name = user_name
+
     async def run(
         self,
         chat_id: str,
@@ -80,7 +95,7 @@ class ChatAgent:
         Returns:
             str: 最终响应文本
         """
-        self.logger.info(
+        logger.info(
             f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {self.enable_tools}"
         )
 
@@ -95,12 +110,25 @@ class ChatAgent:
 
             # 1. 先加载历史会话
             if self.conversation_id:
-                conversation_history = self._load_conversation_history()
+                conversation_history = conversation_manager.load_conversation_history(
+                    self.conversation_id, max_messages=self.conversation_round * 3
+                )
+                # conversation_history = self._load_conversation_history()
                 if conversation_history:
                     messages.extend(conversation_history)
+
+            # 2. 检索相关SOP记忆（如果启用）
+            sop_memories = []
+            if self.enable_sop_memory:
+                sop_memories = await self._retrieve_sop_memories(chat_id, text)
             file_added = False
             # 如果messages为空就添加到第一条角色为 system
             all_values = {"CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+            # 构建SOP记忆内容
+            sop_memories_content = self._build_sop_memories_content(sop_memories)
+            all_values["SOP_MEMORIES"] = sop_memories_content
+
             if not messages:
                 system_message = {
                     "role": "system",
@@ -113,8 +141,11 @@ class ChatAgent:
                     file_added = True
                 # 立即保存 system 消息到 Redis
                 if self.conversation_id:
-                    self._save_conversation_to_redis(message=system_message)
-                    self.logger.info(f"[{chat_id}] 已保存文件上下文消息到 Redis")
+                    conversation_manager.save_message(
+                        conversation_id=self.conversation_id, message=system_message
+                    )
+                    # self._save_conversation_to_redis(message=system_message)
+                    logger.info(f"[{chat_id}] 已保存文件上下文消息到 Redis")
                 system_message["content"] = Template(
                     system_message["content"]
                 ).safe_substitute(all_values)
@@ -143,8 +174,11 @@ class ChatAgent:
 
             # 立即保存用户消息到 Redis（保存完整的 message 对象）
             if self.conversation_id:
-                self._save_conversation_to_redis(message=user_message)
-                self.logger.info(f"[{chat_id}] 已保存用户消息到 Redis")
+                conversation_manager.save_message(
+                    conversation_id=self.conversation_id, message=user_message
+                )
+                # self._save_conversation_to_redis(message=user_message)
+                logger.info(f"[{chat_id}] 已保存用户消息到 Redis")
 
             # 加载工具（如果启用）
             tools = None
@@ -155,7 +189,7 @@ class ChatAgent:
             # chat 模式下，始终传递 enable_thinking=True，让 API 层根据响应决定
             enable_thinking = True
 
-            self.logger.info(
+            logger.info(
                 f"[{chat_id}] chat 模式使用模型: {self.model_name}，将根据 API 响应自动处理 thinking 内容"
             )
 
@@ -189,7 +223,7 @@ class ChatAgent:
 
                 # 如果没有工具调用，说明模型返回了最终答案，退出循环
                 if not tool_calls:
-                    self.logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
+                    logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
                     break
 
                 # 执行工具调用
@@ -209,8 +243,11 @@ class ChatAgent:
 
                 # 立即保存助手消息到 Redis（保存完整的 message 对象）
                 if self.conversation_id:
-                    self._save_conversation_to_redis(message=assistant_message)
-                    self.logger.info(
+                    conversation_manager.save_message(
+                        conversation_id=self.conversation_id, message=assistant_message
+                    )
+                    # self._save_conversation_to_redis(message=assistant_message)
+                    logger.info(
                         f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
                     )
 
@@ -219,16 +256,19 @@ class ChatAgent:
                     messages.append(tool_msg)
                     # 立即保存每个工具调用结果到 Redis（保存完整的 message 对象）
                     if self.conversation_id:
-                        self._save_conversation_to_redis(message=tool_msg)
+                        conversation_manager.save_message(
+                            conversation_id=self.conversation_id, message=tool_msg
+                        )
+                        # self._save_conversation_to_redis(message=tool_msg)
 
                 if self.conversation_id and tool_messages:
-                    self.logger.info(
+                    logger.info(
                         f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
                     )
 
                 # 增加迭代计数
                 tool_iteration += 1
-                self.logger.info(
+                logger.info(
                     f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
                 )
 
@@ -240,23 +280,35 @@ class ChatAgent:
 
             # 如果没有工具调用，保存最终的助手回答到 Redis
             # （如果有工具调用，助手消息已经在工具调用循环中保存了）
-            if self.conversation_id and tool_iteration == 0:
+            if self.conversation_id:
                 # 构建最终助手消息对象
                 final_assistant_message = {
                     "role": "assistant",
                     "content": final_response_text,
                 }
+                conversation_manager.save_message(
+                    self.conversation_id, final_assistant_message
+                )
+                # self._save_conversation_to_redis(message=final_assistant_message)
+                logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
 
-                self._save_conversation_to_redis(message=final_assistant_message)
-                self.logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
+            logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
 
-            self.logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
+            # 异步处理SOP记忆生成（如果启用且成功解决问题）
+            if self.enable_sop_memory and final_response_text:
+                await self._async_process_sop_memory(
+                    chat_id=chat_id,
+                    user_query=text,
+                    final_result=final_response_text,
+                    tool_calls_history=self._get_tool_calls_from_messages(messages),
+                    is_success=True,
+                )
 
             return final_response_text
 
         except Exception as e:
             error_msg = f"chat 模式处理失败: {str(e)}"
-            self.logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+            logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
 
             if self.stream_manager:
                 await self.stream_manager.send_message(
@@ -264,7 +316,6 @@ class ChatAgent:
                 )
             raise
 
-    @langfuse_wrapper.dynamic_observe()
     async def _load_tools_with_tracking(
         self, chat_id: str
     ) -> tuple[Optional[List[Dict]], Dict[str, Dict]]:
@@ -283,19 +334,37 @@ class ChatAgent:
             if self.tool_choices:
                 # 使用指定的工具
                 tools = load_tools_from_yaml(node_names=self.tool_choices)
-                self.logger.info(f"[{chat_id}] 加载指定工具: {self.tool_choices}")
+                logger.info(f"[{chat_id}] 加载指定工具: {self.tool_choices}")
             else:
                 # 加载所有工具
                 tools = load_tools_from_yaml()
-                self.logger.info(f"[{chat_id}] 加载所有可用工具")
+                logger.info(f"[{chat_id}] 加载所有可用工具")
+
+            # 如果启用了工具记忆，为每个工具附加记忆信息
+            if self.enable_tool_memory and tools:
+                for tool in tools:
+                    tool_name = tool["function"]["name"]
+                    # 异步加载工具记忆
+                    tool_memory = await self.tool_memory_manager.load_tool_memory(
+                        tool_name=tool_name, user_name=self.user_name
+                    )
+                    if tool_memory:
+                        # 将工具记忆附加到工具描述中
+                        original_description = tool["function"]["description"]
+                        enhanced_description = (
+                            f"{original_description}\n\n"
+                            f"【工具使用经验】{tool_memory}"
+                        )
+                        tool["function"]["description"] = enhanced_description
+                        logger.info(f"[{chat_id}] 为工具 '{tool_name}' 附加了使用经验")
 
             # 构建工具映射
             for tool in tools:
                 tool_map[tool["function"]["name"]] = tool
 
-            self.logger.info(f"[{chat_id}] 成功加载 {len(tools)} 个工具")
+            logger.info(f"[{chat_id}] 成功加载 {len(tools)} 个工具")
         except Exception as e:
-            self.logger.error(f"[{chat_id}] 加载工具失败: {str(e)}")
+            logger.error(f"[{chat_id}] 加载工具失败: {str(e)}")
             tools = None
             raise
 
@@ -396,14 +465,45 @@ class ChatAgent:
                                     )
 
                             elif chunk_type == "tool_calls":
+                                if (
+                                    not first_content_chunk_sent
+                                    and has_thinking_content
+                                ):
+                                    first_content_chunk_sent = True
+                                    if self.stream_manager:
+                                        event = (
+                                            await create_agent_stream_thinking_event(
+                                                "[THINKING_DONE]"
+                                            )
+                                        )
+                                        await self.stream_manager.send_message(
+                                            chat_id, event
+                                        )
                                 tool_calls = chunk.get("tool_calls", [])
-                                self.logger.info(
+                                logger.info(
                                     f"[{chat_id}] 模型请求调用 {len(tool_calls)} 个工具"
                                 )
+                                for tool_call in tool_calls:
+                                    if tool_call.get("id") is None:
+                                        tool_call["id"] = "call_" + str(uuid.uuid4())
 
                             elif chunk_type == "usage":
+                                if (
+                                    not first_content_chunk_sent
+                                    and has_thinking_content
+                                ):
+                                    first_content_chunk_sent = True
+                                    if self.stream_manager:
+                                        event = (
+                                            await create_agent_stream_thinking_event(
+                                                "[THINKING_DONE]"
+                                            )
+                                        )
+                                        await self.stream_manager.send_message(
+                                            chat_id, event
+                                        )
                                 accumulated_usage = chunk.get("usage", {})
-                                self.logger.info(
+                                logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
                                 )
                                 if self.stream_manager and accumulated_usage:
@@ -413,10 +513,22 @@ class ChatAgent:
                                     )
 
                             elif chunk_type == "error":
+                                if (
+                                    not first_content_chunk_sent
+                                    and has_thinking_content
+                                ):
+                                    first_content_chunk_sent = True
+                                    if self.stream_manager:
+                                        event = (
+                                            await create_agent_stream_thinking_event(
+                                                "[THINKING_DONE]"
+                                            )
+                                        )
+                                        await self.stream_manager.send_message(
+                                            chat_id, event
+                                        )
                                 error_msg = chunk.get("error", "未知错误")
-                                self.logger.error(
-                                    f"[{chat_id}] 流式调用错误: {error_msg}"
-                                )
+                                logger.error(f"[{chat_id}] 流式调用错误: {error_msg}")
                                 if self.stream_manager:
                                     await self.stream_manager.send_message(
                                         chat_id, await create_error_event(error_msg)
@@ -469,7 +581,7 @@ class ChatAgent:
 
                             elif chunk_type == "usage":
                                 accumulated_usage = chunk.get("usage", {})
-                                self.logger.info(
+                                logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
                                 )
                                 if self.stream_manager and accumulated_usage:
@@ -480,9 +592,7 @@ class ChatAgent:
 
                             elif chunk_type == "error":
                                 error_msg = chunk.get("error", "未知错误")
-                                self.logger.error(
-                                    f"[{chat_id}] 流式调用错误: {error_msg}"
-                                )
+                                logger.error(f"[{chat_id}] 流式调用错误: {error_msg}")
                                 if self.stream_manager:
                                     await self.stream_manager.send_message(
                                         chat_id, await create_error_event(error_msg)
@@ -521,7 +631,7 @@ class ChatAgent:
                         name="relevance", value=relevance_score, data_type="NUMERIC"
                     )
 
-                    self.logger.info(
+                    logger.info(
                         f"[{chat_id}] LLM生成完成 (iteration {tool_iteration}, "
                         f"耗时: {execution_time:.2f}s, tokens: {usage_details['input_usage']+usage_details['output_usage']})"
                     )
@@ -541,14 +651,11 @@ class ChatAgent:
                             metadata={"execution_time": execution_time},
                         )
                 except Exception as update_error:
-                    self.logger.warning(
-                        f"Failed to update generation span: {update_error}"
-                    )
+                    logger.warning(f"Failed to update generation span: {update_error}")
 
-            self.logger.error(f"[{chat_id}] LLM生成失败: {str(e)}", exc_info=True)
+            logger.error(f"[{chat_id}] LLM生成失败: {str(e)}", exc_info=True)
             raise
 
-    @langfuse_wrapper.dynamic_observe()
     async def _execute_tools(
         self,
         chat_id: str,
@@ -580,13 +687,163 @@ class ChatAgent:
         )
         execution_time = time.time() - start_time
 
-        self.logger.info(
+        logger.info(
             f"[{chat_id}] 工具执行完成 (iteration {tool_iteration}, 耗时: {execution_time:.2f}s)"
         )
 
+        # 异步处理工具记忆更新（不阻塞主流程）
+        if self.enable_tool_memory:
+            await self._async_process_tool_memory(
+                chat_id=chat_id,
+                tool_calls=tool_calls,
+                tool_messages=tool_messages,
+                tool_iteration=tool_iteration,
+                user_name=self.user_name,
+            )
+
         return tool_messages
 
+    async def _async_process_tool_memory(
+        self,
+        chat_id: str,
+        tool_calls: List[Dict],
+        tool_messages: List[Dict[str, Any]],
+        tool_iteration: int,
+        user_name: str,
+    ) -> None:
+        """异步处理工具记忆更新
+
+        Args:
+            chat_id: 聊天会话ID
+            tool_calls: 工具调用列表
+            tool_messages: 工具执行结果消息列表
+            tool_iteration: 当前迭代次数
+        """
+        try:
+            # 构建工具调用和结果的映射
+            tool_results = {}
+            for tool_msg in tool_messages:
+                if tool_msg.get("role") == "tool":
+                    tool_call_id = tool_msg.get("tool_call_id")
+                    tool_results[tool_call_id] = {
+                        "content": tool_msg.get("content", ""),
+                        "name": tool_msg.get("name", ""),
+                    }
+
+            # 为每个工具调用异步处理记忆
+            for tool_call in tool_calls:
+                tool_call_id = tool_call.get("id")
+                tool_name = tool_call.get("function", {}).get("name")
+                action_input = tool_call.get("function", {}).get("arguments", {})
+
+                # 解析参数
+                try:
+                    if isinstance(action_input, str):
+                        action_input = json.loads(action_input)
+                except (json.JSONDecodeError, TypeError):
+                    action_input = {}
+
+                # 获取工具执行结果
+                tool_result = tool_results.get(tool_call_id, {})
+                observation = tool_result.get("content", "")
+
+                # 异步调用工具记忆处理（不阻塞主流程）
+                import asyncio
+
+                asyncio.create_task(
+                    self._process_single_tool_memory(
+                        chat_id=chat_id,
+                        tool_name=tool_name,
+                        action_input=action_input,
+                        observation=observation,
+                        tool_iteration=tool_iteration,
+                    )
+                )
+
+            logger.info(f"[{chat_id}] 已启动 {len(tool_calls)} 个工具的记忆异步处理")
+
+        except Exception as e:
+            logger.error(f"[{chat_id}] 异步处理工具记忆失败: {str(e)}", exc_info=True)
+
     @langfuse_wrapper.dynamic_observe()
+    async def _process_single_tool_memory(
+        self,
+        chat_id: str,
+        tool_name: str,
+        action_input: Dict[str, Any],
+        observation: str,
+        is_error: bool = False,
+        error_message: str = None,
+        tool_iteration: int = 25,
+    ) -> str:
+        """处理单个工具的记忆更新
+
+        Args:
+            chat_id: 聊天会话ID
+            tool_name: 工具名称
+            action_input: 工具输入参数
+            observation: 工具执行结果
+            is_error: 是否为错误执行
+            error_message: 错误信息
+            tool_iteration: 当前迭代次数
+        """
+        try:
+            # 获取当前用户输入（从对话历史中获取）
+            user_query = await self._get_current_user_query()
+
+            # 调用工具记忆管理器处理记忆
+            result = await self.tool_memory_manager.process_tool_memory(
+                tool_name=tool_name,
+                action_input=action_input,
+                observation=observation,
+                chat_id=chat_id,
+                is_error=is_error,
+                error_message=error_message,
+                user_query=user_query,
+                model_name=self.model_name,
+                conversation_id=self.conversation_id,
+                user_name=self.user_name,
+            )
+
+            logger.info(
+                f"[{chat_id}] 工具 '{tool_name}' 的记忆处理完成 (iteration {tool_iteration})"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                f"[{chat_id}] 处理工具 '{tool_name}' 记忆失败: {str(e)}", exc_info=True
+            )
+
+    async def _get_current_user_query(self) -> Optional[str]:
+        """获取当前用户查询
+
+        Returns:
+            Optional[str]: 用户查询文本
+        """
+        try:
+            if not self.conversation_id:
+                return None
+
+            # 从Redis加载最近的对话历史
+            conversation_history = conversation_manager.load_conversation_history(
+                self.conversation_id, max_messages=self.conversation_round * 3
+            )
+            # conversation_history = self._load_conversation_history()
+            if not conversation_history:
+                return None
+
+            # 查找最近的用户消息
+            for message in reversed(conversation_history):
+                if message.get("role") == "user":
+                    return message.get("content", "")
+
+            return None
+        except Exception as e:
+            logger.warning(f"获取当前用户查询失败: {str(e)}")
+            return None
+
     def _save_conversation_to_redis(
         self,
         message: Dict[str, Any],
@@ -635,7 +892,7 @@ class ChatAgent:
                     for _ in range(excess_count):
                         redis_cache.lpop(redis_key)
 
-                self.logger.info(
+                logger.info(
                     f"成功保存消息到 Redis (conversation_id: {self.conversation_id}, "
                     f"role: {message.get('role')}, timestamp: {current_timestamp}, total_items: {min(total_count, 100)})"
                 )
@@ -644,19 +901,18 @@ class ChatAgent:
             except Exception as e:
                 last_exception = e
                 retry_count += 1
-                self.logger.warning(
+                logger.warning(
                     f"保存到Redis失败 (尝试 {retry_count}/{max_retries}): {str(e)}"
                 )
                 if retry_count <= max_retries:
                     time.sleep(retry_delay)
 
         # 所有重试都失败
-        self.logger.error(
+        logger.error(
             f"保存消息到 Redis 失败 (conversation_id: {self.conversation_id}): {str(last_exception)}"
         )
         raise last_exception
 
-    @langfuse_wrapper.dynamic_observe()
     def _load_conversation_history(
         self, expire_hours: int = 12
     ) -> List[Dict[str, Any]]:
@@ -674,9 +930,7 @@ class ChatAgent:
 
             # 检查key是否存在
             if not redis_cache.exists(redis_key):
-                self.logger.info(
-                    f"未找到对话历史 (conversation_id: {self.conversation_id})"
-                )
+                logger.info(f"未找到对话历史 (conversation_id: {self.conversation_id})")
                 return []
 
             # 获取list长度
@@ -715,15 +969,196 @@ class ChatAgent:
                     if message:
                         conversation_history.append(message)
                 except (json.JSONDecodeError, Exception) as e:
-                    self.logger.warning(f"解析对话历史失败: {e}")
+                    logger.warning(f"解析对话历史失败: {e}")
                     continue
 
             if conversation_history:
-                self.logger.info(
+                logger.info(
                     f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {self.conversation_id})"
                 )
             return conversation_history
 
         except Exception as e:
-            self.logger.error(f"加载对话历史失败: {e}")
+            logger.error(f"加载对话历史失败: {e}")
             return []
+
+    def _build_sop_memories_content(self, sop_memories: List[Dict[str, Any]]) -> str:
+        """构建SOP记忆内容，用于模板替换
+
+        Args:
+            sop_memories: 相关SOP记忆列表
+
+        Returns:
+            str: SOP记忆内容
+        """
+        if not sop_memories or not self.enable_sop_memory:
+            return "暂无相关标准操作流程记忆。"
+
+        # 构建SOP记忆部分
+        sop_content = (
+            "以下是从历史成功案例中提取的标准解题经验，可作为当前问题的参考：\n\n"
+        )
+
+        for i, memory in enumerate(sop_memories, 1):
+            metadata = memory.get("metadata", {})
+            sop_experience = metadata.get("sop_experience", "")
+            problem_type = metadata.get("problem_type", "未知类型")
+
+            if sop_experience:
+                sop_content += f"## SOP {i}: {problem_type}\n"
+                sop_content += f"{sop_experience}\n\n"
+
+        # 添加使用指导
+        sop_content += "**使用指导**: 参考这些SOP经验来优化当前问题的解决流程，但需要根据具体情况进行调整。"
+
+        return sop_content
+
+    async def _retrieve_sop_memories(
+        self, chat_id: str, user_query: str
+    ) -> List[Dict[str, Any]]:
+        """检索与用户查询相关的SOP记忆
+
+        Args:
+            chat_id: 聊天会话ID
+            user_query: 用户查询文本
+
+        Returns:
+            List[Dict]: 相关SOP记忆列表
+        """
+        try:
+            # 使用用户查询作为搜索条件检索相关SOP记忆
+            sop_memories = await self.sop_memory_manager.search_sop_memories(
+                query=user_query,
+                n_results=3,  # 返回最相关的3个SOP记忆
+                user_name=None,  # 暂时使用全局记忆，后续可支持用户隔离
+            )
+
+            logger.info(f"[{chat_id}] 检索到 {len(sop_memories)} 个相关SOP记忆")
+            return sop_memories
+
+        except Exception as e:
+            logger.error(f"[{chat_id}] 检索SOP记忆失败: {str(e)}", exc_info=True)
+            return []
+
+    def _get_tool_calls_from_messages(
+        self, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """从消息历史中提取工具调用链信息
+
+        Args:
+            messages: 消息历史列表
+
+        Returns:
+            List[Dict]: 工具调用链信息
+        """
+        tool_chain = []
+
+        for message in messages:
+            if message.get("role") == "assistant" and message.get("tool_calls"):
+                for tool_call in message["tool_calls"]:
+                    function = tool_call.get("function", {})
+                    tool_name = function.get("name", "")
+                    arguments = function.get("arguments", "{}")
+
+                    # 解析参数
+                    try:
+                        if isinstance(arguments, str):
+                            action_input = json.loads(arguments)
+                        else:
+                            action_input = arguments
+                    except (json.JSONDecodeError, TypeError):
+                        action_input = {}
+
+                    tool_chain.append(
+                        {"tool_name": tool_name, "action_input": action_input}
+                    )
+
+        return tool_chain
+
+    async def _async_process_sop_memory(
+        self,
+        chat_id: str,
+        user_query: str,
+        final_result: str,
+        tool_calls_history: List[Dict[str, Any]],
+        is_success: bool = True,
+    ) -> None:
+        """异步处理SOP记忆生成和保存
+
+        Args:
+            chat_id: 聊天会话ID
+            user_query: 用户原始查询
+            final_result: 最终结果
+            tool_calls_history: 工具调用历史
+            is_success: 是否成功解决
+        """
+        try:
+            # 只在成功解决问题且有工具调用时生成SOP记忆
+            if not is_success or not tool_calls_history:
+                return
+
+            # 异步调用SOP记忆处理
+            import asyncio
+
+            asyncio.create_task(
+                self._process_single_sop_memory(
+                    chat_id=chat_id,
+                    user_query=user_query,
+                    tool_chain=tool_calls_history,
+                    final_result=final_result,
+                    is_success=is_success,
+                )
+            )
+
+            logger.info(f"[{chat_id}] 已启动SOP记忆异步处理")
+
+        except Exception as e:
+            logger.error(f"[{chat_id}] 启动SOP记忆处理失败: {str(e)}", exc_info=True)
+
+    @langfuse_wrapper.dynamic_observe()
+    async def _process_single_sop_memory(
+        self,
+        chat_id: str,
+        user_query: str,
+        tool_chain: List[Dict[str, Any]],
+        final_result: str,
+        is_success: bool = True,
+    ) -> None:
+        """处理单个SOP记忆的生成和保存
+
+        Args:
+            chat_id: 聊天会话ID
+            user_query: 用户原始查询
+            tool_chain: 工具调用链
+            final_result: 最终结果
+            is_success: 是否成功解决
+        """
+        try:
+            # 调用SOP记忆管理器处理记忆
+            sop_experience = await self.sop_memory_manager.process_sop_memory(
+                user_query=user_query,
+                tool_chain=tool_chain,
+                final_result=final_result,
+                is_success=is_success,
+                user_name=self.user_name,
+                model_name=self.model_name,
+            )
+
+            if sop_experience:
+                logger.info(f"[{chat_id}] SOP记忆生成成功: {sop_experience[:100]}...")
+            else:
+                logger.info(f"[{chat_id}] 未生成新的SOP记忆")
+
+        except Exception as e:
+            logger.error(f"[{chat_id}] 处理SOP记忆失败: {str(e)}", exc_info=True)
+
+
+from src.utils.dynamic_observer import auto_apply_here
+
+auto_apply_here(
+    globals(),
+    include=None,
+    exclude=[],
+    only_in_module=True,
+    verbose=False,
+)

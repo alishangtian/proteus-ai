@@ -211,7 +211,7 @@ class MCPManager:
             "## 格式说明\n",
             "1. 每个工具包含：工具名称、工具描述、输入参数\n",
             "2. 输入参数表格中★表示必填参数\n",
-            f"## 工具概览（共{sum(len(t) for t in all_tools.values())}个工具）\n"
+            f"## 工具概览（共{sum(len(t) for t in all_tools.values())}个工具）\n",
         ]
 
         for server_name, tools in all_tools.items():
@@ -219,9 +219,7 @@ class MCPManager:
                 continue
 
             # 服务器基础信息
-            prompt.extend([
-                f"\n\n---\n## 服务器名称：{server_name}"
-            ])
+            prompt.extend([f"\n\n---\n## 服务器名称：{server_name}"])
 
             for tool in tools:
                 tool_name = tool.get("name", "unnamed_tool")
@@ -243,13 +241,18 @@ class MCPManager:
                     f"\n#### 功能描述 \n> {tool.get('description', '该工具暂无功能描述')}\n",
                     "#### 参数规范\n（★=必填 ○=可选）",
                     "  | 参数名 | 类型 | 必填 | 说明 |",
-                    "  | :--- | :---: | :---: | :--- |"
+                    "  | :--- | :---: | :---: | :--- |",
                 ]
-                tool_block.extend(["  "+line for line in param_table] if param_table else ["  | - | - | - | --- |"])
-                
+                tool_block.extend(
+                    ["  " + line for line in param_table]
+                    if param_table
+                    else ["  | - | - | - | --- |"]
+                )
+
                 prompt.extend(tool_block)
 
         return "\n".join(prompt)
+
 
 # 单例模式
 _instance = None

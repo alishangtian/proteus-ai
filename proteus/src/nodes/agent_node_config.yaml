@@ -2,7 +2,7 @@ PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
   name: "Python/Shell代码执行"
-  description: "通用代码执行节点，支持Python3和Shell脚本。支持变量传递、网络访问控制，适用于系统处理、demo 演示、金融数据爬取等场景。当缺少依赖时先使用python 代码进行依赖的安装，最终结果print 出来才能接收到"
+  description: "通用代码执行和coding节点，支持 1. Python3和Shell脚本执行 2.项目代码写入项目目录 。支持变量传递、网络访问控制，适用于系统处理、demo 演示、金融数据爬取等场景。当缺少依赖时先使用python 代码进行依赖的安装，最终结果print 出来才能接收到，当代码中需要写入文件时，文件的根目录是/var/data/sandbox"
   output:
     result: "执行结果（标准输出）"
     stdout: "标准输出内容"

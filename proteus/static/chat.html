@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>询问任何问题</title>
+    <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="/static/card-styles.css">
+    <!-- KaTeX CSS for math rendering -->
+    <link rel="stylesheet" href="/static/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
+    <script src="/static/highlightjs/highlight.min.js"></script>
+    <script src="/static/marked.min.js"></script>
+    <!-- KaTeX JS for math rendering -->
+    <script defer src="/static/katex.min.js"
+        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+        crossorigin="anonymous"></script>
+    <!-- KaTeX auto-render extension -->
+    <script defer src="/static/auto-render.min.js"
+        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+        crossorigin="anonymous"></script>
+    <!-- Mermaid JS for diagram rendering -->
+    <script src="/static/mermaid.min.js"></script>
+    <script src="/static/html2canvas.min.js"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="/static/jspdf.umd.min.js"></script>
+    <script src="/static/main.js" type="module"></script>
+    <script src="/static/card-view.js"></script>
+</head>
+
+<body>
+    <!-- 左侧边栏 -->
+    <div class="sidebar left-sidebar" id="leftSidebar">
+        <div class="conversation-list-container">
+            <div class="conversation-list-header">
+                <h3>会话历史</h3>
+                <button id="new-conversation-btn" class="new-conversation-btn" title="新建会话">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="conversation-list" class="conversation-list">
+                <div class="conversation-list-loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 左侧分隔线 -->
+    <div class="sidebar-resizer left-resizer" id="leftResizer"></div>
+
+    <!-- 中间内容区域 -->
+    <div class="main-container">
+        <div class="content-wrapper">
+            <div id="conversation-history"></div>
+            <div class="input-container">
+                <div id="uploaded-files-container" class="uploaded-files-container">
+                    <!-- 已上传文件将在这里显示 -->
+                </div>
+                <div class="input-wrapper">
+                    <div class="input-controls-left">
+                        <button id="options-button" type="button" aria-label="选项设置" class="options-button">
+                            +
+                        </button>
+                    </div>
+                    <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
+
+                    <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
+                        <input type="file" id="file-upload" style="display: none;" multiple>
+                        <button id="upload-button" type="button" aria-label="上传文件">
+                            📎
+                        </button>
+                        <button id="send-button" type="button" aria-label="发送">
+                            发送
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 选项面板 - 点击+号后弹出 -->
+                <div id="options-panel" class="options-panel" style="display: none;">
+                    <div class="options-panel-content">
+                        <!-- <div class="options-panel-header">
+                            <button id="close-options-panel" type="button" aria-label="关闭">&times;</button>
+                        </div> -->
+                        <div class="options-panel-body">
+                            <div class="model-select-wrapper">
+                                <label for="model-select"><span>📚 工作模式</span></label>
+                                <select id="model-select" class="select-control" aria-label="工作模式" title="选择工作模式">
+                                    <option value="chat" selected>智能助手</option>
+                                    <option value="deep-research">深度研究</option>
+                                    <option value="deep-research-multi">深度研究-多智能体</option>
+                                    <option value="super-agent">超级智能体</option>
+                                    <option value="codeact-agent">CodeAct智能体</option>
+                                    <option value="mcp-agent">MCP智能体</option>
+                                    <option value="browser-agent">Browser智能体</option>
+                                </select>
+                            </div>
+                            <div id="tool-call-container">
+                                <div class="memory-wrapper">
+                                    <label for="tool-call-toggle">
+                                        <span>🔧 工具调用</span>
+                                    </label>
+                                    <input type="checkbox" id="tool-call-toggle" class="memory-toggle" checked
+                                        title="搜索、爬虫和代码执行器">
+                                </div>
+                            </div>
+                            <div class="model-select-wrapper">
+                                <label for="model-name-select"><span>👨‍🔬 模型</span></label>
+                                <select id="model-name-select" class="select-control" aria-label="模型"
+                                    title="选择模型"></select>
+                            </div>
+
+                            <div id="itecount-container" class="model-select-wrapper">
+                                <label for="itecount"><span>🔄 迭代轮次</span></label>
+                                <input type="number" id="itecount" class="select-control" min="1" value="25"
+                                    placeholder="迭代轮次" />
+                            </div>
+
+                            <div id="conversation_count-container" class="model-select-wrapper">
+                                <label for="conversation_count"><span>💬 会话轮次</span></label>
+                                <input type="number" id="conversation_count" class="select-control" min="1" value="10"
+                                    placeholder="会话轮次" />
+                            </div>
+                            <div class="memory-wrapper">
+                                <label for="tool-memory-toggle">
+                                    <span>🔧 工具记忆</span>
+                                </label>
+                                <input type="checkbox" id="tool-memory-toggle" class="memory-toggle">
+                            </div>
+
+                            <div class="memory-wrapper">
+                                <label for="sop-memory-toggle">
+                                    <span>📋 SOP记忆</span>
+                                </label>
+                                <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右侧分隔线 -->
+    <div class="sidebar-resizer right-resizer" id="rightResizer"></div>
+
+    <!-- 右侧边栏 -->
+    <div class="sidebar right-sidebar" id="rightSidebar">
+        <div class="playbook-container">
+            <div id="playbook-content"></div>
+        </div>
+    </div>
+
+    <!-- 工具结果弹框 -->
+    <div id="toolResultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">工具执行结果</h3>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-result-content"></div>
+                <div class="modal-actions">
+                    <button class="copy-btn" data-copy-target=".modal-result-content pre">
+                        <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
+                            <path
+                                d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z">
+                            </path>
+                        </svg>
+                        <span class="copy-tooltip">复制原始结果</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除会话弹框 -->
+    <div id="deleteConversationModal" class="modal">
+        <div class="modal-content modal-confirm">
+            <div class="modal-header">
+                <h3 class="modal-title">确认删除</h3>
+                <button class="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-message">确定要删除这个会话吗？此操作无法撤销。</p>
+                <div class="modal-actions">
+                    <button class="modal-btn modal-btn-cancel">取消</button>
+                    <button class="modal-btn modal-btn-confirm">确认删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

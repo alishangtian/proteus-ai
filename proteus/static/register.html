@@ -117,7 +117,11 @@
             <form id="registerForm" onsubmit="return handleRegister(event)">
                 <div class="form-group">
                     <label>用户名</label>
-                    <input type="text" name="username" required minlength="3" maxlength="20" autocomplete="off">
+                    <input type="text" name="user_name" required minlength="3" maxlength="20" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>用户昵称</label>
+                    <input type="text" name="nick_name" required minlength="1" maxlength="20" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label>电子邮箱</label>
@@ -129,7 +133,7 @@
                 </div>
                 <div class="form-group">
                     <label>确认密码</label>
-                    <input type="password" name="confirmPassword" required minlength="6" autocomplete="new-password">
+                    <input type="password" name="confirm_password" required minlength="6" autocomplete="new-password">
                 </div>
                 <button type="submit" class="btn-login">立即注册</button>
             </form>
@@ -144,7 +148,8 @@
             e.preventDefault();
             const formData = new FormData(e.target);
             const data = {
-                username: formData.get('username'),
+                user_name: formData.get('user_name'),
+                nick_name: formData.get('nick_name'),
                 email: formData.get('email'),
                 password: formData.get('password'),
                 confirm_password: formData.get('confirmPassword')

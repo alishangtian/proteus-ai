@@ -598,6 +598,12 @@ class LangfuseWrapper:
                     )
                     return func(*args, **wrapper_kwargs)
 
+            # 标记已经通过 langfuse_wrapper.dynamic_observe 装饰，供 runtime injector 检测并避免重复包装
+            try:
+                setattr(wrapper, "__langfuse_dynamic_observed__", True)
+            except Exception:
+                logger.debug("无法在 wrapper 上设置 __langfuse_dynamic_observed__ 属性", exc_info=True)
+
             return wrapper
 
         return decorator

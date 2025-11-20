@@ -4,197 +4,201 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>询问任何问题</title>
+    <title>Proteus AI - 智能助手</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
     <link rel="stylesheet" href="/static/styles.css">
-    <link rel="stylesheet" href="/static/highlightjs/styles/atom-one-dark.min.css">
-    <link rel="stylesheet" href="/static/card-styles.css">
-    <!-- KaTeX CSS for math rendering -->
-    <link rel="stylesheet" href="/static/katex.min.css"
-        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV" crossorigin="anonymous">
-    <script src="/static/highlightjs/highlight.min.js"></script>
-    <script src="/static/marked.min.js"></script>
-    <!-- KaTeX JS for math rendering -->
-    <script defer src="/static/katex.min.js"
-        integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
-        crossorigin="anonymous"></script>
-    <!-- KaTeX auto-render extension -->
-    <script defer src="/static/auto-render.min.js"
-        integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
-        crossorigin="anonymous"></script>
-    <!-- Mermaid JS for diagram rendering -->
-    <script src="/static/mermaid.min.js"></script>
-    <script src="/static/html2canvas.min.js"></script>
-    <!-- jsPDF for PDF generation -->
-    <script src="/static/jspdf.umd.min.js"></script>
-    <script src="/static/main.js" type="module"></script>
-    <script src="/static/card-view.js"></script>
+    <style>
+        /* 主页导航样式 */
+        .home-container {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .home-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .home-title {
+            font-size: 48px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .home-subtitle {
+            font-size: 18px;
+            color: #666;
+            max-width: 500px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .nav-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .nav-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .nav-card.chat:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .nav-card.knowledge:hover {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .nav-card:hover .card-icon {
+            transform: scale(1.1);
+        }
+
+        .nav-card:hover .card-title,
+        .nav-card:hover .card-description {
+            color: white;
+        }
+
+        .card-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .card-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+            transition: color 0.3s ease;
+        }
+
+        .card-description {
+            font-size: 16px;
+            color: #666;
+            line-height: 1.5;
+            transition: color 0.3s ease;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .home-title {
+                font-size: 36px;
+            }
+
+            .nav-grid {
+                grid-template-columns: 1fr;
+                max-width: 400px;
+            }
+
+            .nav-card {
+                padding: 30px 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .home-title {
+                font-size: 28px;
+            }
+
+            .home-subtitle {
+                font-size: 16px;
+            }
+
+            .card-icon {
+                font-size: 48px;
+            }
+
+            .card-title {
+                font-size: 20px;
+            }
+        }
+    </style>
 </head>
 
 <body>
-    <!-- 左侧边栏 -->
-    <div class="sidebar left-sidebar" id="leftSidebar">
-        <div class="conversation-list-container">
-            <div class="conversation-list-header">
-                <h3>会话历史</h3>
-                <button id="new-conversation-btn" class="new-conversation-btn" title="新建会话">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                </button>
+    <div class="home-container">
+        <div class="home-header">
+            <h1 class="home-title">Proteus AI</h1>
+            <p class="home-subtitle">智能助手与知识库系统，为您提供全方位的AI服务体验</p>
+        </div>
+
+        <div class="nav-grid">
+            <!-- Chat 导航卡片 -->
+            <div class="nav-card chat" onclick="navigateToChat()">
+                <div class="card-icon">💬</div>
+                <h2 class="card-title">智能对话</h2>
+                <p class="card-description">
+                    与AI助手进行自然对话，获取智能回答、创作内容、分析问题，支持多种工作模式和工具调用。
+                </p>
             </div>
-            <div id="conversation-list" class="conversation-list">
-                <div class="conversation-list-loading">加载中...</div>
+
+            <!-- 知识库导航卡片 -->
+            <div class="nav-card knowledge" onclick="navigateToKnowledgeBase()">
+                <div class="card-icon">📚</div>
+                <h2 class="card-title">知识库</h2>
+                <p class="card-description">
+                    浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等各类知识资源。
+                </p>
             </div>
         </div>
     </div>
 
-    <!-- 左侧分隔线 -->
-    <div class="sidebar-resizer left-resizer" id="leftResizer"></div>
+    <script>
+        function navigateToChat() {
+            window.location.href = '/chat/index';
+        }
 
-    <!-- 中间内容区域 -->
-    <div class="main-container">
-        <div class="content-wrapper">
-            <div id="conversation-history"></div>
-            <div class="input-container">
-                <div id="uploaded-files-container" class="uploaded-files-container">
-                    <!-- 已上传文件将在这里显示 -->
-                </div>
-                <div class="input-wrapper">
-                    <div class="input-controls-left">
-                        <button id="options-button" type="button" aria-label="选项设置" class="options-button">
-                            +
-                        </button>
-                    </div>
-                    <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
+        function navigateToKnowledgeBase() {
+            window.location.href = '/knowledge/index';
+        }
 
-                    <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
-                        <input type="file" id="file-upload" style="display: none;" multiple>
-                        <button id="upload-button" type="button" aria-label="上传文件">
-                            📎
-                        </button>
-                        <button id="send-button" type="button" aria-label="发送">
-                            发送
-                        </button>
-                    </div>
-                </div>
+        // 添加键盘快捷键支持
+        document.addEventListener('keydown', function(event) {
+            if (event.key === '1' || event.key === 'c') {
+                navigateToChat();
+            } else if (event.key === '2' || event.key === 'k') {
+                navigateToKnowledgeBase();
+            }
+        });
 
-                <!-- 选项面板 - 点击+号后弹出 -->
-                <div id="options-panel" class="options-panel" style="display: none;">
-                    <div class="options-panel-content">
-                        <!-- <div class="options-panel-header">
-                            <button id="close-options-panel" type="button" aria-label="关闭">&times;</button>
-                        </div> -->
-                        <div class="options-panel-body">
-                            <div class="model-select-wrapper">
-                                <label for="model-select"><span>📚 工作模式</span></label>
-                                <select id="model-select" class="select-control" aria-label="工作模式" title="选择工作模式">
-                                    <option value="chat" selected>智能助手</option>
-                                    <option value="deep-research">深度研究</option>
-                                    <option value="deep-research-multi">深度研究-多智能体</option>
-                                    <option value="super-agent">超级智能体</option>
-                                    <option value="codeact-agent">CodeAct智能体</option>
-                                    <option value="mcp-agent">MCP智能体</option>
-                                    <option value="browser-agent">Browser智能体</option>
-                                </select>
-                            </div>
-                            <div id="tool-call-container">
-                                <div class="memory-wrapper">
-                                    <label for="tool-call-toggle">
-                                        <span>🔧 工具调用</span>
-                                    </label>
-                                    <input type="checkbox" id="tool-call-toggle" class="memory-toggle" checked
-                                        title="搜索、爬虫和代码执行器">
-                                </div>
-                            </div>
-                            <div class="model-select-wrapper">
-                                <label for="model-name-select"><span>👨‍🔬 模型</span></label>
-                                <select id="model-name-select" class="select-control" aria-label="模型"
-                                    title="选择模型"></select>
-                            </div>
+        // 添加触摸设备优化
+        document.querySelectorAll('.nav-card').forEach(card => {
+            card.addEventListener('touchstart', function() {
+                this.style.transform = 'translateY(-5px)';
+            });
 
-                            <div id="itecount-container" class="model-select-wrapper">
-                                <label for="itecount"><span>🔄 迭代轮次</span></label>
-                                <input type="number" id="itecount" class="select-control" min="1" value="25"
-                                    placeholder="迭代轮次" />
-                            </div>
-
-                            <div id="conversation_count-container" class="model-select-wrapper">
-                                <label for="conversation_count"><span>💬 会话轮次</span></label>
-                                <input type="number" id="conversation_count" class="select-control" min="1" value="10"
-                                    placeholder="会话轮次" />
-                            </div>
-                            <div class="memory-wrapper">
-                                <label for="tool-memory-toggle">
-                                    <span>🔧 工具记忆</span>
-                                </label>
-                                <input type="checkbox" id="tool-memory-toggle" class="memory-toggle">
-                            </div>
-
-                            <div class="memory-wrapper">
-                                <label for="sop-memory-toggle">
-                                    <span>📋 SOP记忆</span>
-                                </label>
-                                <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 右侧分隔线 -->
-    <div class="sidebar-resizer right-resizer" id="rightResizer"></div>
-
-    <!-- 右侧边栏 -->
-    <div class="sidebar right-sidebar" id="rightSidebar">
-        <div class="playbook-container">
-            <div id="playbook-content"></div>
-        </div>
-    </div>
-
-    <!-- 工具结果弹框 -->
-    <div id="toolResultModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">工具执行结果</h3>
-                <button class="close-modal-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="modal-result-content"></div>
-                <div class="modal-actions">
-                    <button class="copy-btn" data-copy-target=".modal-result-content pre">
-                        <svg class="copy-icon" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"></path>
-                            <path
-                                d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z">
-                            </path>
-                        </svg>
-                        <span class="copy-tooltip">复制原始结果</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 确认删除会话弹框 -->
-    <div id="deleteConversationModal" class="modal">
-        <div class="modal-content modal-confirm">
-            <div class="modal-header">
-                <h3 class="modal-title">确认删除</h3>
-                <button class="close-modal-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p class="modal-message">确定要删除这个会话吗？此操作无法撤销。</p>
-                <div class="modal-actions">
-                    <button class="modal-btn modal-btn-cancel">取消</button>
-                    <button class="modal-btn modal-btn-confirm">确认删除</button>
-                </div>
-            </div>
-        </div>
-    </div>
+            card.addEventListener('touchend', function() {
+                this.style.transform = '';
+            });
+        });
+    </script>
 </body>
 
 </html>

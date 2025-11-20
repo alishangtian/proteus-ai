@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
+from fastapi.responses import Response
 from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
 from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
 from src.utils.tool_converter import load_tools_from_yaml
@@ -64,7 +65,6 @@ log_file_path = os.getenv("LOG_FILE_PATH", "logs/workflow_engine.log")
 setup_logger(log_file_path)
 logger = logging.getLogger(__name__)
 
-
 # 创建全局流管理实例 - 必须优先初始化
 from src.api.stream_manager import StreamManager
 
@@ -85,9 +85,6 @@ agent_model_list = [
 
 
 # 延迟初始化工作流引擎
-@langfuse_wrapper.observe_decorator(
-    name="get_workflow_engine", capture_input=True, capture_output=True
-)
 def get_workflow_engine():
     """延迟初始化工作流引擎"""
     from src.core.engine import WorkflowEngine
@@ -105,9 +102,6 @@ def get_workflow_engine():
 
 
 # 延迟初始化工作流服务
-@langfuse_wrapper.observe_decorator(
-    name="get_workflow_service", capture_input=True, capture_output=True
-)
 def get_workflow_service():
     """延迟初始化工作流服务"""
     from src.api.workflow_service import WorkflowService
@@ -116,9 +110,6 @@ def get_workflow_service():
 
 
 # 在启动时注册工作流节点类型 - 改为按需加载
-@langfuse_wrapper.observe_decorator(
-    name="register_workflow_nodes", capture_input=True, capture_output=True
-)
 def register_workflow_nodes(workflow_engine, node_manager):
     """注册所有可用的节点类型"""
     import importlib
@@ -187,6 +178,7 @@ class AuthMiddleware:
             "/health",  # 健康检查
             "/static",  # 静态文件
             "/favicon.ico",  # 网站图标
+            "/update_nickname",
         }
 
     async def __call__(self, scope, receive, send):
@@ -226,6 +218,7 @@ async def auth_middleware(request: Request, call_next):
         "/static",  # 静态文件
         "/favicon.ico",  # 网站图标
         "/newui",  # 新的聊天页面
+        "/update_nickname",
     }
 
     path = request.url.path
@@ -288,7 +281,6 @@ async def serve_login_page():
 templates = Jinja2Templates(directory=static_path)
 
 
-@langfuse_wrapper.dynamic_observe()
 @app.post("/uploadfile/")
 async def create_upload_file(file: UploadFile = File(...)):
     """
@@ -385,9 +377,6 @@ class NodeResultResponse(BaseModel):
     error: Optional[str] = Field(None, description="错误信息（如果执行失败）")
 
 
-@langfuse_wrapper.observe_decorator(
-    name="health_check", capture_input=True, capture_output=True
-)
 @app.get("/health", response_model=ApiResponse)
 async def health_check():
     """健康检查接口"""
@@ -448,7 +437,8 @@ async def get_index(request: Request):
         {
             "request": request,
             "logged_in": user is not None,
-            "username": user.username if user else "",
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
         },
     )
 
@@ -474,12 +464,57 @@ async def get_newui_page(request: Request):
         {
             "request": request,
             "logged_in": user is not None,
-            "username": user.username if user else "",
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
         },
     )
 
 
-@langfuse_wrapper.dynamic_observe()
+@app.get("/chat/index", response_class=HTMLResponse)
+async def get_chat_index_page(request: Request):
+    """返回聊天页面索引"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "chat.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
+        },
+    )
+
+
+@app.get("/knowledge/index", response_class=HTMLResponse)
+async def get_knowledge_index_page(request: Request):
+    """返回知识库页面索引"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "knowledge_base.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
+        },
+    )
+
+
+@app.get("/knowledge-base", response_class=HTMLResponse)
+async def get_knowledge_base_page(request: Request):
+    """返回知识库页面"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "knowledge_base.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
+        },
+    )
+
+
 @app.post("/chat")
 async def create_chat(
     request: Request,
@@ -511,7 +546,7 @@ async def create_chat(
     # 获取当前登录用户
     user = await get_current_user(request)
     logger.info(f"用户 {user} 创建新的会话")
-    username = user.username if user else None
+    user_name = user.user_name if user else None
 
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     stream_manager.create_stream(chat_id, query)
@@ -533,7 +568,7 @@ async def create_chat(
                 conversation_id=conversation_id,
                 chat_id=chat_id,
                 initial_question=query,
-                username=username,
+                user_name=user_name,
                 modul=modul,
             )
         )
@@ -554,7 +589,7 @@ async def create_chat(
                 model_name=model_name,
                 conversation_round=conversation_round,
                 file_ids=file_ids,  # 传递文件 ID 列表
-                username=username,  # 传递用户名
+                user_name=user_name,  # 传递用户名
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递SOP记忆参数
                 enable_tools=enable_tools,  # 传递工具调用开关
@@ -567,9 +602,6 @@ async def create_chat(
     return {"success": True, "chat_id": chat_id}
 
 
-@langfuse_wrapper.observe_decorator(
-    name="stop_chat", capture_input=True, capture_output=True
-)
 @app.get("/stop/{model}/{chat_id}")
 async def stop_chat(model: str, chat_id: str):
     if model == "deep-research":
@@ -592,9 +624,6 @@ async def stop_chat(model: str, chat_id: str):
     return {"success": True, "chat_id": chat_id}
 
 
-@langfuse_wrapper.observe_decorator(
-    name="_stop_deep_research_team", capture_input=True, capture_output=True
-)
 async def _stop_deep_research_team(chat_id: str):
     """停止 deep-research team 下的所有 agents
 
@@ -664,9 +693,6 @@ async def _stop_deep_research_team(chat_id: str):
             pass
 
 
-@langfuse_wrapper.observe_decorator(
-    name="stream_request", capture_input=True, capture_output=True
-)
 @app.get("/stream/{chat_id}")
 async def stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -690,9 +716,6 @@ async def stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
-@langfuse_wrapper.observe_decorator(
-    name="replay_stream_request", capture_input=True, capture_output=True
-)
 @app.get("/replay/stream/{chat_id}")
 async def replay_stream_request(chat_id: str):
     """建立SSE连接获取响应流
@@ -718,9 +741,6 @@ async def replay_stream_request(chat_id: str):
     return EventSourceResponse(event_generator())
 
 
-@langfuse_wrapper.observe_decorator(
-    name="_register_team_binding", capture_input=True, capture_output=True
-)
 async def _register_team_binding(chat_id: str, team_name: str, agentmodel: str):
     """注册 team 和 chatid 的绑定关系到 Redis
 
@@ -758,9 +778,6 @@ async def _register_team_binding(chat_id: str, team_name: str, agentmodel: str):
         logger.error(f"[{chat_id}] 注册 team 绑定关系失败: {str(e)}", exc_info=True)
 
 
-@langfuse_wrapper.observe_decorator(
-    name="_register_team_agent", capture_input=True, capture_output=True
-)
 async def _register_team_agent(chat_id: str, agent_id: str, role_type: str):
     """注册 team 中的 agent 到 Redis
 
@@ -792,9 +809,6 @@ async def _register_team_agent(chat_id: str, agent_id: str, role_type: str):
         logger.error(f"[{chat_id}] 注册 team agent 失败: {str(e)}", exc_info=True)
 
 
-@langfuse_wrapper.observe_decorator(
-    name="_get_team_agents", capture_input=True, capture_output=True
-)
 async def _get_team_agents(chat_id: str):
     """获取 team 中的所有 agents
 
@@ -829,9 +843,6 @@ async def _get_team_agents(chat_id: str):
         return []
 
 
-@langfuse_wrapper.observe_decorator(
-    name="_cleanup_team_binding", capture_input=True, capture_output=True
-)
 async def _cleanup_team_binding(chat_id: str):
     """清理 team 绑定关系
 
@@ -856,9 +867,6 @@ async def _cleanup_team_binding(chat_id: str):
         logger.error(f"[{chat_id}] 清理 team 绑定关系失败: {str(e)}", exc_info=True)
 
 
-@langfuse_wrapper.observe_decorator(
-    name="generate_conversation_title", capture_input=True, capture_output=True
-)
 async def generate_conversation_title(initial_question: str) -> str:
     """使用 LLM 生成会话标题
 
@@ -912,14 +920,11 @@ async def generate_conversation_title(initial_question: str) -> str:
         return fallback_title
 
 
-@langfuse_wrapper.observe_decorator(
-    name="save_conversation_summary", capture_input=True, capture_output=True
-)
 async def save_conversation_summary(
     conversation_id: str,
     chat_id: str,
     initial_question: str,
-    username: str = None,
+    user_name: str = None,
     modul: str = None,
 ):
     """异步保存会话摘要信息到 Redis
@@ -928,13 +933,13 @@ async def save_conversation_summary(
         conversation_id: 会话ID
         chat_id: 聊天ID
         initial_question: 初始问题
-        username: 用户名
+        user_name: 用户名
         modul: 模型类型
     """
     try:
         redis_conn = get_redis_connection()
         conversation_key = f"conversation:{conversation_id}:info"
-        username = username or "anonymous"
+        user_name = user_name or "anonymous"
 
         # 使用 LLM 生成会话标题
         title = await generate_conversation_title(initial_question)
@@ -946,7 +951,7 @@ async def save_conversation_summary(
                 "conversation_id": conversation_id,
                 "title": title,
                 "initial_question": initial_question,
-                "username": username,
+                "user_name": user_name,
                 "modul": modul or "unknown",
                 "created_at": datetime.now().isoformat(),
                 "updated_at": datetime.now().isoformat(),
@@ -955,7 +960,7 @@ async def save_conversation_summary(
             redis_conn.hmset(conversation_key, mapping=conversation_data)
 
             # 添加到用户的会话列表（有序集合，按时间戳排序）
-            user_conversations_key = f"user:{username}:conversations"
+            user_conversations_key = f"user:{user_name}:conversations"
             timestamp = time.time()
             redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
             logger.info(f"已创建会话摘要: {conversation_id}, 标题: {title}")
@@ -965,7 +970,7 @@ async def save_conversation_summary(
             redis_conn.hset(conversation_key, "updated_at", datetime.now().isoformat())
 
             # 更新用户在有序集合中的时间戳，确保按更新时间排序
-            user_conversations_key = f"user:{username}:conversations"
+            user_conversations_key = f"user:{user_name}:conversations"
             timestamp = time.time()
             redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
 
@@ -975,10 +980,6 @@ async def save_conversation_summary(
         logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
 
 
-# @langfuse_wrapper.observe_decorator(
-#     name="process_agent", capture_input=True, capture_output=True
-# )
-@langfuse_wrapper.dynamic_observe()
 async def process_agent(
     chat_id: str,
     query: str,
@@ -990,7 +991,7 @@ async def process_agent(
     model_name: str = None,
     conversation_round: int = 5,
     file_ids: Optional[List[str]] = None,  # 新增文件 ID 列表参数
-    username: str = None,  # 新增用户名参数
+    user_name: str = None,  # 新增用户名参数
     tool_memory_enabled: bool = False,  # 新增工具记忆参数
     sop_memory_enabled: bool = False,  # 新增 SOP 记忆参数
     enable_tools: bool = False,  # 新增工具调用开关
@@ -1004,10 +1005,10 @@ async def process_agent(
         itecount: 迭代次数
         agentid: 代理ID(可选)
         agentmodel: 代理模型(可选)
-        username: 用户名(可选)，用于工具记忆隔离
+        user_name: 用户名(可选)，用于工具记忆隔离
     """
     logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, username={username})"
+        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name})"
     )
     team = None
     agent = None
@@ -1055,6 +1056,9 @@ async def process_agent(
                 max_tool_iterations=itecount,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
+                user_name=user_name,
+                enable_sop_memory=sop_memory_enabled,
+                enable_tool_memory=tool_memory_enabled,
             )
 
             # 运行 ChatAgent
@@ -1132,7 +1136,7 @@ async def process_agent(
                 tools_config=tools_config,
                 start_role=getattr(TeamRole, team_config["start_role"]),
                 conversation_round=conversation_round,
-                username=username,
+                user_name=user_name,
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
@@ -1155,7 +1159,7 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
-                username=username,
+                user_name=user_name,
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
@@ -1192,7 +1196,7 @@ async def process_agent(
                 conversation_id=conversation_id,
                 include_fields=include_fields,
                 conversation_round=conversation_round,
-                username=username,
+                user_name=user_name,
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
@@ -1221,7 +1225,7 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
-                username=username,
+                user_name=user_name,
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
@@ -1248,7 +1252,7 @@ async def process_agent(
                 role_type=TeamRole.GENERAL_AGENT,
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
-                username=username,
+                user_name=user_name,
                 tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
                 sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
             )
@@ -1274,9 +1278,6 @@ async def process_agent(
         return {"status": "success", "final_result": final_result, "text": query}
 
 
-@langfuse_wrapper.observe_decorator(
-    name="handle_user_input", capture_input=True, capture_output=True
-)
 @app.post("/user_input")
 async def handle_user_input(
     node_id: str = Body(...),
@@ -1339,9 +1340,6 @@ async def handle_user_input(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@langfuse_wrapper.observe_decorator(
-    name="execute_workflow", capture_input=True, capture_output=True
-)
 @app.post("/execute_workflow", response_model=ApiResponse)
 async def execute_workflow(request: WorkflowRequest):
     """
@@ -1408,13 +1406,11 @@ async def execute_workflow(request: WorkflowRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    logger.info("尝试启动 Uvicorn 服务器...")
+    uvicorn.run(app, host="0.0.0.0", port=8003)
 
 
 # 提供模型配置列表接口，供前端下拉使用
-@langfuse_wrapper.observe_decorator(
-    name="list_models", capture_input=True, capture_output=True
-)
 @app.get("/models")
 async def list_models():
     """返回 conf/models_config.yaml 中定义的模型名列表
@@ -1495,7 +1491,7 @@ async def submit_feedback(
     处理用户对会话的点赞/点踩反馈
     """
     user = await get_current_user(request)
-    username = user.username if user else "anonymous"
+    user_name = user.user_name if user else "anonymous"
 
     if feedback_type not in ["like", "dislike"]:
         raise HTTPException(status_code=400, detail="无效的反馈类型")
@@ -1509,7 +1505,7 @@ async def submit_feedback(
             "chat_id": chat_id,
             "conversation_id": conversation_id,
             "feedback_type": feedback_type,
-            "username": username,
+            "user_name": user_name,
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -1519,7 +1515,7 @@ async def submit_feedback(
         )
 
         logger.info(
-            f"用户 {username} 对会话 {conversation_id} (chat_id: {chat_id}) 提交了 {feedback_type} 反馈"
+            f"用户 {user_name} 对会话 {conversation_id} (chat_id: {chat_id}) 提交了 {feedback_type} 反馈"
         )
         return {"success": True, "message": "反馈提交成功"}
     except Exception as e:
@@ -1530,9 +1526,6 @@ async def submit_feedback(
         raise HTTPException(status_code=500, detail=f"提交反馈失败: {str(e)}")
 
 
-@langfuse_wrapper.observe_decorator(
-    name="get_conversations", capture_input=True, capture_output=True
-)
 @app.get("/conversations")
 async def get_conversations(request: Request, limit: int = 50):
     """获取当前用户的会话列表
@@ -1546,10 +1539,10 @@ async def get_conversations(request: Request, limit: int = 50):
     """
     try:
         user = await get_current_user(request)
-        username = user.username if user else "anonymous"
+        user_name = user.user_name if user else "anonymous"
 
         redis_conn = get_redis_connection()
-        user_conversations_key = f"user:{username}:conversations"
+        user_conversations_key = f"user:{user_name}:conversations"
 
         # 从有序集合中获取会话ID列表（按时间倒序）
         conversation_ids = redis_conn.zrevrange(user_conversations_key, 0, limit - 1)
@@ -1585,9 +1578,6 @@ async def get_conversations(request: Request, limit: int = 50):
         raise HTTPException(status_code=500, detail=f"获取会话列表失败: {str(e)}")
 
 
-@langfuse_wrapper.observe_decorator(
-    name="get_conversation_detail", capture_input=True, capture_output=True
-)
 @app.get("/conversations/{conversation_id}")
 async def get_conversation_detail(conversation_id: str, request: Request):
     """获取指定会话的详细信息
@@ -1601,7 +1591,7 @@ async def get_conversation_detail(conversation_id: str, request: Request):
     """
     try:
         user = await get_current_user(request)
-        username = user.username if user else "anonymous"
+        user_name = user.user_name if user else "anonymous"
 
         redis_conn = get_redis_connection()
         conversation_key = f"conversation:{conversation_id}:info"
@@ -1619,7 +1609,7 @@ async def get_conversation_detail(conversation_id: str, request: Request):
         }
 
         # 验证用户权限
-        if conv_info.get("username") != username:
+        if conv_info.get("user_name") != user_name:
             raise HTTPException(status_code=403, detail="无权访问此会话")
 
         # 获取该会话的所有chat_id
@@ -1639,9 +1629,6 @@ async def get_conversation_detail(conversation_id: str, request: Request):
         raise HTTPException(status_code=500, detail=f"获取会话详情失败: {str(e)}")
 
 
-@langfuse_wrapper.observe_decorator(
-    name="delete_conversation", capture_input=True, capture_output=True
-)
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str, request: Request):
     """删除指定会话
@@ -1655,7 +1642,7 @@ async def delete_conversation(conversation_id: str, request: Request):
     """
     try:
         user = await get_current_user(request)
-        username = user.username if user else "anonymous"
+        user_name = user.user_name if user else "anonymous"
 
         redis_conn = get_redis_connection()
         conversation_key = f"conversation:{conversation_id}:info"
@@ -1673,7 +1660,7 @@ async def delete_conversation(conversation_id: str, request: Request):
         }
 
         # 验证用户权限
-        if conv_info.get("username") != username:
+        if conv_info.get("user_name") != user_name:
             raise HTTPException(status_code=403, detail="无权删除此会话")
 
         # 删除会话信息
@@ -1684,10 +1671,10 @@ async def delete_conversation(conversation_id: str, request: Request):
         redis_conn.delete(conv_chats_key)
 
         # 从用户会话列表中移除
-        user_conversations_key = f"user:{username}:conversations"
+        user_conversations_key = f"user:{user_name}:conversations"
         redis_conn.zrem(user_conversations_key, conversation_id)
 
-        logger.info(f"用户 {username} 删除了会话 {conversation_id}")
+        logger.info(f"用户 {user_name} 删除了会话 {conversation_id}")
         return {"success": True, "message": "会话已删除"}
 
     except HTTPException:
@@ -1695,3 +1682,453 @@ async def delete_conversation(conversation_id: str, request: Request):
     except Exception as e:
         logger.error(f"删除会话失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"删除会话失败: {str(e)}")
+
+
+@app.get("/var/data/sandbox/{file_path:path}")
+async def get_sandbox_file(file_path: str, request: Request):
+    """
+    获取 sandbox 目录下的静态页面文件
+
+    Args:
+        file_path: 文件路径，相对于 /var/data/sandbox 目录
+        request: 请求对象
+
+    Returns:
+        文件内容或错误响应
+    """
+    try:
+        # 基础目录：Docker 容器内的 /var/data/sandbox 对应本地的 ./docker/volumes/sandbox/data
+        base_dir = os.path.join(
+            os.path.dirname(__file__), "docker", "volumes", "sandbox", "data"
+        )
+
+        # 构建完整的文件路径
+        full_path = os.path.join(base_dir, file_path)
+
+        # 安全检查：确保请求的文件路径在基础目录内
+        full_path = os.path.normpath(full_path)
+        if not full_path.startswith(os.path.normpath(base_dir)):
+            raise HTTPException(status_code=403, detail="禁止访问该路径")
+
+        # 如果请求的是目录，默认返回 index.html
+        if os.path.isdir(full_path):
+            full_path = os.path.join(full_path, "index.html")
+
+        # 检查文件是否存在
+        if not os.path.exists(full_path):
+            raise HTTPException(status_code=404, detail=f"文件不存在: {file_path}")
+
+        # 检查是否为文件
+        if not os.path.isfile(full_path):
+            raise HTTPException(status_code=400, detail="请求的路径不是文件")
+
+        # 根据文件扩展名确定媒体类型
+        file_extension = os.path.splitext(full_path)[1].lower()
+        media_types = {
+            ".html": "text/html",
+            ".htm": "text/html",
+            ".css": "text/css",
+            ".js": "application/javascript",
+            ".json": "application/json",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".svg": "image/svg+xml",
+            ".txt": "text/plain",
+            ".pdf": "application/pdf",
+            ".ico": "image/x-icon",
+            ".xml": "application/xml",
+            ".zip": "application/zip",
+            ".mp4": "video/mp4",
+            ".mp3": "audio/mpeg",
+            ".woff": "font/woff",
+            ".woff2": "font/woff2",
+            ".ttf": "font/ttf",
+        }
+
+        media_type = media_types.get(file_extension, "application/octet-stream")
+
+        # 判断是否为文本文件
+        text_extensions = {
+            ".html",
+            ".htm",
+            ".css",
+            ".js",
+            ".json",
+            ".txt",
+            ".xml",
+            ".svg",
+        }
+        if file_extension in text_extensions:
+            # 读取文本文件
+            with open(full_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            response = Response(content=content, media_type=media_type)
+        else:
+            # 读取二进制文件
+            with open(full_path, "rb") as f:
+                content = f.read()
+            response = Response(content=content, media_type=media_type)
+
+        # 添加缓存头
+        response.headers["Cache-Control"] = "public, max-age=3600"  # 缓存1小时
+
+        logger.info(f"成功返回 sandbox 文件: {file_path} (类型: {media_type})")
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取 sandbox 文件失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取文件失败: {str(e)}")
+
+
+def _remove_title_from_content(content: str, title: str) -> str:
+    """从内容中删除标题行，避免重复
+
+    Args:
+        content: 原始内容
+        title: 提取的标题
+
+    Returns:
+        清理后的内容（已移除标题行）
+    """
+    if not content or not title:
+        return content
+
+    lines = content.split("\n")
+    if not lines:
+        return content
+
+    # 检查第一行是否包含标题（考虑Markdown标题格式）
+    first_line = lines[0].strip()
+
+    # 如果第一行是Markdown标题格式（以#开头），则移除第一行
+    if first_line.startswith("#"):
+        # 移除第一行
+        cleaned_lines = lines[1:]
+        return "\n".join(cleaned_lines).strip()
+
+    # 如果第一行就是标题文本，也移除第一行
+    if first_line == title:
+        cleaned_lines = lines[1:]
+        return "\n".join(cleaned_lines).strip()
+
+    # 如果没有找到匹配的标题行，返回原内容
+    return content
+
+
+class KnowledgeBaseContent(BaseModel):
+    content: str = Field(..., description="要保存到知识库的内容")
+
+
+@app.post("/knowledge_base/save")
+async def save_to_knowledge_base(request: Request, kb_content: KnowledgeBaseContent):
+    """
+    将内容保存到当前用户的知识库中。
+    新的数据结构：
+    - 队列（list）保存事件和标题
+    - map（hash）保存正文内容
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+        nick_name = user.nick_name if user else "匿名用户"  # 获取用户昵称
+
+        redis_conn = get_redis_connection()
+
+        # 导入标题提取工具
+        from src.utils.md_title_extractor import extract_title_from_md
+
+        # 提取标题
+        title = extract_title_from_md(kb_content.content)
+        timestamp = datetime.now().isoformat()
+
+        # 直接从内容中删除标题行，避免重复
+        cleaned_content = _remove_title_from_content(kb_content.content, title)
+
+        # 生成唯一ID
+        import uuid
+
+        item_id = str(uuid.uuid4())
+
+        # 队列键：保存事件和标题
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        # 映射键：保存正文内容
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+
+        # 队列条目：包含时间、标题和ID
+        queue_item = {
+            "id": item_id,
+            "timestamp": timestamp,
+            "title": title,
+            "author": user_name,  # 存储用户名
+            "updated_at": timestamp,  # 新增更新时间字段，初始值与创建时间相同
+        }
+
+        # 映射条目：包含完整内容
+        map_item = {
+            "id": item_id,
+            "timestamp": timestamp,
+            "title": title,
+            "content": cleaned_content,  # 使用清理后的内容（已移除标题行）
+            "author": user_name,  # 存储用户名
+            "updated_at": timestamp,  # 新增更新时间字段，初始值与创建时间相同
+        }
+
+        # 使用pipeline确保原子性操作
+        pipeline = redis_conn.pipeline()
+
+        # 将队列条目添加到列表左侧（实现倒序排列）
+        pipeline.lpush(
+            knowledge_base_queue_key, json.dumps(queue_item, ensure_ascii=False)
+        )
+
+        # 将映射条目保存到hash中
+        pipeline.hset(
+            knowledge_base_map_key, item_id, json.dumps(map_item, ensure_ascii=False)
+        )
+
+        # 执行pipeline
+        pipeline.execute()
+
+        logger.info(
+            f"用户 {user_name} 已将内容保存到知识库。标题: {title}, ID: {item_id}"
+        )
+        return {
+            "success": True,
+            "message": "内容已成功保存到知识库。",
+            "item_id": item_id,
+        }
+    except Exception as e:
+        logger.error(f"保存知识库失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"保存知识库失败: {str(e)}")
+
+
+from src.utils.dynamic_observer import auto_apply_here
+
+auto_apply_here(
+    globals(),
+    include=None,
+    exclude=[],
+    only_in_module=True,
+    verbose=False,
+)
+
+
+@app.get("/knowledge_base/list")
+async def get_knowledge_base_list(request: Request):
+    """
+    获取当前用户的知识库列表。
+    新的数据结构：
+    - 从队列获取事件和标题列表
+    - 不包含正文内容以提高性能
+    - 在查询时返回创建人昵称而不是用户名
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+        nick_name = user.nick_name if user else "匿名用户"  # 获取当前用户昵称
+
+        redis_conn = get_redis_connection()
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        # 获取 Redis 队列中所有内容
+        kb_items_raw = redis_conn.lrange(knowledge_base_queue_key, 0, -1)
+
+        kb_items = []
+        for item_raw in kb_items_raw:
+            try:
+                item_data = json.loads(item_raw)
+                # 在查询时将作者信息替换为昵称
+                item_data["author"] = nick_name
+                kb_items.append(item_data)
+            except json.JSONDecodeError:
+                logger.warning(f"解析知识库条目失败: {item_raw}")
+                continue
+
+        return {"success": True, "knowledge_base_items": kb_items}
+    except Exception as e:
+        logger.error(f"获取知识库列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取知识库列表失败: {str(e)}")
+
+
+@app.get("/knowledge_base/item/{item_id}")
+async def get_knowledge_base_item(request: Request, item_id: str):
+    """
+    获取知识库中指定ID的条目完整内容。
+    新的数据结构：从映射中获取包含正文的完整内容。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+
+        # 从映射中获取指定ID的知识库条目
+        item_raw = redis_conn.hget(knowledge_base_map_key, item_id)
+
+        if not item_raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        item_data = json.loads(item_raw)
+        return {"success": True, "knowledge_base_item": item_data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"获取知识库条目失败 (item_id: {item_id}): {str(e)}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"获取知识库条目失败: {str(e)}")
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    title: str = Field(..., description="知识库条目标题")
+    content: str = Field(..., description="知识库条目内容")
+
+
+@app.put("/knowledge_base/item/{item_id}")
+async def update_knowledge_base_item(
+    request: Request, item_id: str, kb_update: KnowledgeBaseUpdate
+):
+    """
+    更新知识库中指定ID的条目。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+        nick_name = user.nick_name if user else "匿名用户"  # 获取用户昵称
+
+        redis_conn = get_redis_connection()
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+
+        # 检查条目是否存在
+        existing_item_raw = redis_conn.hget(knowledge_base_map_key, item_id)
+        if not existing_item_raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        # 更新映射中的内容
+        update_timestamp = datetime.now().isoformat()
+        # 保留原有的timestamp（创建时间），只更新updated_at
+        existing_item = json.loads(existing_item_raw)
+        original_timestamp = existing_item.get("timestamp", update_timestamp)
+
+        map_item = {
+            "id": item_id,
+            "timestamp": original_timestamp,  # 保持原有的创建时间不变
+            "title": kb_update.title,
+            "content": kb_update.content,
+            "author": user_name,  # 存储用户名
+            "nick_name": nick_name,
+            "updated_at": update_timestamp,  # 更新时设置新的更新时间
+        }
+
+        # 更新队列中的条目信息
+        queue_items_raw = redis_conn.lrange(knowledge_base_queue_key, 0, -1)
+        updated_queue_items = []
+
+        for item_raw in queue_items_raw:
+            try:
+                item_data = json.loads(item_raw)
+                if item_data.get("id") == item_id:
+                    # 更新匹配的条目，保持原有的timestamp（创建时间）不变
+                    item_data["title"] = kb_update.title
+                    # timestamp保持不变，不更新创建时间
+                    item_data["updated_at"] = (
+                        update_timestamp  # 更新队列中的更新时间字段
+                    )
+                updated_queue_items.append(json.dumps(item_data, ensure_ascii=False))
+            except json.JSONDecodeError:
+                logger.warning(f"解析知识库队列条目失败: {item_raw}")
+                updated_queue_items.append(item_raw)  # 保持原样
+
+        # 使用pipeline确保原子性操作
+        pipeline = redis_conn.pipeline()
+
+        # 更新映射中的内容
+        pipeline.hset(
+            knowledge_base_map_key, item_id, json.dumps(map_item, ensure_ascii=False)
+        )
+
+        # 重新设置队列（先删除再重新添加）
+        pipeline.delete(knowledge_base_queue_key)
+        if updated_queue_items:
+            pipeline.rpush(knowledge_base_queue_key, *updated_queue_items)
+
+        # 执行pipeline
+        pipeline.execute()
+
+        logger.info(
+            f"用户 {user_name} 已更新知识库条目。标题: {kb_update.title}, ID: {item_id}"
+        )
+        return {"success": True, "message": "知识库条目已成功更新", "item_id": item_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"更新知识库条目失败 (item_id: {item_id}): {str(e)}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"更新知识库条目失败: {str(e)}")
+
+
+@app.delete("/knowledge_base/item/{item_id}")
+async def delete_knowledge_base_item(request: Request, item_id: str):
+    """
+    删除知识库中指定ID的条目。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+
+        # 检查条目是否存在
+        existing_item_raw = redis_conn.hget(knowledge_base_map_key, item_id)
+        if not existing_item_raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        # 从映射中删除条目
+        redis_conn.hdel(knowledge_base_map_key, item_id)
+
+        # 从队列中删除对应的条目
+        queue_items_raw = redis_conn.lrange(knowledge_base_queue_key, 0, -1)
+        updated_queue_items = []
+
+        for item_raw in queue_items_raw:
+            try:
+                item_data = json.loads(item_raw)
+                if item_data.get("id") != item_id:
+                    # 保留不匹配的条目
+                    updated_queue_items.append(
+                        json.dumps(item_data, ensure_ascii=False)
+                    )
+            except json.JSONDecodeError:
+                logger.warning(f"解析知识库队列条目失败: {item_raw}")
+                updated_queue_items.append(item_raw)  # 保持原样
+
+        # 使用pipeline确保原子性操作
+        pipeline = redis_conn.pipeline()
+
+        # 重新设置队列（先删除再重新添加）
+        pipeline.delete(knowledge_base_queue_key)
+        if updated_queue_items:
+            pipeline.rpush(knowledge_base_queue_key, *updated_queue_items)
+
+        # 执行pipeline
+        pipeline.execute()
+
+        logger.info(f"用户 {user_name} 已删除知识库条目。ID: {item_id}")
+        return {"success": True, "message": "知识库条目已成功删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"删除知识库条目失败 (item_id: {item_id}): {str(e)}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=f"删除知识库条目失败: {str(e)}")

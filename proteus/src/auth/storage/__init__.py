@@ -12,7 +12,7 @@ from auth.storage import get_storage
 storage = get_storage()
 
 # 存储用户数据
-storage.save_user("username", user_data)
+storage.save_user("user_name", user_data)
 
 # 获取会话数据
 session = storage.get_session(session_id)
@@ -25,20 +25,22 @@ from .base import StorageBase
 from .redis_storage import RedisStorage
 from .file_storage import FileStorage
 
+
 def get_storage() -> StorageBase:
     """获取存储实例
-    
+
     根据环境变量SESSION_MODEL选择存储实现:
     - "redis": 使用Redis存储
     - 其他: 使用文件存储
-    
+
     Returns:
         StorageBase: 存储实例
     """
     storage_type = os.getenv("SESSION_MODEL", "file")
-    
+
     if storage_type == "redis":
         return RedisStorage()
     return FileStorage()
 
-__all__ = ['StorageBase', 'RedisStorage', 'FileStorage', 'get_storage']
+
+__all__ = ["StorageBase", "RedisStorage", "FileStorage", "get_storage"]

@@ -190,6 +190,69 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
             /* Logo 阴影 */
         }
+
+        /* 修改用户昵称相关样式 */
+        .update-nickname-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+        .update-nickname-link:hover {
+            text-decoration: underline;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-title {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .success-message {
+            color: #28a745;
+            margin-bottom: 15px;
+            text-align: center;
+            display: none;
+        }
     </style>
 </head>
 
@@ -202,14 +265,14 @@
             <h2 class="login-title">欢迎登录Proteus</h2>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
-                    <label for="username">用户名</label>
-                    <input type="text" id="username" placeholder="请输入用户名" required class="login-input"
-                        autocomplete="username">
+                    <label for="user_name">用户名</label>
+                    <input type="text" id="user_name" name="user_name" placeholder="请输入用户名" required class="login-input"
+                        autocomplete="user_name">
                 </div>
                 <div class="form-group">
                     <label for="password">密码</label>
-                    <input type="password" id="password" placeholder="请输入密码" required class="login-input"
-                        autocomplete="current-password">
+                    <input type="password" id="password" name="password" placeholder="请输入密码" required
+                        class="login-input" autocomplete="current-password">
                 </div>
                 <div id="errorMsg" class="error-message" style="display:none;"></div>
                 <button type="submit" class="login-btn" id="submitBtn">
@@ -219,7 +282,39 @@
             </form>
             <div class="login-footer">
                 <p>还没有账号? <a href="/register" class="register-link">立即注册</a></p>
+                <p><a href="#" id="updateNicknameLink" class="update-nickname-link">修改用户昵称</a></p>
             </div>
+        </div>
+    </div>
+
+    <!-- 修改用户昵称模态框 -->
+    <div id="updateNicknameModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeModal">&times;</span>
+            <h3 class="modal-title">修改用户昵称</h3>
+            <form id="updateNicknameForm">
+                <div class="form-group">
+                    <label for="user_name">用户名</label>
+                    <input type="text" id="user_name" name="user_name" placeholder="请输入用户名" required
+                        class="login-input">
+                </div>
+                <div class="form-group">
+                    <label for="new_nick_name">新昵称</label>
+                    <input type="text" id="new_nick_name" name="new_nick_name" placeholder="请输入新昵称" required
+                        class="login-input">
+                </div>
+                <div class="form-group">
+                    <label for="confirm_password">密码</label>
+                    <input type="password" id="confirm_password" name="password" placeholder="请输入密码确认" required
+                        class="login-input">
+                </div>
+                <div id="updateErrorMsg" class="error-message" style="display:none;"></div>
+                <div id="updateSuccessMsg" class="success-message" style="display:none;"></div>
+                <button type="submit" class="login-btn" id="updateBtn">
+                    <span class="btn-text">确认修改</span>
+                    <span class="spinner" style="display:none;"></span>
+                </button>
+            </form>
         </div>
     </div>
 
@@ -239,8 +334,9 @@
             submitBtn.disabled = true;
             errorMsg.style.display = 'none';
 
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
+            // 使用 FormData 获取表单数据
+            const formData = new FormData(loginForm);
+            const formObject = Object.fromEntries(formData.entries());
 
             try {
                 const response = await fetch('/login', {
@@ -249,10 +345,7 @@
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                     },
-                    body: JSON.stringify({
-                        username: username,
-                        password: password
-                    })
+                    body: JSON.stringify(formObject)
                 });
 
                 const result = await response.json();
@@ -294,6 +387,96 @@
                 this.parentElement.classList.remove('focused');
             });
         });
+        // 修改用户昵称相关逻辑
+        const updateNicknameLink = document.getElementById('updateNicknameLink');
+        const updateNicknameModal = document.getElementById('updateNicknameModal');
+        const closeModal = document.getElementById('closeModal');
+        const updateNicknameForm = document.getElementById('updateNicknameForm');
+        const updateBtn = document.getElementById('updateBtn');
+        const updateErrorMsg = document.getElementById('updateErrorMsg');
+        const updateSuccessMsg = document.getElementById('updateSuccessMsg');
+        const updateBtnText = updateBtn.querySelector('.btn-text');
+        const updateSpinner = updateBtn.querySelector('.spinner');
+
+        // 打开修改用户昵称模态框
+        updateNicknameLink.addEventListener('click', function (e) {
+            e.preventDefault();
+            updateNicknameModal.style.display = 'block';
+            resetUpdateForm();
+        });
+
+        // 关闭模态框
+        closeModal.addEventListener('click', function () {
+            updateNicknameModal.style.display = 'none';
+        });
+
+        // 点击模态框外部关闭
+        window.addEventListener('click', function (e) {
+            if (e.target === updateNicknameModal) {
+                updateNicknameModal.style.display = 'none';
+            }
+        });
+
+        // 处理修改用户昵称表单提交
+        updateNicknameForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            // 显示加载状态
+            updateBtnText.textContent = '修改中...';
+            updateSpinner.style.display = 'inline-block';
+            updateBtn.disabled = true;
+            updateErrorMsg.style.display = 'none';
+            updateSuccessMsg.style.display = 'none';
+
+            // 使用 FormData 获取表单数据
+            const formData = new FormData(updateNicknameForm);
+            const formObject = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/update_nickname', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify(formObject)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    updateSuccessMsg.textContent = result.data.message || '用户昵称修改成功';
+                    updateSuccessMsg.style.display = 'block';
+                    // 清空表单
+                    resetUpdateForm();
+                    // 3秒后关闭模态框
+                    setTimeout(() => {
+                        updateNicknameModal.style.display = 'none';
+                    }, 3000);
+                } else {
+                    showUpdateError(result.error || '修改失败');
+                }
+            } catch (error) {
+                showUpdateError('网络请求失败');
+            } finally {
+                // 重置按钮状态
+                updateBtnText.textContent = '确认修改';
+                updateSpinner.style.display = 'none';
+                updateBtn.disabled = false;
+            }
+        });
+
+        function showUpdateError(message) {
+            updateErrorMsg.textContent = message;
+            updateErrorMsg.style.display = 'block';
+        }
+
+        function resetUpdateForm() {
+            document.getElementById('user_name').value = '';
+            document.getElementById('new_nick_name').value = '';
+            document.getElementById('confirm_password').value = '';
+            updateErrorMsg.style.display = 'none';
+            updateSuccessMsg.style.display = 'none';
+        }
     </script>
 </body>
 

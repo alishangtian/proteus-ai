@@ -3,7 +3,7 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from proteus.src.agent.langfuse_wrapper import langfuse_wrapper
+from src.utils.langfuse_wrapper import langfuse_wrapper
 from proteus.src.api.llm_api import call_llm_api
 
 logger = logging.getLogger(__name__)

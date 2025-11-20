@@ -69,26 +69,26 @@ class FileStorageManager:
         self.data_dir = os.getenv("DATA_PATH", "./data")
         os.makedirs(self.data_dir, exist_ok=True)
 
-    def _get_user_file(self, username: str) -> str:
-        return os.path.join(self.data_dir, f"user_{username}.json")
+    def _get_user_file(self, user_name: str) -> str:
+        return os.path.join(self.data_dir, f"user_{user_name}.json")
 
     def _get_session_file(self, session_id: str) -> str:
         return os.path.join(self.data_dir, f"session_{session_id}.json")
 
-    def save_user(self, username: str, user_data: dict):
+    def save_user(self, user_name: str, user_data: dict):
         """保存用户数据到文件"""
         try:
-            with open(self._get_user_file(username), "w") as f:
+            with open(self._get_user_file(user_name), "w") as f:
                 json.dump(user_data, f)
             return True
         except Exception as e:
             logger.error(f"保存用户数据失败: {e}")
             return False
 
-    def get_user(self, username: str) -> Optional[dict]:
+    def get_user(self, user_name: str) -> Optional[dict]:
         """从文件获取用户数据"""
         try:
-            with open(self._get_user_file(username), "r") as f:
+            with open(self._get_user_file(user_name), "r") as f:
                 return json.load(f)
         except FileNotFoundError:
             return None
@@ -128,6 +128,17 @@ class FileStorageManager:
             logger.error(f"删除会话文件失败: {e}")
             return False
 
+    def delete_user(self, user_name: str):
+        """删除用户文件"""
+        try:
+            os.remove(self._get_user_file(user_name))
+            return True
+        except FileNotFoundError:
+            return True
+        except Exception as e:
+            logger.error(f"删除用户文件失败: {e}")
+            return False
+
 
 file_storage = FileStorageManager()
 SESSION_MODEL = os.getenv("SESSION_MODEL", "redis")
@@ -152,12 +163,13 @@ def get_session_key(session_id: str) -> str:
     return f"{SESSION_PREFIX}{session_id}"
 
 
-def get_user_key(username: str) -> str:
-    return f"{USER_PREFIX}{username}"
+def get_user_key(user_name: str) -> str:
+    return f"{USER_PREFIX}{user_name}"
 
 
 class RegisterRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=20)
+    user_name: str = Field(..., min_length=3, max_length=20)
+    nick_name: str = Field(..., min_length=1, max_length=20)
     email: str = Field(..., pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
     password: str = Field(..., min_length=6)
     confirm_password: str = Field(..., min_length=6)
@@ -170,17 +182,26 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str = Field(..., min_length=3, max_length=20)
+    user_name: str = Field(..., min_length=3, max_length=20)
+    password: str = Field(..., min_length=6)
+
+
+class UpdateNicknameRequest(BaseModel):
+    user_name: str = Field(..., min_length=3, max_length=20)
+    new_nick_name: str = Field(..., min_length=1, max_length=20)
     password: str = Field(..., min_length=6)
 
 
 class SessionData(BaseModel):
-    username: str
+    user_name: str
+    nick_name: str
     expires: str  # 存储为ISO格式字符串
 
     @classmethod
-    def create(cls, username: str, expires: datetime):
-        return cls(username=username, expires=expires.isoformat())
+    def create(cls, user_name: str, nick_name: str, expires: datetime):
+        return cls(
+            user_name=user_name, nick_name=nick_name, expires=expires.isoformat()
+        )
 
 
 class ApiResponse(BaseModel):
@@ -211,8 +232,26 @@ async def get_current_user(request: Request) -> Optional[SessionData]:
             return None
     logger.info(f"获取会话数据成功: {session_data}")
 
+    # 获取用户数据以获取昵称
+    user_name = session_data["user_name"]
+    if SESSION_MODEL == "redis":
+        user_key = get_user_key(user_name)
+        try:
+            user_data = redis_client.hgetall(user_key)
+        except redis.RedisError as e:
+            logger.error(f"获取用户数据失败: {e}")
+            return None
+    else:
+        user_data = file_storage.get_user(user_name)
+
+    if not user_data:
+        return None
+
+    # 确保向后兼容：如果用户数据中没有昵称，则使用用户名作为昵称
+    nick_name = user_data.get("nick_name", user_name)
+
     return SessionData(
-        username=session_data["username"], expires=session_data["expires"]
+        user_name=user_name, nick_name=nick_name, expires=session_data["expires"]
     )
 
 
@@ -246,14 +285,15 @@ def get_password_hash(password: str):
 async def register(register_data: RegisterRequest):
     """用户注册接口"""
     user_data = {
-        "username": register_data.username,
+        "user_name": register_data.user_name,
+        "nick_name": register_data.nick_name,
         "email": register_data.email,
         "hashed_password": get_password_hash(register_data.password),
         "disabled": "False",
     }
 
     if SESSION_MODEL == "redis":
-        user_key = get_user_key(register_data.username)
+        user_key = get_user_key(register_data.user_name)
         try:
             if redis_client.exists(user_key):
                 return ApiResponse(
@@ -266,27 +306,32 @@ async def register(register_data: RegisterRequest):
                 event="register", success=False, error="系统错误，请稍后重试"
             ).dict()
     else:
-        if file_storage.get_user(register_data.username):
+        if file_storage.get_user(register_data.user_name):
             return ApiResponse(
                 event="register", success=False, error="用户名已存在"
             ).dict()
-        if not file_storage.save_user(register_data.username, user_data):
+        if not file_storage.save_user(register_data.user_name, user_data):
             return ApiResponse(
                 event="register", success=False, error="系统错误，请稍后重试"
             ).dict()
 
     return ApiResponse(
-        event="register", success=True, data={"username": register_data.username}
+        event="register",
+        success=True,
+        data={
+            "user_name": register_data.user_name,
+            "nick_name": register_data.nick_name,
+        },
     ).dict()
 
 
 @router.post("/login", response_model=ApiResponse)
 async def login(request: Request, login_data: LoginRequest):
     """用户登录接口"""
-    logger.info(f"login info {login_data.username}:{login_data.password}")
+    logger.info(f"login info {login_data.user_name}:{login_data.password}")
 
     if SESSION_MODEL == "redis":
-        user_key = get_user_key(login_data.username)
+        user_key = get_user_key(login_data.user_name)
         try:
             user_data = redis_client.hgetall(user_key)
         except redis.RedisError as e:
@@ -295,7 +340,7 @@ async def login(request: Request, login_data: LoginRequest):
                 event="login", success=False, error="系统错误，请稍后重试"
             ).dict()
     else:
-        user_data = file_storage.get_user(login_data.username)
+        user_data = file_storage.get_user(login_data.user_name)
 
     if not user_data or not verify_password(
         login_data.password, user_data["hashed_password"]
@@ -306,7 +351,7 @@ async def login(request: Request, login_data: LoginRequest):
 
     session_id = str(uuid.uuid4())
     expires = datetime.now() + timedelta(minutes=SESSION_EXPIRE_MINUTES)
-    session_data = {"username": login_data.username, "expires": expires.isoformat()}
+    session_data = {"user_name": login_data.user_name, "expires": expires.isoformat()}
 
     if SESSION_MODEL == "redis":
         session_key = get_session_key(session_id)
@@ -373,6 +418,8 @@ async def check_session(user: Optional[SessionData] = Depends(get_current_user))
     """检查会话状态"""
     if user:
         return ApiResponse(
-            event="check_session", success=True, data={"username": user.username}
+            event="check_session",
+            success=True,
+            data={"user_name": user.user_name, "nick_name": user.nick_name},
         ).dict()
     return ApiResponse(event="check_session", success=False, error="未登录").dict()

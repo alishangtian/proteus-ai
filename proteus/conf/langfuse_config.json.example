@@ -1,0 +1,48 @@
+{
+  "global": {
+    "capture_input": true,
+    "capture_output": true
+  },
+  "functions": {
+    "chat_agent_run": {
+      "name": "chat-agent-execution",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "process_agent": {
+      "name": "${context.query}",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "load_tools_with_tracking": {
+      "name": "tool-loading",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "execute_tools": {
+      "name": "tool-execution",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "call_llm_api_with_tools_stream": {
+      "name": "llm-api-call",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "_execute_llm_generation": {
+      "name": "llm-generation",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "_save_conversation_to_redis": {
+      "name": "conversation-save",
+      "capture_input": true,
+      "capture_output": true
+    },
+    "_load_conversation_history": {
+      "name": "conversation-load",
+      "capture_input": true,
+      "capture_output": true
+    }
+  }
+}

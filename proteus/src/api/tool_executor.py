@@ -6,7 +6,8 @@ import uuid
 import json
 import importlib
 from typing import Dict, Any, Optional, List
-from ..nodes.node_config import NodeConfigManager
+from src.nodes.node_config import NodeConfigManager
+from src.api.stream_manager import StreamManager
 from ..api.events import (
     create_action_start_event,
     create_action_complete_event,
@@ -21,7 +22,10 @@ class ToolExecutor:
     """工具执行器 - 参考 react_agent 的工具执行逻辑"""
 
     def __init__(
-        self, stream_manager=None, max_retries: int = 3, retry_delay: float = 1.0
+        self,
+        stream_manager: StreamManager = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ):
         """初始化工具执行器
 
@@ -133,13 +137,13 @@ class ToolExecutor:
                 tool_instance = tool_class()
 
                 # 执行工具
-                if hasattr(tool_instance, "execute") and callable(
-                    tool_instance.execute
+                if hasattr(tool_instance, "agent_execute") and callable(
+                    tool_instance.agent_execute
                 ):
-                    result = await tool_instance.execute(tool_args)
+                    result = await tool_instance.agent_execute(tool_args)
                     # 提取结果
                     if isinstance(result, dict):
-                        tool_result = str(result.get("data", result))
+                        tool_result = str(result.get("result", result))
                     else:
                         tool_result = str(result)
 

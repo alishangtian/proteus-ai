@@ -11,7 +11,7 @@ from .base import BaseNode
 
 class EmailSenderNode(BaseNode):
     """邮件发送节点(默认使用QQ邮箱SMTP服务)
-    
+
     配置说明:
     1. 在环境变量中设置:
        - EMAIL_USER: QQ邮箱完整地址(如123456@qq.com)
@@ -27,7 +27,7 @@ class EmailSenderNode(BaseNode):
        export EMAIL_PASSWORD="your_smtp_auth_code"
     2. 在代码中调用节点:
        from nodes.email_sender import EmailSenderNode
-       
+
        node = EmailSenderNode()
        result = await node.execute({
            "to": "recipient@example.com",
@@ -36,7 +36,7 @@ class EmailSenderNode(BaseNode):
            "is_html": False,
            "from_name": "系统通知"  # 可选
        })
-       
+
     注意:
     - 授权码(如ruicxmzfajymbfbh)需要从QQ邮箱设置中获取
     - 授权码只需在环境变量中设置一次即可重复使用
@@ -66,48 +66,46 @@ class EmailSenderNode(BaseNode):
         """
         host = str(params.get("host", "smtp.qq.com"))
         port = int(params.get("port", 587))
-        username = os.getenv("EMAIL_USER")
+        user_name = os.getenv("EMAIL_USER")
         password = os.getenv("EMAIL_PASSWORD")
         to_emails = [email.strip() for email in str(params["to"]).split(",")]
         subject = str(params["subject"])
         content = str(params["content"])
         is_html = bool(params.get("is_html", False))
-        from_name = str(params.get("from_name", username))
+        from_name = str(params.get("from_name", user_name))
 
-        if not username or not password:
+        if not user_name or not password:
             return {
                 "success": False,
                 "message_id": None,
-                "error": "未配置邮箱用户名或密码(请设置EMAIL_USER和EMAIL_PASSWORD环境变量)"
+                "error": "未配置邮箱用户名或密码(请设置EMAIL_USER和EMAIL_PASSWORD环境变量)",
             }
 
         try:
             # 创建邮件消息
             message = MIMEText(content, "html" if is_html else "plain", "utf-8")
-            message["From"] = Header(f"{from_name} <{username}>", "utf-8")
+            message["From"] = Header(f"{from_name} <{user_name}>", "utf-8")
             message["To"] = Header(", ".join(to_emails), "utf-8")
             message["Subject"] = Header(subject, "utf-8")
 
             # 异步发送邮件
-            async with aiosmtplib.SMTP(hostname=host, port=port, use_tls=port==465) as smtp:
+            async with aiosmtplib.SMTP(
+                hostname=host, port=port, use_tls=port == 465
+            ) as smtp:
                 if port == 587:
                     await smtp.connect()
                     await smtp.starttls()
-                await smtp.login(username, password)
+                await smtp.login(user_name, password)
                 response = await smtp.send_message(message)
 
                 return {
                     "success": True,
                     "message_id": message["Message-ID"],
-                    "error": None
+                    "error": None,
                 }
 
         except Exception as e:
-            return {
-                "success": False,
-                "message_id": None,
-                "error": str(e)
-            }
+            return {"success": False, "message_id": None, "error": str(e)}
 
     async def agent_execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """执行节点并返回统一格式结果

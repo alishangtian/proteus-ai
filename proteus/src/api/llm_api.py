@@ -5,14 +5,132 @@ import json
 import asyncio
 import aiohttp
 import base64
+import os
+import threading
+import time
 from pathlib import Path
 from typing import List, Dict, Union, AsyncGenerator, Tuple
+from datetime import timedelta
 
 from .config import API_CONFIG, retry_on_error
 from .model_manager import ModelManager
 from ..utils.langfuse_wrapper import langfuse_wrapper
 
-# 配置日志记录
+
+class RequestLogManager:
+    """基于request_id的日志管理器，为每个request_id创建独立的日志文件"""
+
+    _instance = None
+    _lock = threading.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if hasattr(self, "_initialized"):
+            return
+        self._initialized = True
+        self.loggers = {}
+        self.log_dir = Path("logs/llm_requests")
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.cleanup_interval = 3600  # 1小时清理一次
+        self.max_log_age = 24 * 3600  # 日志文件保留24小时
+        self.last_cleanup = time.time()
+
+        # 创建默认logger（用于没有request_id的情况）
+        self.default_logger = logging.getLogger(__name__)
+
+    def get_logger(self, request_id: str = None) -> logging.Logger:
+        """获取指定request_id的logger"""
+        if not request_id:
+            return self.default_logger
+
+        # 定期清理过期日志文件
+        self._cleanup_old_logs()
+
+        if request_id not in self.loggers:
+            with self._lock:
+                if request_id not in self.loggers:
+                    self._create_logger(request_id)
+
+        return self.loggers[request_id]
+
+    def _create_logger(self, request_id: str):
+        """为指定request_id创建logger"""
+        logger_name = f"llm_api.{request_id}"
+        logger = logging.getLogger(logger_name)
+
+        # 避免重复添加handler
+        if logger.handlers:
+            self.loggers[request_id] = logger
+            return
+
+        logger.setLevel(logging.INFO)
+
+        # 创建文件handler
+        log_file = self.log_dir / f"{request_id}.log"
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+
+        # 设置日志格式
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler.setFormatter(formatter)
+
+        logger.addHandler(file_handler)
+
+        # 防止日志向上传播到根logger
+        logger.propagate = False
+
+        self.loggers[request_id] = logger
+
+    def _cleanup_old_logs(self):
+        """清理过期的日志文件和logger"""
+        current_time = time.time()
+
+        # 检查是否需要清理
+        if current_time - self.last_cleanup < self.cleanup_interval:
+            return
+
+        self.last_cleanup = current_time
+
+        # 清理过期的日志文件
+        for log_file in self.log_dir.glob("*.log"):
+            if current_time - log_file.stat().st_mtime > self.max_log_age:
+                try:
+                    log_file.unlink()
+                    # 同时清理对应的logger
+                    request_id = log_file.stem
+                    if request_id in self.loggers:
+                        logger = self.loggers[request_id]
+                        # 关闭所有handlers
+                        for handler in logger.handlers[:]:
+                            handler.close()
+                            logger.removeHandler(handler)
+                        del self.loggers[request_id]
+                except Exception as e:
+                    self.default_logger.warning(
+                        f"清理日志文件失败: {log_file}, 错误: {e}"
+                    )
+
+    def close_logger(self, request_id: str):
+        """手动关闭指定request_id的logger"""
+        if request_id in self.loggers:
+            logger = self.loggers[request_id]
+            for handler in logger.handlers[:]:
+                handler.close()
+                logger.removeHandler(handler)
+            del self.loggers[request_id]
+
+
+# 创建全局日志管理器实例
+log_manager = RequestLogManager()
+
+# 配置日志记录 - 保持向后兼容
 logger = logging.getLogger(__name__)
 
 
@@ -56,11 +174,7 @@ def encode_image_to_base64(image_path: Union[str, Path]) -> str:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-@retry_on_error(
-    max_retries=API_CONFIG["llm_retry_count"],
-    sleep=API_CONFIG["llm_retry_delay"],
-    logger=logger,
-)
+@langfuse_wrapper.dynamic_observe()
 async def call_llm_api(
     messages: List[Dict[str, str]],
     request_id: str = None,
@@ -80,12 +194,15 @@ async def call_llm_api(
     Returns:
         返回完整响应字符串
     """
-    logger.info(f"[{request_id}] 开始调用llm API")
+    # 获取专用的logger
+    current_logger = log_manager.get_logger(request_id)
+
+    current_logger.info(f"开始调用llm API")
     if model_name is None:
         model_name = "deepseek-chat"
     messages_length = calculate_messages_length(messages)
-    logger.info(
-        f"[{request_id}] 请求参数: model={model_name}, "
+    current_logger.info(
+        f"请求参数: model={model_name}, "
         f"temperature={temperature}, "
         f"messages_count={len(messages)}, "
         f"messages_length={messages_length}"
@@ -95,10 +212,9 @@ async def call_llm_api(
     try:
         model_config = ModelManager().get_model_config(model_name)
         base_url = model_config["base_url"]
-        model_type = model_config.get("type", "openai")
         model_name = model_config["model_name"]
     except Exception as e:
-        logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
+        current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
     # 优化连接配置，提高稳定性
     conn = aiohttp.TCPConnector(
@@ -148,14 +264,12 @@ async def call_llm_api(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(response.status)
-                    if request_id:
-                        logger.error(f"[{request_id}] API调用失败: {error_text}")
+                    current_logger.error(f"HTTP状态码: {response.status}")
+                    current_logger.error(f"API调用失败: {error_text}")
                     raise ValueError(f"API调用失败: {error_text}")
 
                 result = await response.json()
-                if request_id:
-                    logger.info(f"[{request_id}] API调用成功")
+                current_logger.info(f"API调用成功")
 
                 # 根据模型类型解析不同响应格式并提取usage信息（若存在）
                 usage: Dict = {}
@@ -167,22 +281,22 @@ async def call_llm_api(
 
         except asyncio.TimeoutError:
             error_msg = "API调用超时"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ValueError(error_msg)
         except aiohttp.ClientConnectionError as e:
             error_msg = f"连接错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ServerDisconnectedError as e:
             error_msg = f"服务器连接中断: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ClientError as e:
             error_msg = f"客户端错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except Exception as e:
-            logger.error(f"[{request_id}] API调用异常: {str(e)}")
+            current_logger.error(f"API调用异常: {str(e)}")
             # 对于网络相关的异常，转换为ConnectionError以便重试
             if any(
                 keyword in str(e).lower()
@@ -192,11 +306,7 @@ async def call_llm_api(
             raise
 
 
-@retry_on_error(
-    max_retries=API_CONFIG["llm_retry_count"],
-    sleep=API_CONFIG["llm_retry_delay"],
-    logger=logger,
-)
+@langfuse_wrapper.dynamic_observe()
 async def call_multimodal_llm_api(
     messages: List[Dict[str, Union[str, List[Dict[str, Union[str, Dict[str, str]]]]]]],
     request_id: str = None,
@@ -216,14 +326,17 @@ async def call_multimodal_llm_api(
     Returns:
         返回完整响应字符串
     """
-    logger.info(f"[{request_id}] 开始调用多模态llm API")
+    # 获取专用的logger
+    current_logger = log_manager.get_logger(request_id)
+
+    current_logger.info(f"开始调用多模态llm API")
     if model_name is None:
         model_name = "gemini-2.5-flash"
     messages_length = calculate_messages_length(
         messages
     )  # 仍然使用原有的长度计算，图片长度暂时忽略
-    logger.info(
-        f"[{request_id}] 请求参数: model={model_name}, "
+    current_logger.info(
+        f"请求参数: model={model_name}, "
         f"temperature={temperature}, "
         f"messages_count={len(messages)}, "
         f"messages_length={messages_length}"
@@ -235,7 +348,7 @@ async def call_multimodal_llm_api(
         base_url = model_config["base_url"]
         model_name = model_config["model_name"]
     except Exception as e:
-        logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
+        current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
     # 优化连接配置，提高稳定性
     conn = aiohttp.TCPConnector(
@@ -309,14 +422,12 @@ async def call_multimodal_llm_api(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(response.status)
-                    if request_id:
-                        logger.error(f"[{request_id}] API调用失败: {error_text}")
+                    current_logger.error(f"HTTP状态码: {response.status}")
+                    current_logger.error(f"API调用失败: {error_text}")
                     raise ValueError(f"API调用失败: {error_text}")
 
                 result = await response.json()
-                if request_id:
-                    logger.info(f"[{request_id}] API调用成功")
+                current_logger.info(f"API调用成功")
 
                 # 根据模型类型解析不同响应格式并提取usage信息（若存在）
                 usage: Dict = {}
@@ -328,22 +439,22 @@ async def call_multimodal_llm_api(
 
         except asyncio.TimeoutError:
             error_msg = "API调用超时"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ValueError(error_msg)
         except aiohttp.ClientConnectionError as e:
             error_msg = f"连接错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ServerDisconnectedError as e:
             error_msg = f"服务器连接中断: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ClientError as e:
             error_msg = f"客户端错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except Exception as e:
-            logger.error(f"[{request_id}] API调用异常: {str(e)}")
+            current_logger.error(f"API调用异常: {str(e)}")
             # 对于网络相关的异常，转换为ConnectionError以便重试
             if any(
                 keyword in str(e).lower()
@@ -353,6 +464,7 @@ async def call_multimodal_llm_api(
             raise
 
 
+@langfuse_wrapper.dynamic_observe()
 async def call_llm_api_stream(
     messages: List[Dict[str, str]],
     request_id: str = None,
@@ -379,13 +491,16 @@ async def call_llm_api_stream(
         - usage: token使用信息（当type为usage时）
         - error: 错误信息（当type为error时）
     """
-    logger.info(f"[{request_id}] 开始调用流式llm API (thinking模式: {enable_thinking})")
+    # 获取专用的logger
+    current_logger = log_manager.get_logger(request_id)
+
+    current_logger.info(f"开始调用流式llm API (thinking模式: {enable_thinking})")
     if model_name is None:
         model_name = "deepseek-chat"
 
     messages_length = calculate_messages_length(messages)
-    logger.info(
-        f"[{request_id}] 请求参数: model={model_name}, "
+    current_logger.info(
+        f"请求参数: model={model_name}, "
         f"temperature={temperature}, "
         f"messages_count={len(messages)}, "
         f"messages_length={messages_length}, "
@@ -396,10 +511,9 @@ async def call_llm_api_stream(
     try:
         model_config = ModelManager().get_model_config(model_name)
         base_url = model_config["base_url"]
-        model_type = model_config.get("type", "openai")
         model_name = model_config["model_name"]
     except Exception as e:
-        logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
+        current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
     # 优化连接配置，提高稳定性
@@ -450,11 +564,11 @@ async def call_llm_api_stream(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(f"[{request_id}] API调用失败: {error_text}")
+                    current_logger.error(f"API调用失败: {error_text}")
                     yield {"type": "error", "error": f"API调用失败: {error_text}"}
                     return
 
-                logger.info(f"[{request_id}] 流式API调用开始接收数据")
+                current_logger.info(f"流式API调用开始接收数据")
 
                 # 用于累积完整的usage信息
                 accumulated_usage = {}
@@ -468,6 +582,7 @@ async def call_llm_api_stream(
                     if line.startswith("data: "):
                         line = line[6:]  # 移除 "data: " 前缀
 
+                    current_logger.info(f"接收到数据:{line}")
                     try:
                         chunk = json.loads(line)
 
@@ -500,44 +615,39 @@ async def call_llm_api_stream(
 
                             # 检查是否完成
                             if choice.get("finish_reason") == "stop":
-                                logger.info(f"[{request_id}] 流式API调用完成")
+                                current_logger.info(f"流式API调用完成")
 
                     except json.JSONDecodeError as e:
-                        logger.warning(
-                            f"[{request_id}] 解析JSON失败: {line}, 错误: {str(e)}"
-                        )
+                        current_logger.warning(f"解析JSON失败: {line}, 错误: {str(e)}")
+                        # yield {"type": "content", "content": line}
                         continue
                     except Exception as e:
-                        logger.error(f"[{request_id}] 处理流式数据异常: {str(e)}")
+                        current_logger.error(f"处理流式数据异常: {str(e)}")
                         yield {"type": "error", "error": f"处理流式数据异常: {str(e)}"}
                         continue
 
         except asyncio.TimeoutError:
             error_msg = "流式API调用超时"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ClientConnectionError as e:
             error_msg = f"连接错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ServerDisconnectedError as e:
             error_msg = f"服务器连接中断: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ClientError as e:
             error_msg = f"客户端错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except Exception as e:
-            logger.error(f"[{request_id}] 流式API调用异常: {str(e)}")
+            current_logger.error(f"流式API调用异常: {str(e)}")
             yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
 
 
-@retry_on_error(
-    max_retries=API_CONFIG["llm_retry_count"],
-    sleep=API_CONFIG["llm_retry_delay"],
-    logger=logger,
-)
+@langfuse_wrapper.dynamic_observe()
 async def call_llm_api_with_tools(
     messages: List[Dict[str, str]],
     tools: List[Dict] = None,
@@ -560,13 +670,16 @@ async def call_llm_api_with_tools(
         - message_dict: 完整的消息对象，包含 content 和可能的 tool_calls
         - usage_dict: token 使用信息
     """
-    logger.info(f"[{request_id}] 开始调用支持工具的 LLM API（非流式）")
+    # 获取专用的logger
+    current_logger = log_manager.get_logger(request_id)
+
+    current_logger.info(f"开始调用支持工具的 LLM API（非流式）")
     if model_name is None:
         model_name = "deepseek-chat"
 
     messages_length = calculate_messages_length(messages)
-    logger.info(
-        f"[{request_id}] 请求参数: model={model_name}, "
+    current_logger.info(
+        f"请求参数: model={model_name}, "
         f"temperature={temperature}, "
         f"messages_count={len(messages)}, "
         f"messages_length={messages_length}, "
@@ -579,7 +692,7 @@ async def call_llm_api_with_tools(
         base_url = model_config["base_url"]
         model_name = model_config["model_name"]
     except Exception as e:
-        logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
+        current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
     # 优化连接配置，提高稳定性
@@ -631,14 +744,12 @@ async def call_llm_api_with_tools(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(response.status)
-                    if request_id:
-                        logger.error(f"[{request_id}] API调用失败: {error_text}")
+                    current_logger.error(f"HTTP状态码: {response.status}")
+                    current_logger.error(f"API调用失败: {error_text}")
                     raise ValueError(f"API调用失败: {error_text}")
 
                 result = await response.json()
-                if request_id:
-                    logger.info(f"[{request_id}] API调用成功")
+                current_logger.info(f"API调用成功")
 
                 # 提取usage信息
                 usage: Dict = {}
@@ -651,22 +762,22 @@ async def call_llm_api_with_tools(
 
         except asyncio.TimeoutError:
             error_msg = "API调用超时"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ValueError(error_msg)
         except aiohttp.ClientConnectionError as e:
             error_msg = f"连接错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ServerDisconnectedError as e:
             error_msg = f"服务器连接中断: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except aiohttp.ClientError as e:
             error_msg = f"客户端错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             raise ConnectionError(error_msg)
         except Exception as e:
-            logger.error(f"[{request_id}] API调用异常: {str(e)}")
+            current_logger.error(f"API调用异常: {str(e)}")
             if any(
                 keyword in str(e).lower()
                 for keyword in ["disconnected", "connection", "network", "timeout"]
@@ -703,13 +814,16 @@ async def call_llm_api_with_tools_stream(
         - usage: token使用信息（当type为usage时）
         - error: 错误信息（当type为error时）
     """
-    logger.info(f"[{request_id}] 开始调用支持工具的 LLM API（流式）")
+    # 获取专用的logger
+    current_logger = log_manager.get_logger(request_id)
+
+    current_logger.info(f"开始调用支持工具的 LLM API（流式）")
     if model_name is None:
         model_name = "deepseek-chat"
 
     messages_length = calculate_messages_length(messages)
-    logger.info(
-        f"[{request_id}] 请求参数: model={model_name}, "
+    current_logger.info(
+        f"请求参数: model={model_name}, "
         f"temperature={temperature}, "
         f"messages_count={len(messages)}, "
         f"messages_length={messages_length}, "
@@ -722,7 +836,7 @@ async def call_llm_api_with_tools_stream(
         base_url = model_config["base_url"]
         model_name = model_config["model_name"]
     except Exception as e:
-        logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
+        current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
     # 优化连接配置，提高稳定性
@@ -774,11 +888,11 @@ async def call_llm_api_with_tools_stream(
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    logger.error(f"[{request_id}] API调用失败: {error_text}")
+                    current_logger.error(f"API调用失败: {error_text}")
                     yield {"type": "error", "error": f"API调用失败: {error_text}"}
                     return
 
-                logger.info(f"[{request_id}] 流式API调用开始接收数据")
+                current_logger.info(f"流式API调用开始接收数据")
 
                 # 用于累积完整的usage信息和工具调用
                 accumulated_usage = {}
@@ -792,7 +906,7 @@ async def call_llm_api_with_tools_stream(
 
                     if line.startswith("data: "):
                         line = line[6:]  # 移除 "data: " 前缀
-
+                    current_logger.info(f"接收到数据:{line}")
                     try:
                         chunk = json.loads(line)
 
@@ -805,7 +919,7 @@ async def call_llm_api_with_tools_stream(
                         # 处理choices中的内容
                         if "choices" in chunk and len(chunk["choices"]) > 0:
                             choice = chunk["choices"][0]
-                            logger.info(f"[{request_id}] 响应内容: {choice}")
+                            current_logger.info(f"响应内容: {choice}")
                             delta = choice.get("delta", {})
 
                             # 处理thinking内容（如果启用）
@@ -875,8 +989,8 @@ async def call_llm_api_with_tools_stream(
 
                             # 检查是否完成
                             if choice.get("finish_reason") in ["stop", "tool_calls"]:
-                                logger.info(
-                                    f"[{request_id}] 流式API调用完成，finish_reason: {choice.get('finish_reason')}"
+                                current_logger.info(
+                                    f"流式API调用完成，finish_reason: {choice.get('finish_reason')}"
                                 )
 
                                 # 如果有工具调用，返回完整的工具调用信息
@@ -886,31 +1000,30 @@ async def call_llm_api_with_tools_stream(
                                         "tool_calls": accumulated_tool_calls,
                                     }
                     except json.JSONDecodeError as e:
-                        logger.warning(
-                            f"[{request_id}] 解析JSON失败: {line}, 错误: {str(e)}"
-                        )
+                        current_logger.warning(f"解析JSON失败: {line}, 错误: {str(e)}")
+                        # yield {"type": "content", "content": line}
                         continue
                     except Exception as e:
-                        logger.error(f"[{request_id}] 处理流式数据异常: {str(e)}")
+                        current_logger.error(f"处理流式数据异常: {str(e)}")
                         yield {"type": "error", "error": f"处理流式数据异常: {str(e)}"}
                         continue
 
         except asyncio.TimeoutError:
             error_msg = "流式API调用超时"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ClientConnectionError as e:
             error_msg = f"连接错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ServerDisconnectedError as e:
             error_msg = f"服务器连接中断: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except aiohttp.ClientError as e:
             error_msg = f"客户端错误: {str(e)}"
-            logger.error(f"[{request_id}] {error_msg}")
+            current_logger.error(error_msg)
             yield {"type": "error", "error": error_msg}
         except Exception as e:
-            logger.error(f"[{request_id}] 流式API调用异常: {str(e)}")
+            current_logger.error(f"流式API调用异常: {str(e)}")
             yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}

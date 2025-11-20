@@ -30,3 +30,6 @@ langfuse==3.2.1
 pydantic>=2.11.5
 python-docx==1.2.0
 bs4==0.0.2
+chromadb
+openpyxl
+xlrd

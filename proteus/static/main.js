@@ -3,6 +3,37 @@ import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFrom
 import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent, updatePlaybook as uiUpdatePlaybook } from './ui.js';
 import { registerSSEHandlers } from './sse-handlers.js';
 
+// 保存到知识库的函数
+async function saveToKnowledgeBase(question, answer) {
+    try {
+        const response = await fetch('/knowledge_base/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                content: `${answer}`
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (result.success) {
+            alert('内容已成功保存到知识库！');
+            console.log('保存到知识库成功:', result);
+        } else {
+            alert('保存到知识库失败: ' + (result.message || '未知错误'));
+            console.error('保存到知识库失败:', result);
+        }
+    } catch (error) {
+        alert('保存到知识库失败，请查看控制台了解详情。');
+        console.error('保存到知识库异常:', error);
+    }
+}
+
 // 辅助函数:渲染数学表达式
 function renderMathInElement(element) {
     if (typeof window.renderMathInElement !== 'undefined' && typeof katex !== 'undefined') {
@@ -809,6 +840,7 @@ async function replayChat(chatId, answerElement) {
                         uiScrollToBottom(conversationHistory);
                     }
                 },
+                saveToKnowledgeBase: saveToKnowledgeBase, // 传递保存到知识库函数
                 onComplete: () => {
                     console.log(`Chat ${chatId} 回放完成`);
                     resolve();
@@ -1693,7 +1725,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 conversation_round: parseInt(document.getElementById('conversation_count').value),
                 file_ids: uploadedFiles.filter(file => !file.sent).map(file => file.id), // 只发送未发送过的文件
                 tool_memory_enabled: document.getElementById('tool-memory-toggle').checked, // 工具洞察开关（会话级）
-                sop_memory_toggle: document.getElementById('sop-memory-toggle').checked
+                sop_memory_enabled: document.getElementById('sop-memory-toggle').checked
             };
 
             // 如果是智能助手模式，添加工具调用参数
@@ -1735,7 +1767,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // 启动延迟更新会话列表（8秒后执行，只调用一次）
             scheduleConversationListUpdate();
 
-            const eventSource = new EventSource(`stream/${result.chat_id}`);
+            const eventSource = new EventSource(`/stream/${result.chat_id}`);
 
             // 将 SSE 事件处理委托到 sse-handlers 模块
             try {
@@ -1760,6 +1792,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     conversationIdStorage: conversationIdStorage, // 传递 conversationId 存储对象
                     scheduleConversationListUpdate: scheduleConversationListUpdate, // 传递延迟更新会话列表函数
                     scrollToBottom: scrollToBottom, // 传递滚动到底部函数
+                    saveToKnowledgeBase: saveToKnowledgeBase, // 传递保存到知识库函数
                     onComplete: () => { resetUI(); },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });

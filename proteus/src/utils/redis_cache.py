@@ -174,6 +174,15 @@ class RedisCache:
             logger.error(f"获取哈希表失败: {e}")
             return {}
 
+    def hdel(self, name: str, *keys) -> int:
+        """删除哈希表中的一个或多个字段"""
+        try:
+            client = self._get_client()
+            return client.hdel(name, *keys)
+        except redis.RedisError as e:
+            logger.error(f"删除哈希表字段失败: {e}")
+            return 0
+
     def zadd(self, key: str, mapping: dict) -> bool:
         """向有序集合添加成员"""
         try:

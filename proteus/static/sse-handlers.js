@@ -210,7 +210,8 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         currentModel, // 从 ctx 中获取 currentModel
         playbookStorage, // 从 ctx 中获取 playbookStorage
         scheduleConversationListUpdate, // 从 ctx 中获取延迟更新会话列表函数
-        scrollToBottom // 从 ctx 中获取滚动到底部函数
+        scrollToBottom, // 从 ctx 中获取滚动到底部函数
+        saveToKnowledgeBase // 从 ctx 中获取保存到知识库函数
     } = ctx;
 
     // 标记 agent_complete 的流式渲染状态，避免 complete 事件过早重置 UI
@@ -1257,10 +1258,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
 
             // 添加操作按钮（仅在最终渲染时添加）
             const completeInfo = completeContainer.querySelector('.complete-info');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert-tips';
+            alertDiv.innerHTML = '本回答由 AI 生成，内容仅供参考';
+            completeInfo.appendChild(alertDiv);
             if (completeInfo && !completeInfo.querySelector('.complete-actions')) {
                 const actionsDiv = document.createElement('div');
                 actionsDiv.className = 'complete-actions';
-                
+
                 // 检查是否有usage信息
                 let usageButtonsHtml = '';
                 try {
@@ -1279,7 +1284,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 } catch (e) {
                     console.warn('解析usage数据失败:', e);
                 }
-                
+
                 actionsDiv.innerHTML = `
                         ${usageButtonsHtml}
                         <button class="action-btn copy-result-btn" title="复制">
@@ -1319,6 +1324,13 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
                             </svg>
                         </button>
+                        <button class="action-btn save-to-kb-btn" title="保存到知识库">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                <polyline points="7 3 7 8 15 8"></polyline>
+                            </svg>
+                        </button>
                     `;
                 completeInfo.appendChild(actionsDiv);
 
@@ -1328,6 +1340,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 const likeBtn = actionsDiv.querySelector('.like-btn');
                 const dislikeBtn = actionsDiv.querySelector('.dislike-btn');
                 const regenerateBtn = actionsDiv.querySelector('.regenerate-btn');
+                const saveToKbBtn = actionsDiv.querySelector('.save-to-kb-btn');
 
                 // 复制功能
                 if (copyBtn) {
@@ -1349,29 +1362,31 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             if (typeof html2canvas !== 'undefined') {
                                 const targetElement = actionCompleteDiv;
 
-                                // A4纸宽度：210mm = 794px (at 96 DPI)
-                                const A4_WIDTH = 794;
-                                const PADDING = 48; // 左右各24px内边距
-                                const CONTENT_WIDTH = A4_WIDTH - (PADDING * 2);
+                                // 使用更宽的画布尺寸，确保内容完整显示
+                                const CANVAS_WIDTH = 1000; // 增加宽度到1000px，提供更多空间
+                                const PADDING_LEFT = 20; // 左侧内边距20px
+                                const PADDING_RIGHT = 20; // 右侧内边距20px
+                                const PADDING_VERTICAL = 20; // 上下内边距20px
 
-                                // 截图时设置为A4纸宽度，让内容有足够空间展示
+                                // 截图时使用更宽的画布，让内容有足够空间展示
                                 const canvas = await html2canvas(targetElement, {
-                                    backgroundColor: '#f8f9fa', // 设置背景色
+                                    backgroundColor: '#ffffff', // 使用白色背景
                                     scale: 2, // 提高清晰度
                                     logging: false,
-                                    width: A4_WIDTH,
-                                    // 通过CSS设置A4宽度和内边距
+                                    width: CANVAS_WIDTH,
+                                    windowWidth: CANVAS_WIDTH,
+                                    // 通过CSS设置宽度和内边距
                                     onclone: (clonedDoc) => {
                                         const clonedElement = clonedDoc.querySelector('.action_complete');
                                         if (clonedElement) {
-                                            // 设置固定宽度为A4纸宽度
-                                            clonedElement.style.width = `${A4_WIDTH}px`;
-                                            clonedElement.style.maxWidth = `${A4_WIDTH}px`;
-                                            clonedElement.style.minWidth = `${A4_WIDTH}px`;
+                                            // 设置固定宽度
+                                            clonedElement.style.width = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.maxWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.minWidth = `${CANVAS_WIDTH}px`;
                                             clonedElement.style.boxSizing = 'border-box';
 
-                                            // 添加内边距和样式
-                                            clonedElement.style.padding = `32px ${PADDING}px`;
+                                            // 添加充足且对称的内边距
+                                            clonedElement.style.padding = `${PADDING_VERTICAL}px ${PADDING_RIGHT}px ${PADDING_VERTICAL}px ${PADDING_LEFT}px`;
                                             clonedElement.style.backgroundColor = '#ffffff';
                                             clonedElement.style.borderRadius = '0';
 
@@ -1381,15 +1396,24 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                             clonedElement.style.wordBreak = 'break-word';
 
                                             // 设置字体和行高，确保可读性
-                                            clonedElement.style.fontSize = '14px';
+                                            clonedElement.style.fontSize = '16px';
                                             clonedElement.style.lineHeight = '1.8';
-                                            clonedElement.style.color = '#333';
+                                            clonedElement.style.color = '#1a1a1a';
 
                                             // 处理内部所有元素，确保不超出宽度
                                             const allElements = clonedElement.querySelectorAll('*');
                                             allElements.forEach(el => {
                                                 el.style.maxWidth = '100%';
                                                 el.style.wordWrap = 'break-word';
+                                                el.style.boxSizing = 'border-box';
+                                            });
+
+                                            // 特别处理表格
+                                            const tables = clonedElement.querySelectorAll('table');
+                                            tables.forEach(table => {
+                                                table.style.width = '100%';
+                                                table.style.tableLayout = 'auto';
+                                                table.style.wordBreak = 'break-word';
                                             });
 
                                             // 特别处理代码块
@@ -1398,6 +1422,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                                 block.style.whiteSpace = 'pre-wrap';
                                                 block.style.wordBreak = 'break-word';
                                                 block.style.overflowWrap = 'break-word';
+                                                block.style.maxWidth = '100%';
+                                            });
+
+                                            // 处理图片
+                                            const images = clonedElement.querySelectorAll('img');
+                                            images.forEach(img => {
+                                                img.style.maxWidth = '100%';
+                                                img.style.height = 'auto';
                                             });
                                         }
                                     }
@@ -1418,6 +1450,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                             }
                         } catch (err) {
                             console.error('截图失败:', err);
+                            alert('截图失败，请查看控制台了解详情');
                         }
                     });
                 }
@@ -1441,7 +1474,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 // A4纸尺寸（单位：mm）
                                 const A4_WIDTH = 210;
                                 const A4_HEIGHT = 297;
-                                const MARGIN = 15; // 页边距
+                                const MARGIN = 12; // 减小页边距到12mm，增加内容区域
                                 const CONTENT_WIDTH = A4_WIDTH - (MARGIN * 2);
 
                                 // 创建 PDF 文档
@@ -1451,29 +1484,67 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                     format: 'a4'
                                 });
 
+                                // 使用更宽的画布宽度，确保内容完整
+                                const CANVAS_WIDTH = 1000; // 增加画布宽度到1000px
+                                const PADDING_LEFT = 20; // 左侧内边距20px
+                                const PADDING_RIGHT = 20; // 右侧内边距20px
+                                const PADDING_VERTICAL = 20; // 上下内边距20px
+
                                 // 将内容转换为 canvas
                                 const canvas = await html2canvas(targetElement, {
                                     backgroundColor: '#ffffff',
-                                    scale: 2,
+                                    scale: 2, // 提高分辨率
                                     logging: false,
-                                    width: 794, // A4宽度的像素值 (at 96 DPI)
+                                    width: CANVAS_WIDTH,
+                                    windowWidth: CANVAS_WIDTH,
                                     onclone: (clonedDoc) => {
                                         const clonedElement = clonedDoc.querySelector('.action_complete');
                                         if (clonedElement) {
-                                            clonedElement.style.width = '794px';
-                                            clonedElement.style.maxWidth = '794px';
-                                            clonedElement.style.padding = '32px 48px';
+                                            // 设置固定宽度
+                                            clonedElement.style.width = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.maxWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.minWidth = `${CANVAS_WIDTH}px`;
+                                            clonedElement.style.boxSizing = 'border-box';
+
+                                            // 添加充足且对称的内边距
+                                            clonedElement.style.padding = `${PADDING_VERTICAL}px ${PADDING_RIGHT}px ${PADDING_VERTICAL}px ${PADDING_LEFT}px`;
                                             clonedElement.style.backgroundColor = '#ffffff';
-                                            clonedElement.style.fontSize = '14px';
+                                            clonedElement.style.fontSize = '16px';
                                             clonedElement.style.lineHeight = '1.8';
-                                            clonedElement.style.color = '#333';
+                                            clonedElement.style.color = '#1a1a1a';
                                             clonedElement.style.wordWrap = 'break-word';
+                                            clonedElement.style.wordBreak = 'break-word';
+
+                                            // 处理所有元素
+                                            const allElements = clonedElement.querySelectorAll('*');
+                                            allElements.forEach(el => {
+                                                el.style.maxWidth = '100%';
+                                                el.style.wordWrap = 'break-word';
+                                                el.style.boxSizing = 'border-box';
+                                            });
+
+                                            // 处理表格
+                                            const tables = clonedElement.querySelectorAll('table');
+                                            tables.forEach(table => {
+                                                table.style.width = '100%';
+                                                table.style.tableLayout = 'auto';
+                                                table.style.wordBreak = 'break-word';
+                                            });
 
                                             // 处理代码块
                                             const codeBlocks = clonedElement.querySelectorAll('pre, code');
                                             codeBlocks.forEach(block => {
                                                 block.style.whiteSpace = 'pre-wrap';
                                                 block.style.wordBreak = 'break-word';
+                                                block.style.overflowWrap = 'break-word';
+                                                block.style.maxWidth = '100%';
+                                            });
+
+                                            // 处理图片
+                                            const images = clonedElement.querySelectorAll('img');
+                                            images.forEach(img => {
+                                                img.style.maxWidth = '100%';
+                                                img.style.height = 'auto';
                                             });
                                         }
                                     }
@@ -1484,22 +1555,23 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
                                 // 将 canvas 转换为图片数据
-                                const imgData = canvas.toDataURL('image/png');
+                                const imgData = canvas.toDataURL('image/png', 1.0); // 使用最高质量
 
                                 // 如果内容高度超过一页，需要分页
                                 let heightLeft = imgHeight;
                                 let position = MARGIN;
+                                const pageHeight = A4_HEIGHT - (MARGIN * 2);
 
                                 // 添加第一页
                                 pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
-                                heightLeft -= (A4_HEIGHT - MARGIN * 2);
+                                heightLeft -= pageHeight;
 
                                 // 如果需要多页
                                 while (heightLeft > 0) {
                                     position = heightLeft - imgHeight + MARGIN;
                                     pdf.addPage();
                                     pdf.addImage(imgData, 'PNG', MARGIN, position, imgWidth, imgHeight);
-                                    heightLeft -= (A4_HEIGHT - MARGIN * 2);
+                                    heightLeft -= pageHeight;
                                 }
 
                                 // 保存 PDF
@@ -1525,7 +1597,24 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         if (dislikeBtn.classList.contains('active')) {
                             dislikeBtn.classList.remove('active');
                         }
-                        // TODO: 发送反馈到后端
+                        // 假设后端接口为 /api/feedback，发送 POST 请求
+                        fetch('/api/feedback', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                type: 'like',
+                                content: accumulatedContent, // 可以发送完整内容或仅发送ID
+                                timestamp: Date.now(),
+                            }),
+                        }).then(response => {
+                            if (!response.ok) {
+                                console.error('点赞反馈发送失败');
+                            }
+                        }).catch(error => {
+                            console.error('点赞反馈发送异常:', error);
+                        });
                         console.log('用户点赞');
                     });
                 }
@@ -1537,7 +1626,24 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         if (likeBtn.classList.contains('active')) {
                             likeBtn.classList.remove('active');
                         }
-                        // TODO: 发送反馈到后端
+                        // 假设后端接口为 /api/feedback，发送 POST 请求
+                        fetch('/api/feedback', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                type: 'dislike',
+                                content: accumulatedContent, // 可以发送完整内容或仅发送ID
+                                timestamp: Date.now(),
+                            }),
+                        }).then(response => {
+                            if (!response.ok) {
+                                console.error('点踩反馈发送失败');
+                            }
+                        }).catch(error => {
+                            console.error('点踩反馈发送异常:', error);
+                        });
                         console.log('用户点踩');
                     });
                 }
@@ -1655,6 +1761,40 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         }
                     });
                 }
+
+                // 保存到知识库功能
+                if (saveToKbBtn) {
+                    saveToKbBtn.addEventListener('click', async () => {
+                        try {
+                            if (typeof saveToKnowledgeBase === 'function') {
+                                // 获取当前问题
+                                const historyItems = document.querySelectorAll('.history-item');
+                                let questionText = '';
+                                if (historyItems.length > 0) {
+                                    const lastHistoryItem = historyItems[historyItems.length - 1];
+                                    const questionTextElement = lastHistoryItem.querySelector('.question-text');
+                                    if (questionTextElement) {
+                                        questionText = questionTextElement.textContent.trim();
+                                    }
+                                }
+
+                                // 获取当前答案
+                                const answerContent = accumulatedContent;
+
+                                // 调用 ctx 中传入的保存到知识库函数
+                                await saveToKnowledgeBase(questionText, answerContent);
+
+                                saveToKbBtn.classList.add('success');
+                                setTimeout(() => saveToKbBtn.classList.remove('success'), 2000);
+                            } else {
+                                alert('保存到知识库功能未初始化');
+                            }
+                        } catch (err) {
+                            console.error('保存到知识库失败:', err);
+                            alert('保存到知识库失败，请查看控制台了解详情');
+                        }
+                    });
+                }
             }
 
             // 处理所有运行中的思考指示器
@@ -1699,7 +1839,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         try {
             const data = JSON.parse(event.data);
             console.log('收到usage事件:', data);
-            
+
             // 将usage信息存储到全局变量中，供complete事件使用
             if (answerElement) {
                 // 在answerElement上存储usage数据，供complete事件使用

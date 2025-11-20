@@ -10,14 +10,14 @@ USE agent;
 -- 创建一个示例表
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
+    user_name VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 插入一些示例数据
-INSERT IGNORE INTO users (username, email) VALUES 
+INSERT IGNORE INTO users (user_name, email) VALUES 
 ('admin', 'admin@example.com'),
 ('agent', 'agent@example.com');
 

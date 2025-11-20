@@ -121,7 +121,7 @@ class StreamManager:
         # 按照原始顺序发送消息(redis lrange返回顺序与原始插入顺序相反)
         for msg in reversed(messages):
             await self.send_message(chat_id, json.loads(msg), True)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题
