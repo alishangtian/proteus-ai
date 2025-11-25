@@ -693,6 +693,21 @@ async function loadConversationList() {
 
                 convMeta.textContent = `${timeStr} · ${conv.chat_count || 0} 条消息`;
 
+                // 创建按钮容器
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'conversation-buttons';
+
+                // 编辑按钮
+                const editBtn = document.createElement('button');
+                editBtn.className = 'edit-conversation-btn';
+                editBtn.innerHTML = '✏️';
+                editBtn.title = '编辑标题';
+                editBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    enableTitleEditing(convTitle, conv.conversation_id);
+                };
+
+                // 删除按钮
                 const deleteBtn = document.createElement('button');
                 deleteBtn.className = 'delete-conversation-btn';
                 deleteBtn.innerHTML = '×';
@@ -702,11 +717,31 @@ async function loadConversationList() {
                     showDeleteConfirmModal(conv.conversation_id, conv.title || '未命名会话');
                 };
 
+                buttonContainer.appendChild(editBtn);
+                buttonContainer.appendChild(deleteBtn);
+
                 convItem.appendChild(convTitle);
                 convItem.appendChild(convMeta);
-                convItem.appendChild(deleteBtn);
+                convItem.appendChild(buttonContainer);
 
-                convItem.onclick = () => loadConversation(conv.conversation_id);
+                // 添加点击事件，处理选中状态
+                convItem.onclick = (e) => {
+                    // 如果点击的是编辑或删除按钮，不处理选中状态
+                    if (e.target.closest('.conversation-buttons')) {
+                        return;
+                    }
+                    
+                    // 移除所有其他会话项的选中状态
+                    document.querySelectorAll('.conversation-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    
+                    // 为当前点击的会话项添加选中状态
+                    convItem.classList.add('active');
+                    
+                    // 加载会话内容
+                    loadConversation(conv.conversation_id);
+                };
 
                 conversationList.appendChild(convItem);
             });
@@ -717,6 +752,141 @@ async function loadConversationList() {
         console.error('加载会话列表失败:', error);
         conversationList.innerHTML = '<div class="conversation-list-error">加载失败</div>';
     }
+}
+
+// 启用标题编辑功能
+function enableTitleEditing(titleElement, conversationId) {
+    const originalTitle = titleElement.textContent;
+    
+    // 创建输入框
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'conversation-title-edit';
+    input.value = originalTitle;
+    input.style.width = '100%';
+    input.style.padding = '4px 8px';
+    input.style.border = '1px solid #007bff';
+    input.style.borderRadius = '4px';
+    input.style.fontSize = 'inherit';
+    input.style.fontFamily = 'inherit';
+    input.style.background = 'white';
+    input.style.color = 'inherit';
+    
+    // 替换标题为输入框
+    titleElement.style.display = 'none';
+    titleElement.parentNode.insertBefore(input, titleElement);
+    
+    // 自动聚焦并选中所有文本
+    input.focus();
+    input.select();
+    
+    // 处理回车提交
+    input.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            await submitTitleEdit(input, titleElement, conversationId);
+        } else if (e.key === 'Escape') {
+            // 取消编辑
+            cancelTitleEdit(input, titleElement);
+        }
+    });
+    
+    // 处理失去焦点
+    input.addEventListener('blur', async () => {
+        await submitTitleEdit(input, titleElement, conversationId);
+    });
+}
+
+// 提交标题编辑
+async function submitTitleEdit(input, titleElement, conversationId) {
+    const newTitle = input.value.trim();
+    
+    if (!newTitle) {
+        // 如果标题为空，恢复原标题
+        cancelTitleEdit(input, titleElement);
+        return;
+    }
+    
+    if (newTitle === titleElement.textContent) {
+        // 标题没有变化，直接恢复
+        cancelTitleEdit(input, titleElement);
+        return;
+    }
+    
+    try {
+        // 发送更新请求
+        const response = await fetch(`/conversations/${conversationId}/title`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title: newTitle })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 更新成功
+            titleElement.textContent = newTitle;
+            titleElement.title = newTitle;
+            input.remove();
+            titleElement.style.display = '';
+            
+            // 显示成功提示
+            showToast('标题已更新', 'success');
+        } else {
+            // 更新失败，恢复原标题
+            showToast('更新失败: ' + (result.message || '未知错误'), 'error');
+            cancelTitleEdit(input, titleElement);
+        }
+    } catch (error) {
+        console.error('更新会话标题失败:', error);
+        showToast('更新失败，请重试', 'error');
+        cancelTitleEdit(input, titleElement);
+    }
+}
+
+// 取消标题编辑
+function cancelTitleEdit(input, titleElement) {
+    input.remove();
+    titleElement.style.display = '';
+}
+
+// 显示提示消息
+function showToast(message, type = 'info') {
+    // 创建toast元素
+    const toast = document.createElement('div');
+    toast.className = `toast-message toast-${type}`;
+    toast.textContent = message;
+    toast.style.position = 'fixed';
+    toast.style.top = '20px';
+    toast.style.right = '20px';
+    toast.style.padding = '12px 20px';
+    toast.style.borderRadius = '4px';
+    toast.style.color = 'white';
+    toast.style.zIndex = '10000';
+    toast.style.fontSize = '14px';
+    toast.style.maxWidth = '300px';
+    toast.style.wordBreak = 'break-word';
+    
+    // 设置背景色
+    if (type === 'success') {
+        toast.style.background = '#28a745';
+    } else if (type === 'error') {
+        toast.style.background = '#dc3545';
+    } else {
+        toast.style.background = '#17a2b8';
+    }
+    
+    // 添加到页面
+    document.body.appendChild(toast);
+    
+    // 3秒后自动移除
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 3000);
 }
 
 async function loadConversation(conversationId) {

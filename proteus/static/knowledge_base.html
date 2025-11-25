@@ -451,6 +451,18 @@
     <div class="knowledge-base-container">
         <!-- 左侧导航栏 -->
         <div class="sidebar">
+            <!-- 搜索框 -->
+            <div class="search-container" style="padding: 16px; border-bottom: 1px solid #E0E0E0;">
+                <div style="position: relative;">
+                    <input type="text" id="knowledge-search" placeholder="搜索知识库..."
+                           style="width: 100%; padding: 8px 12px 8px 36px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s ease;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg>
+                </div>
+            </div>
             <div class="directory-tree">
             </div>
         </div>
@@ -690,8 +702,11 @@
                 // 如果超过10条，添加"查看全部"按钮
                 if (hasMore) {
                     html += `
-                        <div class="view-all-container" style="padding: 8px 16px;">
-                            <button class="view-all-btn" style="width: 100%; padding: 8px 12px; background: #f0f0f0; border: 1px solid #d9d9d9; border-radius: 6px; cursor: pointer; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; color: #333; transition: all 0.2s ease;">
+                        <div class="view-all-container" style="padding: 12px 16px; border-top: 1px solid #f0f0f0;">
+                            <button class="view-all-btn" style="width: 100%; padding: 10px 16px; background: #1677FF; border: 1px solid #1677FF; border-radius: 8px; cursor: pointer; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; font-weight: 500; color: #FFFFFF; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 15l-6-6-6 6"/>
+                                </svg>
                                 查看全部 (${this.knowledgeItems.length})
                             </button>
                         </div>
@@ -720,7 +735,17 @@
 
             async selectKnowledgeItem(itemId) {
                 this.currentItemId = itemId;
-                this.renderKnowledgeList(); // 更新激活状态
+                
+                // 如果当前显示的是搜索结果，只更新选中状态，不重新渲染列表
+                const searchInput = document.getElementById('knowledge-search');
+                const isSearching = searchInput && searchInput.value.trim().length > 0;
+                
+                if (!isSearching) {
+                    this.renderKnowledgeList(); // 更新激活状态
+                } else {
+                    // 在搜索结果中更新选中状态
+                    this.updateSearchResultSelection(itemId);
+                }
 
                 // 如果当前正在显示全部知识列表，则隐藏它
                 if (this.showingAllItems) {
@@ -741,11 +766,35 @@
                     this.showError('加载知识库内容失败: ' + error.message);
                 }
             }
+            
+            updateSearchResultSelection(selectedItemId) {
+                const treeContainer = document.querySelector('.directory-tree');
+                const treeItems = treeContainer.querySelectorAll('.tree-item');
+                
+                // 移除所有选中状态
+                treeItems.forEach(item => {
+                    item.classList.remove('active');
+                });
+                
+                // 添加当前选中状态
+                const selectedItem = treeContainer.querySelector(`.tree-item[data-id="${selectedItemId}"]`);
+                if (selectedItem) {
+                    selectedItem.classList.add('active');
+                }
+            }
 
             // 显示全部知识列表
             showAllKnowledgeItems() {
                 this.showingAllItems = true;
+                this.currentItemId = null; // 清除当前选中项
                 const contentContainer = document.querySelector('.tutorial-content');
+
+                // 清除左侧列表的选中状态
+                const treeContainer = document.querySelector('.directory-tree');
+                const treeItems = treeContainer.querySelectorAll('.tree-item');
+                treeItems.forEach(item => {
+                    item.classList.remove('active');
+                });
 
                 let html = `
                     <div class="all-knowledge-list">
@@ -1156,7 +1205,115 @@
             }
 
             setupEventListeners() {
-                // 搜索功能已移除，无需设置事件监听器
+                // 设置搜索框事件监听器
+                const searchInput = document.getElementById('knowledge-search');
+                if (searchInput) {
+                    let searchTimeout;
+                    searchInput.addEventListener('input', (e) => {
+                        clearTimeout(searchTimeout);
+                        const searchTerm = e.target.value.trim();
+                        
+                        if (searchTerm.length === 0) {
+                            // 清空搜索，显示原始列表
+                            this.renderKnowledgeList();
+                            return;
+                        }
+                        
+                        // 防抖处理，300ms后执行搜索
+                        searchTimeout = setTimeout(() => {
+                            this.searchKnowledgeItems(searchTerm);
+                        }, 300);
+                    });
+                    
+                    // 支持回车键搜索
+                    searchInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            const searchTerm = e.target.value.trim();
+                            if (searchTerm) {
+                                this.searchKnowledgeItems(searchTerm);
+                            }
+                        }
+                    });
+                }
+            }
+            
+            async searchKnowledgeItems(searchTerm) {
+                try {
+                    const response = await fetch('/knowledge_base/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            query: searchTerm
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.renderSearchResults(data.results, searchTerm);
+                    } else {
+                        this.showError('搜索失败: ' + (data.error || '未知错误'));
+                    }
+                } catch (error) {
+                    console.error('搜索知识库失败:', error);
+                    this.showError('搜索失败: ' + error.message);
+                }
+            }
+            
+            renderSearchResults(results, searchTerm) {
+                const treeContainer = document.querySelector('.directory-tree');
+                
+                if (results.length === 0) {
+                    treeContainer.innerHTML = `
+                        <div style="padding: 20px; text-align: center; color: #999;">
+                            未找到包含 "${this.escapeHtml(searchTerm)}" 的内容
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <div style="padding: 12px 16px; background: #f5f5f5; border-bottom: 1px solid #e0e0e0; font-size: 14px; color: #666;">
+                        搜索 "${this.escapeHtml(searchTerm)}" 的结果 (${results.length} 条)
+                    </div>
+                    <div class="search-results-container" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+                `;
+                
+                results.forEach(item => {
+                    const isActive = this.currentItemId === item.id ? 'active' : '';
+                    html += `
+                        <div class="tree-item ${isActive}" data-id="${item.id}">
+                            <div class="tree-item-text">${this.escapeHtml(item.title)}</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                ${this.highlightSearchTerm(item.content_preview, searchTerm)}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+                treeContainer.innerHTML = html;
+                
+                // 添加点击事件
+                treeContainer.querySelectorAll('.tree-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const itemId = item.getAttribute('data-id');
+                        this.selectKnowledgeItem(itemId);
+                    });
+                });
+            }
+            
+            highlightSearchTerm(text, searchTerm) {
+                if (!text || !searchTerm) return text || '';
+                
+                const regex = new RegExp(`(${this.escapeRegex(searchTerm)})`, 'gi');
+                return text.replace(regex, '<mark style="background: #FFFACD; padding: 1px 2px; border-radius: 2px;">$1</mark>');
+            }
+            
+            escapeRegex(string) {
+                return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             }
 
             filterKnowledgeList(searchTerm) {

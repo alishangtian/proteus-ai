@@ -253,6 +253,22 @@ async def execute_code_endpoint(request: CodeRequest):
         return CodeResponse(code=-2, stdout="", stderr=error_msg)
 
 
+@app.get("/health", summary="健康检查")
+async def health_check():
+    """健康检查端点"""
+    return {"status": "healthy", "timestamp": time.time()}
+
+
+@app.get("/", summary="根路径")
+async def root():
+    """根路径返回API信息"""
+    return {
+        "message": "Code Execution Sandbox API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 

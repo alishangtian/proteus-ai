@@ -1629,6 +1629,62 @@ async def get_conversation_detail(conversation_id: str, request: Request):
         raise HTTPException(status_code=500, detail=f"获取会话详情失败: {str(e)}")
 
 
+@app.put("/conversations/{conversation_id}/title")
+async def update_conversation_title(
+    conversation_id: str, request: Request, title: str = Body(..., embed=True)
+):
+    """更新会话标题
+
+    Args:
+        conversation_id: 会话ID
+        request: 请求对象
+        title: 新的标题
+
+    Returns:
+        dict: 更新结果
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        conversation_key = f"conversation:{conversation_id}:info"
+        conv_data = redis_conn.hgetall(conversation_key)
+
+        if not conv_data:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 将字节转换为字符串
+        conv_info = {
+            k.decode("utf-8") if isinstance(k, bytes) else k: (
+                v.decode("utf-8") if isinstance(v, bytes) else v
+            )
+            for k, v in conv_data.items()
+        }
+
+        # 验证用户权限
+        if conv_info.get("user_name") != user_name:
+            raise HTTPException(status_code=403, detail="无权修改此会话")
+
+        # 更新会话标题和更新时间
+        redis_conn.hset(conversation_key, "title", title)
+        redis_conn.hset(conversation_key, "updated_at", datetime.now().isoformat())
+
+        # 更新用户在有序集合中的时间戳，确保按更新时间排序
+        user_conversations_key = f"user:{user_name}:conversations"
+        timestamp = time.time()
+        redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
+
+        logger.info(f"用户 {user_name} 更新了会话标题: {conversation_id} -> {title}")
+        return {"success": True, "message": "会话标题已更新", "title": title}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新会话标题失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"更新会话标题失败: {str(e)}")
+
+
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str, request: Request):
     """删除指定会话
@@ -1697,11 +1753,7 @@ async def get_sandbox_file(file_path: str, request: Request):
         文件内容或错误响应
     """
     try:
-        # 基础目录：Docker 容器内的 /var/data/sandbox 对应本地的 ./docker/volumes/sandbox/data
-        base_dir = os.path.join(
-            os.path.dirname(__file__), "docker", "volumes", "sandbox", "data"
-        )
-
+        base_dir = os.getenv("SANDBOX_DATA_DIR")
         # 构建完整的文件路径
         full_path = os.path.join(base_dir, file_path)
 
@@ -2132,3 +2184,114 @@ async def delete_knowledge_base_item(request: Request, item_id: str):
             f"删除知识库条目失败 (item_id: {item_id}): {str(e)}", exc_info=True
         )
         raise HTTPException(status_code=500, detail=f"删除知识库条目失败: {str(e)}")
+
+
+class KnowledgeBaseSearch(BaseModel):
+    query: str = Field(..., description="搜索查询词")
+
+
+@app.post("/knowledge_base/search")
+async def search_knowledge_base(request: Request, search_request: KnowledgeBaseSearch):
+    """
+    搜索知识库内容。
+    支持在标题和内容中搜索关键词。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        redis_conn = get_redis_connection()
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+
+        # 获取用户的所有知识库条目
+        all_items_raw = redis_conn.hgetall(knowledge_base_map_key)
+        
+        if not all_items_raw:
+            return {"success": True, "results": []}
+
+        search_query = search_request.query.lower()
+        results = []
+
+        for item_id, item_raw in all_items_raw.items():
+            try:
+                item_data = json.loads(item_raw)
+                title = item_data.get("title", "").lower()
+                content = item_data.get("content", "").lower()
+                
+                # 检查标题或内容是否包含搜索词
+                if search_query in title or search_query in content:
+                    # 生成内容预览（截取包含关键词的部分）
+                    content_preview = _generate_content_preview(
+                        item_data.get("content", ""),
+                        search_request.query
+                    )
+                    
+                    results.append({
+                        "id": item_id,
+                        "title": item_data.get("title", ""),
+                        "content_preview": content_preview,
+                        "timestamp": item_data.get("timestamp", ""),
+                        "updated_at": item_data.get("updated_at", ""),
+                        "author": item_data.get("author", ""),
+                    })
+            except json.JSONDecodeError:
+                logger.warning(f"解析知识库条目失败 (item_id: {item_id}): {item_raw}")
+                continue
+
+        # 按更新时间倒序排序
+        results.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        
+        logger.info(f"用户 {user_name} 搜索知识库，查询词: '{search_request.query}'，找到 {len(results)} 条结果")
+        return {"success": True, "results": results}
+        
+    except Exception as e:
+        logger.error(f"搜索知识库失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"搜索知识库失败: {str(e)}")
+
+
+def _generate_content_preview(content: str, search_query: str, max_length: int = 100) -> str:
+    """
+    生成内容预览，突出显示搜索关键词。
+    
+    Args:
+        content: 原始内容
+        search_query: 搜索查询词
+        max_length: 预览最大长度
+    
+    Returns:
+        包含关键词的内容预览
+    """
+    if not content:
+        return ""
+    
+    content_lower = content.lower()
+    query_lower = search_query.lower()
+    
+    # 查找关键词位置
+    query_index = content_lower.find(query_lower)
+    
+    if query_index == -1:
+        # 如果没有找到关键词，返回内容开头
+        return content[:max_length] + ("..." if len(content) > max_length else "")
+    
+    # 计算预览的起始位置，确保关键词在中间位置
+    start_pos = max(0, query_index - max_length // 2)
+    end_pos = min(len(content), start_pos + max_length)
+    
+    # 调整起始位置，确保不会截断在单词中间
+    if start_pos > 0:
+        # 向前找到最近的空格或换行
+        space_before = content.rfind(' ', 0, start_pos)
+        if space_before != -1 and space_before > start_pos - 20:
+            start_pos = space_before + 1
+    
+    # 生成预览文本
+    preview = content[start_pos:end_pos]
+    
+    # 添加省略号
+    if start_pos > 0:
+        preview = "..." + preview
+    if end_pos < len(content):
+        preview = preview + "..."
+    
+    return preview

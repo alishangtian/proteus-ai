@@ -18,6 +18,7 @@ class EventType:
     USAGE = "usage"
     COMPLETE = "complete"
     ERROR = "error"
+    RETRY = "retry"
     ACTION_START = "action_start"
     ACTION_END = "action_end"
     ACTION_ERROR = "action_error"
@@ -105,6 +106,11 @@ async def create_complete_event() -> Dict:
 async def create_error_event(error_message: str) -> Dict:
     """创建错误事件"""
     return await create_event(EventType.ERROR, error_message)
+
+
+async def create_retry_event(retry_message: str) -> Dict:
+    """创建错误事件"""
+    return await create_event(EventType.RETRY, retry_message)
 
 
 async def create_action_start_event(

@@ -8,6 +8,7 @@ services:
       - ./volumes/agent/data:/app/data
       - ./volumes/agent/.env:/app/.env
       - ./volumes/agent/conf:/app/conf
+      - ./volumes/agent/data:/app/sandbox/data
     environment:
       - log_file_path=/app/logs/agent.log
       - TZ=Asia/Shanghai
@@ -69,7 +70,7 @@ services:
     volumes:
       - ./volumes/sandbox/.env:/app/.env
       - ./volumes/sandbox/logs:/var/logs/sandbox
-      - ./volumes/sandbox/data:/var/data/sandbox
+      - ./volumes/agent/data:/var/data/sandbox
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Shanghai

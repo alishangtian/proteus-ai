@@ -1,0 +1,32 @@
+# 核心Web框架依赖
+fastapi==0.109.1
+uvicorn==0.27.0
+python-multipart==0.0.6
+python-dotenv==1.0.0
+pydantic_settings==2.1.0
+
+# 数据科学和分析库
+pandas==2.2.0
+numpy==1.26.4
+matplotlib==3.8.2
+
+# 金融数据（如果不需要可以移除）
+yfinance>=0.2.38
+akshare>=1.17.87
+
+# 文档处理
+PyPDF2==3.0.1
+
+# 沙箱安全
+RestrictedPython==7.0
+
+# 性能监控和工具
+psutil==5.9.8
+
+# 浏览器自动化
+playwright==1.40.0
+selenium==4.15.2
+
+# 可选：如果需要更严格的安全控制可以添加
+# py-sandbox==1.0.0
+# docker==6.1.3

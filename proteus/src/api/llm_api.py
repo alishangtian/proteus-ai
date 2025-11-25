@@ -256,54 +256,79 @@ async def call_llm_api(
 
         url = f"{base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                url,
-                headers=headers,
-                json=data,
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    current_logger.error(f"HTTP状态码: {response.status}")
-                    current_logger.error(f"API调用失败: {error_text}")
-                    raise ValueError(f"API调用失败: {error_text}")
+        # 重试配置
+        max_retries = 10
+        base_delay = 10  # 初始延迟10秒
 
-                result = await response.json()
-                current_logger.info(f"API调用成功")
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        current_logger.error(f"HTTP状态码: {response.status}")
+                        current_logger.error(f"API调用失败: {error_text}")
+                        # 对于HTTP错误，不重试，直接抛出异常
+                        raise ValueError(f"API调用失败: {error_text}")
 
-                # 根据模型类型解析不同响应格式并提取usage信息（若存在）
-                usage: Dict = {}
-                if isinstance(result, dict):
-                    usage = result.get("usage", {}) or {}
+                    result = await response.json()
+                    current_logger.info(f"API调用成功")
 
-                text = result["choices"][0]["message"]["content"]
-                return text, usage
+                    # 根据模型类型解析不同响应格式并提取usage信息（若存在）
+                    usage: Dict = {}
+                    if isinstance(result, dict):
+                        usage = result.get("usage", {}) or {}
 
-        except asyncio.TimeoutError:
-            error_msg = "API调用超时"
-            current_logger.error(error_msg)
-            raise ValueError(error_msg)
-        except aiohttp.ClientConnectionError as e:
-            error_msg = f"连接错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ServerDisconnectedError as e:
-            error_msg = f"服务器连接中断: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ClientError as e:
-            error_msg = f"客户端错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except Exception as e:
-            current_logger.error(f"API调用异常: {str(e)}")
-            # 对于网络相关的异常，转换为ConnectionError以便重试
-            if any(
-                keyword in str(e).lower()
-                for keyword in ["disconnected", "connection", "network", "timeout"]
-            ):
-                raise ConnectionError(f"网络连接异常: {str(e)}")
-            raise
+                    text = result["choices"][0]["message"]["content"]
+                    return text, usage
+
+            except (
+                asyncio.TimeoutError,
+                ConnectionError,
+                aiohttp.ClientConnectionError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientError,
+            ) as e:
+                # 这些是网络相关异常，进行重试
+                if attempt < max_retries:
+                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    current_logger.warning(
+                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # 达到最大重试次数，抛出异常
+                    current_logger.error(
+                        f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                    )
+                    if isinstance(e, asyncio.TimeoutError):
+                        raise ValueError("API调用超时")
+                    else:
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+            except Exception as e:
+                current_logger.error(f"API调用异常: {str(e)}")
+                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
+                if any(
+                    keyword in str(e).lower()
+                    for keyword in ["disconnected", "connection", "network", "timeout"]
+                ):
+                    if attempt < max_retries:
+                        delay = base_delay * (attempt + 1)
+                        current_logger.warning(
+                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        current_logger.error(
+                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                        )
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+                else:
+                    # 非网络异常，不重试，直接抛出
+                    raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -414,54 +439,79 @@ async def call_multimodal_llm_api(
 
         url = f"{base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                url,
-                headers=headers,
-                json=data,
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    current_logger.error(f"HTTP状态码: {response.status}")
-                    current_logger.error(f"API调用失败: {error_text}")
-                    raise ValueError(f"API调用失败: {error_text}")
+        # 重试配置
+        max_retries = 10
+        base_delay = 10  # 初始延迟10秒
 
-                result = await response.json()
-                current_logger.info(f"API调用成功")
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        current_logger.error(f"HTTP状态码: {response.status}")
+                        current_logger.error(f"API调用失败: {error_text}")
+                        # 对于HTTP错误，不重试，直接抛出异常
+                        raise ValueError(f"API调用失败: {error_text}")
 
-                # 根据模型类型解析不同响应格式并提取usage信息（若存在）
-                usage: Dict = {}
-                if isinstance(result, dict):
-                    usage = result.get("usage", {}) or {}
+                    result = await response.json()
+                    current_logger.info(f"API调用成功")
 
-                text = result["choices"][0]["message"]["content"]
-                return text, usage
+                    # 根据模型类型解析不同响应格式并提取usage信息（若存在）
+                    usage: Dict = {}
+                    if isinstance(result, dict):
+                        usage = result.get("usage", {}) or {}
 
-        except asyncio.TimeoutError:
-            error_msg = "API调用超时"
-            current_logger.error(error_msg)
-            raise ValueError(error_msg)
-        except aiohttp.ClientConnectionError as e:
-            error_msg = f"连接错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ServerDisconnectedError as e:
-            error_msg = f"服务器连接中断: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ClientError as e:
-            error_msg = f"客户端错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except Exception as e:
-            current_logger.error(f"API调用异常: {str(e)}")
-            # 对于网络相关的异常，转换为ConnectionError以便重试
-            if any(
-                keyword in str(e).lower()
-                for keyword in ["disconnected", "connection", "network", "timeout"]
-            ):
-                raise ConnectionError(f"网络连接异常: {str(e)}")
-            raise
+                    text = result["choices"][0]["message"]["content"]
+                    return text, usage
+
+            except (
+                asyncio.TimeoutError,
+                ConnectionError,
+                aiohttp.ClientConnectionError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientError,
+            ) as e:
+                # 这些是网络相关异常，进行重试
+                if attempt < max_retries:
+                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    current_logger.warning(
+                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # 达到最大重试次数，抛出异常
+                    current_logger.error(
+                        f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                    )
+                    if isinstance(e, asyncio.TimeoutError):
+                        raise ValueError("API调用超时")
+                    else:
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+            except Exception as e:
+                current_logger.error(f"API调用异常: {str(e)}")
+                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
+                if any(
+                    keyword in str(e).lower()
+                    for keyword in ["disconnected", "connection", "network", "timeout"]
+                ):
+                    if attempt < max_retries:
+                        delay = base_delay * (attempt + 1)
+                        current_logger.warning(
+                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        current_logger.error(
+                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                        )
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+                else:
+                    # 非网络异常，不重试，直接抛出
+                    raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -556,95 +606,143 @@ async def call_llm_api_stream(
 
         url = f"{base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                url,
-                headers=headers,
-                json=data,
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    current_logger.error(f"API调用失败: {error_text}")
-                    yield {"type": "error", "error": f"API调用失败: {error_text}"}
+        # 重试配置
+        max_retries = 10
+        base_delay = 10  # 初始延迟10秒
+
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        current_logger.error(f"API调用失败: {error_text}")
+                        # 对于HTTP错误，不重试，直接抛出异常
+                        raise ValueError(f"API调用失败: {error_text}")
+
+                    current_logger.info(f"流式API调用开始接收数据")
+
+                    # 用于累积完整的usage信息
+                    accumulated_usage = {}
+
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+
+                        if not line or line == "data: [DONE]":
+                            continue
+
+                        if line.startswith("data: "):
+                            line = line[6:]  # 移除 "data: " 前缀
+
+                        current_logger.info(f"接收到数据:{line}")
+                        try:
+                            chunk = json.loads(line)
+
+                            # 提取usage信息（如果存在）
+                            if "usage" in chunk:
+                                accumulated_usage = chunk["usage"]
+                                # 返回usage信息
+                                if accumulated_usage:
+                                    yield {"type": "usage", "usage": accumulated_usage}
+
+                            # 处理choices中的内容
+                            if "choices" in chunk and len(chunk["choices"]) > 0:
+                                choice = chunk["choices"][0]
+                                delta = choice.get("delta", {})
+
+                                # 处理thinking内容（如果启用）
+                                if enable_thinking:
+                                    reasoning_content = delta.get("reasoning_content")
+                                    if reasoning_content:
+                                        yield {
+                                            "type": "thinking",
+                                            "content": reasoning_content,
+                                        }
+
+                                # 处理普通内容
+                                if "content" in delta:
+                                    content = delta["content"]
+                                    if content:
+                                        yield {"type": "content", "content": content}
+
+                                # 检查是否完成
+                                if choice.get("finish_reason") == "stop":
+                                    current_logger.info(f"流式API调用完成")
+                                    return  # 成功完成，退出函数
+
+                        except json.JSONDecodeError as e:
+                            current_logger.warning(
+                                f"解析JSON失败: {line}, 错误: {str(e)}"
+                            )
+                            # yield {"type": "content", "content": line}
+                            continue
+                        except Exception as e:
+                            current_logger.error(f"处理流式数据异常: {str(e)}")
+                            yield {
+                                "type": "error",
+                                "error": f"处理流式数据异常: {str(e)}",
+                            }
+                            continue
+
+            except (
+                asyncio.TimeoutError,
+                ConnectionError,
+                aiohttp.ClientConnectionError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientError,
+            ) as e:
+                # 这些是网络相关异常，进行重试
+                if attempt < max_retries:
+                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    current_logger.warning(
+                        f"流式API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                    )
+                    yield {
+                        "type": "retry",
+                        "error": f"网络异常，{delay}秒后重试。",
+                    }
+                    await asyncio.sleep(delay)
+                else:
+                    # 达到最大重试次数，抛出异常
+                    current_logger.error(
+                        f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                    )
+                    if isinstance(e, asyncio.TimeoutError):
+                        yield {"type": "error", "error": "流式API调用超时"}
+                    else:
+                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
                     return
-
-                current_logger.info(f"流式API调用开始接收数据")
-
-                # 用于累积完整的usage信息
-                accumulated_usage = {}
-
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-
-                    if not line or line == "data: [DONE]":
-                        continue
-
-                    if line.startswith("data: "):
-                        line = line[6:]  # 移除 "data: " 前缀
-
-                    current_logger.info(f"接收到数据:{line}")
-                    try:
-                        chunk = json.loads(line)
-
-                        # 提取usage信息（如果存在）
-                        if "usage" in chunk:
-                            accumulated_usage = chunk["usage"]
-                            # 返回usage信息
-                            if accumulated_usage:
-                                yield {"type": "usage", "usage": accumulated_usage}
-
-                        # 处理choices中的内容
-                        if "choices" in chunk and len(chunk["choices"]) > 0:
-                            choice = chunk["choices"][0]
-                            delta = choice.get("delta", {})
-
-                            # 处理thinking内容（如果启用）
-                            if enable_thinking:
-                                reasoning_content = delta.get("reasoning_content")
-                                if reasoning_content:
-                                    yield {
-                                        "type": "thinking",
-                                        "content": reasoning_content,
-                                    }
-
-                            # 处理普通内容
-                            if "content" in delta:
-                                content = delta["content"]
-                                if content:
-                                    yield {"type": "content", "content": content}
-
-                            # 检查是否完成
-                            if choice.get("finish_reason") == "stop":
-                                current_logger.info(f"流式API调用完成")
-
-                    except json.JSONDecodeError as e:
-                        current_logger.warning(f"解析JSON失败: {line}, 错误: {str(e)}")
-                        # yield {"type": "content", "content": line}
-                        continue
-                    except Exception as e:
-                        current_logger.error(f"处理流式数据异常: {str(e)}")
-                        yield {"type": "error", "error": f"处理流式数据异常: {str(e)}"}
-                        continue
-
-        except asyncio.TimeoutError:
-            error_msg = "流式API调用超时"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ClientConnectionError as e:
-            error_msg = f"连接错误: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ServerDisconnectedError as e:
-            error_msg = f"服务器连接中断: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ClientError as e:
-            error_msg = f"客户端错误: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except Exception as e:
-            current_logger.error(f"流式API调用异常: {str(e)}")
-            yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+            except Exception as e:
+                current_logger.error(f"流式API调用异常: {str(e)}")
+                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
+                if any(
+                    keyword in str(e).lower()
+                    for keyword in ["disconnected", "connection", "network", "timeout"]
+                ):
+                    if attempt < max_retries:
+                        delay = base_delay * (attempt + 1)
+                        current_logger.warning(
+                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        )
+                        yield {
+                            "type": "retry",
+                            "error": f"网络异常，{delay}秒后重试。",
+                        }
+                        await asyncio.sleep(delay)
+                    else:
+                        current_logger.error(
+                            f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                        )
+                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                        return
+                else:
+                    # 非网络异常，不重试，直接抛出
+                    current_logger.error(f"非网络异常: {str(e)}")
+                    yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+                    return
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -736,54 +834,80 @@ async def call_llm_api_with_tools(
 
         url = f"{base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                url,
-                headers=headers,
-                json=data,
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    current_logger.error(f"HTTP状态码: {response.status}")
-                    current_logger.error(f"API调用失败: {error_text}")
-                    raise ValueError(f"API调用失败: {error_text}")
+        # 重试配置
+        max_retries = 10
+        base_delay = 10  # 初始延迟10秒
 
-                result = await response.json()
-                current_logger.info(f"API调用成功")
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        current_logger.error(f"HTTP状态码: {response.status}")
+                        current_logger.error(f"API调用失败: {error_text}")
+                        # 对于HTTP错误，不重试，直接抛出异常
+                        raise ValueError(f"API调用失败: {error_text}")
 
-                # 提取usage信息
-                usage: Dict = {}
-                if isinstance(result, dict):
-                    usage = result.get("usage", {}) or {}
+                    result = await response.json()
+                    current_logger.info(f"API调用成功")
 
-                # 返回完整的消息对象
-                message = result["choices"][0]["message"]
-                return message, usage
+                    # 提取usage信息
+                    usage: Dict = {}
+                    if isinstance(result, dict):
+                        usage = result.get("usage", {}) or {}
 
-        except asyncio.TimeoutError:
-            error_msg = "API调用超时"
-            current_logger.error(error_msg)
-            raise ValueError(error_msg)
-        except aiohttp.ClientConnectionError as e:
-            error_msg = f"连接错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ServerDisconnectedError as e:
-            error_msg = f"服务器连接中断: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except aiohttp.ClientError as e:
-            error_msg = f"客户端错误: {str(e)}"
-            current_logger.error(error_msg)
-            raise ConnectionError(error_msg)
-        except Exception as e:
-            current_logger.error(f"API调用异常: {str(e)}")
-            if any(
-                keyword in str(e).lower()
-                for keyword in ["disconnected", "connection", "network", "timeout"]
-            ):
-                raise ConnectionError(f"网络连接异常: {str(e)}")
-            raise
+                    # 返回完整的消息对象
+                    message = result["choices"][0]["message"]
+                    return message, usage
+
+            except (
+                asyncio.TimeoutError,
+                ConnectionError,
+                aiohttp.ClientConnectionError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientError,
+            ) as e:
+                # 这些是网络相关异常，进行重试
+                if attempt < max_retries:
+                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    current_logger.warning(
+                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    # 达到最大重试次数，抛出异常
+                    current_logger.error(
+                        f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                    )
+                    if isinstance(e, asyncio.TimeoutError):
+                        raise ValueError("API调用超时")
+                    else:
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+            except Exception as e:
+                current_logger.error(f"API调用异常: {str(e)}")
+                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
+                if any(
+                    keyword in str(e).lower()
+                    for keyword in ["disconnected", "connection", "network", "timeout"]
+                ):
+                    if attempt < max_retries:
+                        delay = base_delay * (attempt + 1)
+                        current_logger.warning(
+                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        current_logger.error(
+                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                        )
+                        raise ConnectionError(f"网络连接异常: {str(e)}")
+                else:
+                    # 非网络异常，不重试，直接抛出
+                    raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -880,150 +1004,202 @@ async def call_llm_api_with_tools_stream(
 
         url = f"{base_url}/chat/completions"
 
-        try:
-            async with session.post(
-                url,
-                headers=headers,
-                json=data,
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    current_logger.error(f"API调用失败: {error_text}")
-                    yield {"type": "error", "error": f"API调用失败: {error_text}"}
+        # 重试配置
+        max_retries = 10
+        base_delay = 10  # 初始延迟10秒
+
+        for attempt in range(max_retries + 1):
+            try:
+                async with session.post(
+                    url,
+                    headers=headers,
+                    json=data,
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        current_logger.error(f"API调用失败: {error_text}")
+                        # 对于HTTP错误，不重试，直接抛出异常
+                        raise ValueError(f"API调用失败: {error_text}")
+
+                    current_logger.info(f"流式API调用开始接收数据")
+
+                    # 用于累积完整的usage信息和工具调用
+                    accumulated_usage = {}
+                    accumulated_tool_calls = []
+
+                    async for line in response.content:
+                        line = line.decode("utf-8").strip()
+
+                        if not line or line == "data: [DONE]":
+                            continue
+
+                        if line.startswith("data: "):
+                            line = line[6:]  # 移除 "data: " 前缀
+                        current_logger.info(f"接收到数据:{line}")
+                        try:
+                            chunk = json.loads(line)
+
+                            # 提取usage信息（如果存在）
+                            if "usage" in chunk:
+                                accumulated_usage = chunk["usage"]
+                                if accumulated_usage:
+                                    yield {"type": "usage", "usage": accumulated_usage}
+
+                            # 处理choices中的内容
+                            if "choices" in chunk and len(chunk["choices"]) > 0:
+                                choice = chunk["choices"][0]
+                                current_logger.info(f"响应内容: {choice}")
+                                delta = choice.get("delta", {})
+
+                                # 处理thinking内容（如果启用）
+                                if enable_thinking:
+                                    # 安全地获取 reasoning_content 和 reasoning 字段
+                                    reasoning_content = delta.get("reasoning_content")
+                                    reasoning = delta.get("reasoning")
+
+                                    if reasoning_content and reasoning_content != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "content": reasoning_content,
+                                        }
+
+                                    if reasoning and reasoning != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "content": reasoning,
+                                        }
+
+                                # 处理普通内容
+                                if "content" in delta:
+                                    content = delta["content"]
+                                    if content:
+                                        yield {"type": "content", "content": content}
+
+                                # 处理工具调用
+                                if "tool_calls" in delta:
+                                    tool_calls = delta["tool_calls"]
+                                    if tool_calls:
+                                        # 累积工具调用信息
+                                        for tool_call in tool_calls:
+                                            index = tool_call.get("index", 0)
+
+                                            # 确保accumulated_tool_calls有足够的空间
+                                            while len(accumulated_tool_calls) <= index:
+                                                accumulated_tool_calls.append(
+                                                    {
+                                                        "id": "",
+                                                        "type": "function",
+                                                        "function": {
+                                                            "name": "",
+                                                            "arguments": "",
+                                                        },
+                                                    }
+                                                )
+
+                                            # 更新工具调用信息
+                                            if "id" in tool_call:
+                                                accumulated_tool_calls[index]["id"] = (
+                                                    tool_call["id"]
+                                                )
+                                            if "type" in tool_call:
+                                                accumulated_tool_calls[index][
+                                                    "type"
+                                                ] = tool_call["type"]
+                                            if "function" in tool_call:
+                                                func = tool_call["function"]
+                                                if "name" in func:
+                                                    accumulated_tool_calls[index][
+                                                        "function"
+                                                    ]["name"] = func["name"]
+                                                if "arguments" in func:
+                                                    accumulated_tool_calls[index][
+                                                        "function"
+                                                    ]["arguments"] += func["arguments"]
+
+                                # 检查是否完成
+                                if choice.get("finish_reason") in [
+                                    "stop",
+                                    "tool_calls",
+                                ]:
+                                    current_logger.info(
+                                        f"流式API调用完成，finish_reason: {choice.get('finish_reason')}"
+                                    )
+
+                                    # 如果有工具调用，返回完整的工具调用信息
+                                    if accumulated_tool_calls:
+                                        yield {
+                                            "type": "tool_calls",
+                                            "tool_calls": accumulated_tool_calls,
+                                        }
+                                    return  # 成功完成，退出函数
+
+                        except json.JSONDecodeError as e:
+                            current_logger.warning(
+                                f"解析JSON失败: {line}, 错误: {str(e)}"
+                            )
+                            # yield {"type": "content", "content": line}
+                            continue
+                        except Exception as e:
+                            current_logger.error(f"处理流式数据异常: {str(e)}")
+                            yield {
+                                "type": "error",
+                                "error": f"处理流式数据异常: {str(e)}",
+                            }
+                            continue
+
+            except (
+                asyncio.TimeoutError,
+                ConnectionError,
+                aiohttp.ClientConnectionError,
+                aiohttp.ServerDisconnectedError,
+                aiohttp.ClientError,
+            ) as e:
+                # 这些是网络相关异常，进行重试
+                if attempt < max_retries:
+                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    current_logger.warning(
+                        f"流式API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                    )
+                    yield {
+                        "type": "retry",
+                        "error": f"网络异常，{delay}秒后重试。",
+                    }
+                    await asyncio.sleep(delay)
+                else:
+                    # 达到最大重试次数，抛出异常
+                    current_logger.error(
+                        f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                    )
+                    if isinstance(e, asyncio.TimeoutError):
+                        yield {"type": "error", "error": "流式API调用超时"}
+                    else:
+                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
                     return
-
-                current_logger.info(f"流式API调用开始接收数据")
-
-                # 用于累积完整的usage信息和工具调用
-                accumulated_usage = {}
-                accumulated_tool_calls = []
-
-                async for line in response.content:
-                    line = line.decode("utf-8").strip()
-
-                    if not line or line == "data: [DONE]":
-                        continue
-
-                    if line.startswith("data: "):
-                        line = line[6:]  # 移除 "data: " 前缀
-                    current_logger.info(f"接收到数据:{line}")
-                    try:
-                        chunk = json.loads(line)
-
-                        # 提取usage信息（如果存在）
-                        if "usage" in chunk:
-                            accumulated_usage = chunk["usage"]
-                            if accumulated_usage:
-                                yield {"type": "usage", "usage": accumulated_usage}
-
-                        # 处理choices中的内容
-                        if "choices" in chunk and len(chunk["choices"]) > 0:
-                            choice = chunk["choices"][0]
-                            current_logger.info(f"响应内容: {choice}")
-                            delta = choice.get("delta", {})
-
-                            # 处理thinking内容（如果启用）
-                            if enable_thinking:
-                                # 安全地获取 reasoning_content 和 reasoning 字段
-                                reasoning_content = delta.get("reasoning_content")
-                                reasoning = delta.get("reasoning")
-
-                                if reasoning_content and reasoning_content != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "content": reasoning_content,
-                                    }
-
-                                if reasoning and reasoning != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "content": reasoning,
-                                    }
-
-                            # 处理普通内容
-                            if "content" in delta:
-                                content = delta["content"]
-                                if content:
-                                    yield {"type": "content", "content": content}
-
-                            # 处理工具调用
-                            if "tool_calls" in delta:
-                                tool_calls = delta["tool_calls"]
-                                if tool_calls:
-                                    # 累积工具调用信息
-                                    for tool_call in tool_calls:
-                                        index = tool_call.get("index", 0)
-
-                                        # 确保accumulated_tool_calls有足够的空间
-                                        while len(accumulated_tool_calls) <= index:
-                                            accumulated_tool_calls.append(
-                                                {
-                                                    "id": "",
-                                                    "type": "function",
-                                                    "function": {
-                                                        "name": "",
-                                                        "arguments": "",
-                                                    },
-                                                }
-                                            )
-
-                                        # 更新工具调用信息
-                                        if "id" in tool_call:
-                                            accumulated_tool_calls[index]["id"] = (
-                                                tool_call["id"]
-                                            )
-                                        if "type" in tool_call:
-                                            accumulated_tool_calls[index]["type"] = (
-                                                tool_call["type"]
-                                            )
-                                        if "function" in tool_call:
-                                            func = tool_call["function"]
-                                            if "name" in func:
-                                                accumulated_tool_calls[index][
-                                                    "function"
-                                                ]["name"] = func["name"]
-                                            if "arguments" in func:
-                                                accumulated_tool_calls[index][
-                                                    "function"
-                                                ]["arguments"] += func["arguments"]
-
-                            # 检查是否完成
-                            if choice.get("finish_reason") in ["stop", "tool_calls"]:
-                                current_logger.info(
-                                    f"流式API调用完成，finish_reason: {choice.get('finish_reason')}"
-                                )
-
-                                # 如果有工具调用，返回完整的工具调用信息
-                                if accumulated_tool_calls:
-                                    yield {
-                                        "type": "tool_calls",
-                                        "tool_calls": accumulated_tool_calls,
-                                    }
-                    except json.JSONDecodeError as e:
-                        current_logger.warning(f"解析JSON失败: {line}, 错误: {str(e)}")
-                        # yield {"type": "content", "content": line}
-                        continue
-                    except Exception as e:
-                        current_logger.error(f"处理流式数据异常: {str(e)}")
-                        yield {"type": "error", "error": f"处理流式数据异常: {str(e)}"}
-                        continue
-
-        except asyncio.TimeoutError:
-            error_msg = "流式API调用超时"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ClientConnectionError as e:
-            error_msg = f"连接错误: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ServerDisconnectedError as e:
-            error_msg = f"服务器连接中断: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except aiohttp.ClientError as e:
-            error_msg = f"客户端错误: {str(e)}"
-            current_logger.error(error_msg)
-            yield {"type": "error", "error": error_msg}
-        except Exception as e:
-            current_logger.error(f"流式API调用异常: {str(e)}")
-            yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+            except Exception as e:
+                current_logger.error(f"流式API调用异常: {str(e)}")
+                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
+                if any(
+                    keyword in str(e).lower()
+                    for keyword in ["disconnected", "connection", "network", "timeout"]
+                ):
+                    if attempt < max_retries:
+                        delay = base_delay * (attempt + 1)
+                        current_logger.warning(
+                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        )
+                        yield {
+                            "type": "retry",
+                            "error": f"网络异常，{delay}秒后重试。",
+                        }
+                        await asyncio.sleep(delay)
+                    else:
+                        current_logger.error(
+                            f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                        )
+                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                        return
+                else:
+                    # 非网络异常，不重试，直接抛出
+                    current_logger.error(f"非网络异常: {str(e)}")
+                    yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+                    return

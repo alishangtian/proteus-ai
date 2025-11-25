@@ -22,6 +22,7 @@ from src.api.events import (
     create_agent_stream_thinking_event,
     create_complete_event,
     create_error_event,
+    create_retry_event,
     create_usage_event,
 )
 
@@ -441,7 +442,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "content":
+                            if chunk_type == "content":
                                 if (
                                     not first_content_chunk_sent
                                     and has_thinking_content
@@ -464,7 +465,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "tool_calls":
+                            if chunk_type == "tool_calls":
                                 if (
                                     not first_content_chunk_sent
                                     and has_thinking_content
@@ -487,7 +488,7 @@ class ChatAgent:
                                     if tool_call.get("id") is None:
                                         tool_call["id"] = "call_" + str(uuid.uuid4())
 
-                            elif chunk_type == "usage":
+                            if chunk_type == "usage":
                                 if (
                                     not first_content_chunk_sent
                                     and has_thinking_content
@@ -512,7 +513,15 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "error":
+                            if chunk_type == "retry":
+                                retry_msg = chunk.get("error", "未知错误")
+                                logger.error(f"[{chat_id}] 流式调用错误: {retry_msg}")
+                                if self.stream_manager:
+                                    await self.stream_manager.send_message(
+                                        chat_id, await create_retry_event(retry_msg)
+                                    )
+
+                            if chunk_type == "error":
                                 if (
                                     not first_content_chunk_sent
                                     and has_thinking_content
@@ -556,7 +565,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "content":
+                            if chunk_type == "content":
                                 if (
                                     not first_content_chunk_sent
                                     and has_thinking_content
@@ -579,7 +588,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "usage":
+                            if chunk_type == "usage":
                                 accumulated_usage = chunk.get("usage", {})
                                 logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
@@ -590,7 +599,15 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            elif chunk_type == "error":
+                            if chunk_type == "retry":
+                                retry_msg = chunk.get("error", "未知错误")
+                                logger.error(f"[{chat_id}] 流式调用错误: {retry_msg}")
+                                if self.stream_manager:
+                                    await self.stream_manager.send_message(
+                                        chat_id, await create_retry_event(retry_msg)
+                                    )
+
+                            if chunk_type == "error":
                                 error_msg = chunk.get("error", "未知错误")
                                 logger.error(f"[{chat_id}] 流式调用错误: {error_msg}")
                                 if self.stream_manager:

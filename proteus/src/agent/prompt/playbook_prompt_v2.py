@@ -1,4 +1,5 @@
 PLAYBOOK_PROMPT_v2 = r"""
+# 当前时间 ${current_time}
 # 📜 你的使命
 你是一位顶级的 **任务策略师**，专门负责 **Playbook**（任务剧本）的制定、更新和维护。
 Playbook 是驱动智能代理（Agent）执行任务的 **唯一行动蓝图**。你的职责是确保 Playbook 始终准确、清晰、完整。
@@ -59,9 +60,6 @@ Playbook 是驱动智能代理（Agent）执行任务的 **唯一行动蓝图**�
 
 ## 原始用户问题
 ${query}
-
-## 当前时间
-${current_time}
 
 ## 历史剧本 (上次的输出)
 ${last_playbook}

@@ -88,7 +88,27 @@
     transform: translateX(2px);
 }
 
-.conversation-item:hover .delete-conversation-btn {
+.conversation-item.active {
+    background: linear-gradient(135deg, var(--light-blue) 0%, var(--light-blue-hover) 100%);
+    border-color: var(--primary-blue);
+    box-shadow: 0 2px 12px rgba(59, 130, 246, 0.15);
+    transform: translateX(2px);
+}
+
+.conversation-item.active .conversation-title {
+    color: var(--primary-blue-darker);
+    font-weight: 600;
+}
+
+.conversation-item.active .conversation-meta {
+    color: var(--primary-blue-dark);
+}
+
+.conversation-item.active .conversation-buttons {
+    opacity: 1;
+}
+
+.conversation-item:hover .conversation-buttons {
     opacity: 1;
 }
 
@@ -101,6 +121,46 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding-right: 24px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.conversation-title:hover {
+    color: var(--primary-blue);
+}
+
+.conversation-title.editing {
+    position: relative;
+    z-index: 10;
+}
+
+.conversation-title-input {
+    width: 100%;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color-dark);
+    background: var(--bg-color-white);
+    border: 2px solid var(--primary-blue);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin: -6px -10px;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    font-family: inherit;
+    line-height: 1.4;
+    resize: none;
+    min-height: 32px;
+    box-sizing: border-box;
+}
+
+.conversation-title-input:focus {
+    border-color: var(--primary-blue-dark);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.conversation-title-input::placeholder {
+    color: var(--text-color-placeholder);
+    font-weight: 400;
 }
 
 .conversation-meta {
@@ -111,10 +171,17 @@
     gap: 4px;
 }
 
-.delete-conversation-btn {
+.conversation-buttons {
     position: absolute;
     top: 8px;
     right: 8px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.delete-conversation-btn {
     width: 24px;
     height: 24px;
     padding: 0;
@@ -128,7 +195,23 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
+    transition: all 0.2s ease;
+}
+
+.edit-conversation-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: var(--primary-blue);
+    color: var(--bg-color-white);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.2s ease;
 }
 
@@ -160,7 +243,7 @@
         padding: 10px 12px;
     }
 
-    .delete-conversation-btn {
+    .conversation-buttons {
         opacity: 1;
     }
 }

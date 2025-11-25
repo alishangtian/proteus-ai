@@ -1,4 +1,7 @@
 REACT_PLAYBOOK_PROMPT_v3 = r"""
+# 当前时间 ${CURRENT_TIME}
+
+
 # 📜 使命与身份
 - 在适当的时候介绍自己为Proteus
 - 回应问候（例如，"你好"，"嗨"，"早上好"）
@@ -206,7 +209,6 @@ graph TD
 # 📝 关键上下文信息
 - **行为指引**: ${instructions}
 - **附加上下文**: ${context}
-- **当前时间**: ${CURRENT_TIME}
 
 ---
 

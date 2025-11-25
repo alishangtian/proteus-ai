@@ -1,0 +1,112 @@
+# 多阶段构建的优化沙箱镜像，使用Python 3.12
+
+# 第一阶段：构建阶段
+FROM ubuntu:22.04 as builder
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /build
+
+# 安装Python 3.12和构建依赖
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    python3-pip \
+    build-essential \
+    libblas-dev \
+    liblapack-dev \
+    gfortran \
+    libfreetype6-dev \
+    libpng-dev \
+    libjpeg-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python
+
+# 创建虚拟环境并使用get-pip.py安装最新pip
+RUN python3.12 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN curl -s https://bootstrap.pypa.io/get-pip.py -o get-pip.py \
+    && python3 get-pip.py \
+    && rm get-pip.py \
+    && pip install --upgrade setuptools wheel
+
+# 复制依赖文件并安装
+COPY requirements-optimized.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements-optimized.txt
+
+# 第二阶段：运行时阶段
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /app
+
+# 安装Python 3.12运行时依赖（最小化）
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    # 沙箱执行需要的系统工具
+    procps \
+    psmisc \
+    # 数据科学库的运行时依赖
+    libblas3 \
+    liblapack3 \
+    libgfortran5 \
+    # 图像处理运行时依赖
+    libfreetype6 \
+    libpng16-16 \
+    libjpeg-turbo8 \
+    # 网络工具用于健康检查
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python
+
+# 创建非root用户和必要的目录
+RUN groupadd -r sandbox && useradd -r -g sandbox -s /bin/bash sandbox \
+    && mkdir -p /var/logs/sandbox /var/data/sandbox /tmp/sandbox \
+    && chown -R sandbox:sandbox /var/logs/sandbox /var/data/sandbox /tmp/sandbox /app
+
+# 从构建阶段复制虚拟环境
+COPY --from=builder /opt/venv /opt/venv
+
+# 复制应用代码
+COPY app/ .
+
+# 设置权限和安全配置
+RUN chown -R sandbox:sandbox /app \
+    && chmod +x /app/*.py \
+    && chmod 755 /home/sandbox \
+    && chmod 700 /tmp/sandbox
+
+# 安全加固：限制系统调用
+RUN echo "sandbox hard nproc 100" >> /etc/security/limits.conf \
+    && echo "sandbox hard nofile 100" >> /etc/security/limits.conf
+
+# 切换到非root用户
+USER sandbox
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/docs || exit 1
+
+# 暴露端口
+EXPOSE 8000
+
+# 启动命令（使用多个worker提高并发性能）
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
