@@ -867,55 +867,67 @@ async def _cleanup_team_binding(chat_id: str):
         logger.error(f"[{chat_id}] 清理 team 绑定关系失败: {str(e)}", exc_info=True)
 
 
-async def generate_conversation_title(initial_question: str) -> str:
-    """使用 LLM 生成会话标题
+from src.utils.md_title_extractor import (
+    extract_title_from_md,
+    remove_title_from_content,
+)
+
+
+async def generate_conversation_title(text_content: str) -> str:
+    """根据 Markdown 内容提取第一个一级标题作为会话标题。
+    如果不存在一级标题，则使用文本开头截断作为标题。
 
     Args:
-        initial_question: 初始问题
+        text_content: 完整的 Markdown 文本内容 (可以是 initial_question 或 final_result)。
 
     Returns:
-        生成的会话标题
+        生成的会话标题。
     """
     try:
-        # 构建提示词，要求生成简洁的标题
-        messages = [
-            {
-                "role": "system",
-                "content": "你是一个专业的标题生成助手。请根据用户的问题生成一个简洁、准确的会话标题，不超过20个字。只返回标题文本，不要有任何其他内容。",
-            },
-            {
-                "role": "user",
-                "content": f"请为以下问题生成一个简洁的会话标题：\n\n{initial_question}",
-            },
-        ]
+        title = extract_title_from_md(text_content)
+        if title:
+            # 清理标题，移除可能的引号和多余空格
+            return title
+        else:
+            logger.info("内容中未检测到一级标题，尝试使用 LLM 生成标题")
+            # 如果没有一级标题，回退到原来的 LLM 生成标题逻辑
+            # 构建提示词，要求生成简洁的标题
+            messages = [
+                {
+                    "role": "system",
+                    "content": "你是一个专业的标题生成助手。请根据以下内容生成一个简洁、准确的会话标题，不超过25个字。只返回标题文本，不要有任何其他内容。",
+                },
+                {
+                    "role": "user",
+                    "content": f"请为以下内容生成一个简洁的会话标题：\n\n{text_content}",
+                },
+            ]
 
-        # 调用 LLM API 生成标题
-        from src.api.llm_api import call_llm_api
+            # 调用 LLM API 生成标题
+            from src.api.llm_api import call_llm_api
 
-        title, _ = await call_llm_api(
-            messages=messages,
-            request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            temperature=0.3,  # 使用较低的温度以获得更稳定的输出
-            model_name="deepseek-chat",  # 使用默认模型
-        )
+            llm_title, _ = await call_llm_api(
+                messages=messages,
+                request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                temperature=0.3,  # 使用较低的温度以获得更稳定的输出
+                model_name="deepseek-chat",  # 使用默认模型
+            )
 
-        # 清理标题，移除可能的引号和多余空格
-        title = title.strip().strip('"').strip("'").strip()
+            # 清理标题，移除可能的引号和多余空格
+            llm_title = llm_title.strip().strip('"').strip("'").strip()
 
-        # 如果标题过长，截断并添加省略号
-        if len(title) > 20:
-            title = title[:20] + "..."
+            # 如果标题过长，截断并添加省略号
+            if len(llm_title) > 25:
+                llm_title = llm_title[:22] + "..."
 
-        logger.info(f"生成会话标题: {title}")
-        return title
+            logger.info(f"LLM 生成会话标题: {llm_title}")
+            return llm_title
 
     except Exception as e:
-        # 如果生成失败，回退到简单截取方式
-        logger.warning(f"使用 LLM 生成标题失败，使用默认方式: {str(e)}")
+        logger.warning(f"生成会话标题失败，回退到简单截断方式: {str(e)}")
+        # 如果 LLM 生成也失败，回退到简单截取方式
         fallback_title = (
-            initial_question[:15] + "..."
-            if len(initial_question) > 15
-            else initial_question
+            text_content[:20] + "..." if len(text_content) > 20 else text_content
         )
         return fallback_title
 
@@ -926,6 +938,7 @@ async def save_conversation_summary(
     initial_question: str,
     user_name: str = None,
     modul: str = None,
+    final_result: str = None,  # 新增 final_result 参数
 ):
     """异步保存会话摘要信息到 Redis
 
@@ -935,14 +948,15 @@ async def save_conversation_summary(
         initial_question: 初始问题
         user_name: 用户名
         modul: 模型类型
+        final_result: 最终的会话结果，如果存在则用于生成标题
     """
     try:
         redis_conn = get_redis_connection()
         conversation_key = f"conversation:{conversation_id}:info"
         user_name = user_name or "anonymous"
 
-        # 使用 LLM 生成会话标题
-        title = await generate_conversation_title(initial_question)
+        # 优先使用 final_result 生成标题，否则使用 initial_question
+        title = await generate_conversation_title(final_result or initial_question)
 
         # 检查会话是否已存在
         if not redis_conn.exists(conversation_key):
@@ -1275,6 +1289,18 @@ async def process_agent(
         if team is not None:
             await team.stop()
     finally:
+        # 会话完成后异步更新会话标题 - 仅当 final_result 有内容时才尝试更新，以生成更准确的标题
+        if conversation_id and final_result:
+            asyncio.create_task(
+                save_conversation_summary(
+                    conversation_id=conversation_id,
+                    chat_id=chat_id,
+                    initial_question=query,  # 仍然传递原始问题以防LLM生成失败
+                    user_name=user_name,
+                    modul=agentmodul,
+                    final_result=final_result,  # 传递最终结果以生成更准确的标题
+                )
+            )
         return {"status": "success", "final_result": final_result, "text": query}
 
 
@@ -1836,41 +1862,6 @@ async def get_sandbox_file(file_path: str, request: Request):
         raise HTTPException(status_code=500, detail=f"获取文件失败: {str(e)}")
 
 
-def _remove_title_from_content(content: str, title: str) -> str:
-    """从内容中删除标题行，避免重复
-
-    Args:
-        content: 原始内容
-        title: 提取的标题
-
-    Returns:
-        清理后的内容（已移除标题行）
-    """
-    if not content or not title:
-        return content
-
-    lines = content.split("\n")
-    if not lines:
-        return content
-
-    # 检查第一行是否包含标题（考虑Markdown标题格式）
-    first_line = lines[0].strip()
-
-    # 如果第一行是Markdown标题格式（以#开头），则移除第一行
-    if first_line.startswith("#"):
-        # 移除第一行
-        cleaned_lines = lines[1:]
-        return "\n".join(cleaned_lines).strip()
-
-    # 如果第一行就是标题文本，也移除第一行
-    if first_line == title:
-        cleaned_lines = lines[1:]
-        return "\n".join(cleaned_lines).strip()
-
-    # 如果没有找到匹配的标题行，返回原内容
-    return content
-
-
 class KnowledgeBaseContent(BaseModel):
     content: str = Field(..., description="要保存到知识库的内容")
 
@@ -1891,14 +1882,17 @@ async def save_to_knowledge_base(request: Request, kb_content: KnowledgeBaseCont
         redis_conn = get_redis_connection()
 
         # 导入标题提取工具
-        from src.utils.md_title_extractor import extract_title_from_md
+        from src.utils.md_title_extractor import (
+            extract_title_from_md,
+            remove_title_from_content,
+        )
 
         # 提取标题
         title = extract_title_from_md(kb_content.content)
         timestamp = datetime.now().isoformat()
 
         # 直接从内容中删除标题行，避免重复
-        cleaned_content = _remove_title_from_content(kb_content.content, title)
+        cleaned_content = remove_title_from_content(kb_content.content)
 
         # 生成唯一ID
         import uuid
@@ -2205,7 +2199,7 @@ async def search_knowledge_base(request: Request, search_request: KnowledgeBaseS
 
         # 获取用户的所有知识库条目
         all_items_raw = redis_conn.hgetall(knowledge_base_map_key)
-        
+
         if not all_items_raw:
             return {"success": True, "results": []}
 
@@ -2217,81 +2211,86 @@ async def search_knowledge_base(request: Request, search_request: KnowledgeBaseS
                 item_data = json.loads(item_raw)
                 title = item_data.get("title", "").lower()
                 content = item_data.get("content", "").lower()
-                
+
                 # 检查标题或内容是否包含搜索词
                 if search_query in title or search_query in content:
                     # 生成内容预览（截取包含关键词的部分）
                     content_preview = _generate_content_preview(
-                        item_data.get("content", ""),
-                        search_request.query
+                        item_data.get("content", ""), search_request.query
                     )
-                    
-                    results.append({
-                        "id": item_id,
-                        "title": item_data.get("title", ""),
-                        "content_preview": content_preview,
-                        "timestamp": item_data.get("timestamp", ""),
-                        "updated_at": item_data.get("updated_at", ""),
-                        "author": item_data.get("author", ""),
-                    })
+
+                    results.append(
+                        {
+                            "id": item_id,
+                            "title": item_data.get("title", ""),
+                            "content_preview": content_preview,
+                            "timestamp": item_data.get("timestamp", ""),
+                            "updated_at": item_data.get("updated_at", ""),
+                            "author": item_data.get("author", ""),
+                        }
+                    )
             except json.JSONDecodeError:
                 logger.warning(f"解析知识库条目失败 (item_id: {item_id}): {item_raw}")
                 continue
 
         # 按更新时间倒序排序
         results.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
-        
-        logger.info(f"用户 {user_name} 搜索知识库，查询词: '{search_request.query}'，找到 {len(results)} 条结果")
+
+        logger.info(
+            f"用户 {user_name} 搜索知识库，查询词: '{search_request.query}'，找到 {len(results)} 条结果"
+        )
         return {"success": True, "results": results}
-        
+
     except Exception as e:
         logger.error(f"搜索知识库失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"搜索知识库失败: {str(e)}")
 
 
-def _generate_content_preview(content: str, search_query: str, max_length: int = 100) -> str:
+def _generate_content_preview(
+    content: str, search_query: str, max_length: int = 100
+) -> str:
     """
     生成内容预览，突出显示搜索关键词。
-    
+
     Args:
         content: 原始内容
         search_query: 搜索查询词
         max_length: 预览最大长度
-    
+
     Returns:
         包含关键词的内容预览
     """
     if not content:
         return ""
-    
+
     content_lower = content.lower()
     query_lower = search_query.lower()
-    
+
     # 查找关键词位置
     query_index = content_lower.find(query_lower)
-    
+
     if query_index == -1:
         # 如果没有找到关键词，返回内容开头
         return content[:max_length] + ("..." if len(content) > max_length else "")
-    
+
     # 计算预览的起始位置，确保关键词在中间位置
     start_pos = max(0, query_index - max_length // 2)
     end_pos = min(len(content), start_pos + max_length)
-    
+
     # 调整起始位置，确保不会截断在单词中间
     if start_pos > 0:
         # 向前找到最近的空格或换行
-        space_before = content.rfind(' ', 0, start_pos)
+        space_before = content.rfind(" ", 0, start_pos)
         if space_before != -1 and space_before > start_pos - 20:
             start_pos = space_before + 1
-    
+
     # 生成预览文本
     preview = content[start_pos:end_pos]
-    
+
     # 添加省略号
     if start_pos > 0:
         preview = "..." + preview
     if end_pos < len(content):
         preview = preview + "..."
-    
+
     return preview

@@ -107,30 +107,12 @@ class ConversationManager:
                     if expire_seconds <= 0:
                         # 优先使用完整的message对象
                         message = record.get("message")
-                        if message:
-                            conversation_history.append(message)
-                        else:
-                            # 向后兼容旧格式
-                            role = record.get("type", "")
-                            content = record.get("content", "")
-                            if role and content:
-                                conversation_history.append(
-                                    {"role": role, "content": content}
-                                )
+                        conversation_history.append(message)
                     # 检查是否过期
                     elif current_time - record_timestamp <= expire_seconds:
                         # 优先使用完整的message对象
                         message = record.get("message")
-                        if message:
-                            conversation_history.append(message)
-                        else:
-                            # 向后兼容旧格式
-                            role = record.get("type", "")
-                            content = record.get("content", "")
-                            if role and content:
-                                conversation_history.append(
-                                    {"role": role, "content": content}
-                                )
+                        conversation_history.append(message)
                 except (json.JSONDecodeError, Exception) as e:
                     self.logger.warning(f"解析对话记录失败: {str(e)}")
                     continue

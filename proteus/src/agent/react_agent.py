@@ -48,7 +48,7 @@ from src.manager.tool_memory_manager import ToolMemoryManager
 from src.manager.conversation_manager import conversation_manager
 
 # import PLAYBOOK_PROMPT
-from src.agent.prompt.playbook_prompt_v2 import PLAYBOOK_PROMPT_v2
+from src.agent.prompt.playbook_prompt_v3 import PLAYBOOK_PROMPT_v3
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +316,7 @@ class ReactAgent:
         user_name: str = None,  # 用户名，用于隔离工具记忆
         tool_memory_enabled: bool = False,  # 传递工具记忆参数
         sop_memory_enabled: bool = False,  # 传递 SOP 记忆参数
+        playbook_model_name: str = "deepseek-chat",
     ):
         """初始化ReactAgent
 
@@ -361,6 +362,7 @@ class ReactAgent:
         self.mcp_manager = get_mcp_manager()
         self.context = context
         self.model_name = model_name
+        self.playbook_model_name = playbook_model_name
         self.reasoner_model_name = reasoner_model_name
         self.instruction = instruction
         self.description = description
@@ -903,7 +905,7 @@ class ReactAgent:
             "planner": planner,
             "agent_scratchpad": agent_scratchpad or "暂无",
             "context": context or "暂无",
-            "instructions": self.instruction or "",
+            "instructions": self.instruction or "暂无",
             "max_iterations": self.max_iterations,
             "current_iteration": current_iteration,
             "playbook": (
@@ -914,6 +916,7 @@ class ReactAgent:
         agent_prompt = Template(self.prompt_template).safe_substitute(all_values)
         return agent_prompt
 
+    @langfuse_wrapper.dynamic_observe()
     async def _call_model(
         self, messages: Union[str, List[Dict[str, str]]], chat_id: str, model_name: str
     ) -> str:
@@ -2148,7 +2151,7 @@ class ReactAgent:
                 conversation_manager.save_message(
                     self.conversation_id,
                     {
-                        "type": "user",
+                        "role": "user",
                         "content": query,
                     },
                 )
@@ -2158,7 +2161,7 @@ class ReactAgent:
                 conversation_manager.save_message(
                     self.conversation_id,
                     {
-                        "type": "assistant",
+                        "role": "assistant",
                         "content": result,
                     },
                 )
@@ -2529,7 +2532,7 @@ class ReactAgent:
         """
         基于上一步的剧本和新的工具结果生成新的剧本。
         """
-        system_prompt = Template(PLAYBOOK_PROMPT_v2).safe_substitute(
+        system_prompt = Template(PLAYBOOK_PROMPT_v3).safe_substitute(
             query=query,
             last_playbook=last_playbook if last_playbook else "无",
             tool_result=tool_result,
@@ -2538,7 +2541,9 @@ class ReactAgent:
 
         messages = [{"role": "user", "content": system_prompt}]
         try:
-            playbook = await self._call_model(messages, chat_id, model_name)
+            playbook = await self._call_model(
+                messages, chat_id, self.playbook_model_name
+            )
 
             # 生成 playbook 后立即发送 SSE 事件
             if self.stream_manager:

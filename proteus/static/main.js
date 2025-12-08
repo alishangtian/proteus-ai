@@ -99,6 +99,69 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // 侧边栏展开/收起功能
+    function initSidebarToggle() {
+        const leftSidebar = document.getElementById('leftSidebar');
+        const rightSidebar = document.getElementById('rightSidebar');
+        const leftToggle = leftSidebar?.querySelector('.sidebar-toggle');
+        const rightToggle = rightSidebar?.querySelector('.sidebar-toggle');
+
+        if (!leftSidebar || !rightSidebar || !leftToggle || !rightToggle) {
+            console.warn('侧边栏切换按钮未找到，跳过初始化');
+            return;
+        }
+
+        // 更新切换按钮图标的函数
+        function updateToggleButtonIcon(sidebar, toggleButton, isLeft) {
+            const isCollapsed = sidebar.classList.contains('collapsed');
+            const iconPath = isLeft
+                ? (isCollapsed ? '<path d="M9 18l6-6-6-6"/>' : '<path d="M15 18l-6-6 6-6"/>')
+                : (isCollapsed ? '<path d="M15 18l-6-6-6-6"/>' : '<path d="M9 18l6-6-6-6"/>'); // 右侧图标反向
+            toggleButton.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    ${iconPath}
+                </svg>
+            `;
+            toggleButton.title = isCollapsed ? '展开侧边栏' : '收起侧边栏';
+        }
+
+        // 左侧边栏切换
+        leftToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            leftSidebar.classList.toggle('collapsed');
+            // 保存状态到本地存储
+            localStorage.setItem('leftSidebarCollapsed', leftSidebar.classList.contains('collapsed'));
+            updateToggleButtonIcon(leftSidebar, leftToggle, true);
+        });
+
+        // 右侧边栏切换
+        rightToggle.addEventListener('click', function (e) {
+            e.stopPropagation();
+            rightSidebar.classList.toggle('collapsed');
+            // 保存状态到本地存储
+            localStorage.setItem('rightSidebarCollapsed', rightSidebar.classList.contains('collapsed'));
+            updateToggleButtonIcon(rightSidebar, rightToggle, false);
+        });
+
+        // 恢复侧边栏状态
+        try {
+            const leftCollapsed = localStorage.getItem('leftSidebarCollapsed') === 'true';
+            const rightCollapsed = localStorage.getItem('rightSidebarCollapsed') === 'true';
+            
+            if (leftCollapsed) {
+                leftSidebar.classList.add('collapsed');
+            }
+            if (rightCollapsed) {
+                rightSidebar.classList.add('collapsed');
+            }
+            // 初始化按钮图标
+            updateToggleButtonIcon(leftSidebar, leftToggle, true);
+            updateToggleButtonIcon(rightSidebar, rightToggle, false);
+        } catch (error) {
+            console.warn('恢复侧边栏状态失败:', error);
+        }
+    }
+
     // 侧边栏拖拽功能
     function initSidebarResizer() {
         const leftSidebar = document.getElementById('leftSidebar');
@@ -194,6 +257,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 初始化侧边栏拖拽功能
     initSidebarResizer();
+    
+    // 初始化侧边栏切换功能
+    initSidebarToggle();
 });
 
 

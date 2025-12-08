@@ -254,6 +254,49 @@
     padding: 0;
 }
 
+/* 全局禁用文本选择，只在需要的地方启用 */
+/* * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+} */
+
+.action_complete,
+.knowledge-display-area {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* 允许输入框和文本域选择文本 */
+input,
+textarea,
+[contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* 允许代码块选择文本 */
+pre,
+code {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* 允许搜索结果高亮文本选择 */
+mark {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
 :root {
     /* Colors */
     --primary-blue: #3b82f6;
@@ -3009,7 +3052,8 @@ body {
     width: 8px;
     cursor: col-resize;
     z-index: 30;
-    transition: background-color 0.3s ease;
+    transition: background-color 0.3s ease, opacity 0.5s ease, transform 0.5s ease;
+    /* 添加 opacity 和 transform 过渡 */
 }
 
 .left-resizer {
@@ -3023,6 +3067,21 @@ body {
 .sidebar-resizer:hover,
 .sidebar-resizer.dragging {
     /* background-color: rgba(15, 23, 42, 0.1); */
+}
+
+/* 当侧边栏收起时，隐藏对应的拖拽条 */
+.left-sidebar.collapsed+.left-resizer {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-10px);
+    /* 稍微移出视线 */
+}
+
+.right-sidebar.collapsed~.right-resizer {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(10px);
+    /* 稍微移出视线 */
 }
 
 .sidebar-resizer::before {

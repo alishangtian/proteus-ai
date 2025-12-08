@@ -653,14 +653,19 @@ async def call_llm_api_stream(
                                 choice = chunk["choices"][0]
                                 delta = choice.get("delta", {})
 
-                                # 处理thinking内容（如果启用）
-                                if enable_thinking:
-                                    reasoning_content = delta.get("reasoning_content")
-                                    if reasoning_content:
-                                        yield {
-                                            "type": "thinking",
-                                            "content": reasoning_content,
-                                        }
+                                # 处理thinking内容
+                                reasoning_content = delta.get("reasoning_content")
+                                reasoning = delta.get("reasoning")
+                                if reasoning and reasoning != "":
+                                    yield {
+                                        "type": "thinking",
+                                        "content": reasoning,
+                                    }
+                                if reasoning_content and reasoning_content != "":
+                                    yield {
+                                        "type": "thinking",
+                                        "content": reasoning_content,
+                                    }
 
                                 # 处理普通内容
                                 if "content" in delta:
@@ -1052,22 +1057,23 @@ async def call_llm_api_with_tools_stream(
                                 delta = choice.get("delta", {})
 
                                 # 处理thinking内容（如果启用）
-                                if enable_thinking:
-                                    # 安全地获取 reasoning_content 和 reasoning 字段
-                                    reasoning_content = delta.get("reasoning_content")
-                                    reasoning = delta.get("reasoning")
+                                # 安全地获取 reasoning_content 和 reasoning 字段
+                                reasoning_content = delta.get("reasoning_content")
+                                reasoning = delta.get("reasoning")
 
-                                    if reasoning_content and reasoning_content != "":
-                                        yield {
-                                            "type": "thinking",
-                                            "content": reasoning_content,
-                                        }
+                                if reasoning_content and reasoning_content != "":
+                                    yield {
+                                        "type": "thinking",
+                                        "thinking_type": "reasoning_content",
+                                        "content": reasoning_content,
+                                    }
 
-                                    if reasoning and reasoning != "":
-                                        yield {
-                                            "type": "thinking",
-                                            "content": reasoning,
-                                        }
+                                if reasoning and reasoning != "":
+                                    yield {
+                                        "type": "thinking",
+                                        "thinking_type": "reasoning",
+                                        "content": reasoning,
+                                    }
 
                                 # 处理普通内容
                                 if "content" in delta:
@@ -1107,11 +1113,19 @@ async def call_llm_api_with_tools_stream(
                                                 ] = tool_call["type"]
                                             if "function" in tool_call:
                                                 func = tool_call["function"]
-                                                if "name" in func:
+                                                if (
+                                                    "name" in func
+                                                    and func["name"]
+                                                    and func["name"] != ""
+                                                ):
                                                     accumulated_tool_calls[index][
                                                         "function"
                                                     ]["name"] = func["name"]
-                                                if "arguments" in func:
+                                                if (
+                                                    "arguments" in func
+                                                    and func["arguments"]
+                                                    and func["arguments"] != ""
+                                                ):
                                                     accumulated_tool_calls[index][
                                                         "function"
                                                     ]["arguments"] += func["arguments"]

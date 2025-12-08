@@ -199,10 +199,6 @@ class ChatAgent:
                 self.max_tool_iterations if self.enable_tools and tools else 1
             )
             tool_iteration = 0
-            final_response_text = ""
-            final_thinking_text = ""
-            accumulated_usage = {}
-
             while tool_iteration < max_iterations:
                 # 执行一次 LLM 生成迭代
                 (
@@ -210,9 +206,12 @@ class ChatAgent:
                     thinking_text,
                     tool_calls,
                     accumulated_usage,
+                    thinking_type,
                 ) = await self._execute_llm_generation(
                     chat_id=chat_id,
-                    messages=messages,
+                    messages=self._filter_messages(
+                        messages
+                    ),  # 过滤消息，只保留最新的思考消息
                     tools=tools,
                     enable_thinking=enable_thinking,
                     tool_iteration=tool_iteration,
@@ -220,11 +219,17 @@ class ChatAgent:
 
                 # 保存最终响应
                 final_response_text = response_text
-                final_thinking_text = thinking_text
 
                 # 如果没有工具调用，说明模型返回了最终答案，退出循环
                 if not tool_calls:
                     logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
+                    if thinking_text:
+                        thought_message = {
+                            "role": "assistant",
+                            thinking_type: thinking_text,
+                            "content": response_text,
+                        }
+                        messages.append(thought_message)
                     break
 
                 # 执行工具调用
@@ -237,7 +242,8 @@ class ChatAgent:
                 # 将助手消息（包含工具调用）添加到messages
                 assistant_message = {
                     "role": "assistant",
-                    "content": response_text if response_text else None,
+                    thinking_type: thinking_text,
+                    "content": response_text,
                     "tool_calls": tool_calls,
                 }
                 messages.append(assistant_message)
@@ -393,6 +399,7 @@ class ChatAgent:
         """
         response_text = ""
         thinking_text = ""
+        thinking_type = ""
         first_content_chunk_sent = False
         has_thinking_content = False
         tool_calls = None
@@ -434,6 +441,7 @@ class ChatAgent:
                                 has_thinking_content = True
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
+                                thinking_type = chunk.get("thinking_type")
                                 if self.stream_manager and thinking_content:
                                     event = await create_agent_stream_thinking_event(
                                         thinking_content
@@ -557,6 +565,7 @@ class ChatAgent:
                                 has_thinking_content = True
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
+                                thinking_type = chunk.get("thinking_type")
                                 if self.stream_manager and thinking_content:
                                     event = await create_agent_stream_thinking_event(
                                         thinking_content
@@ -653,7 +662,13 @@ class ChatAgent:
                         f"耗时: {execution_time:.2f}s, tokens: {usage_details['input_usage']+usage_details['output_usage']})"
                     )
 
-            return response_text, thinking_text, tool_calls, accumulated_usage
+            return (
+                response_text,
+                thinking_text,
+                tool_calls,
+                accumulated_usage,
+                thinking_type,
+            )
 
         except Exception as e:
             execution_time = time.time() - start_time if "start_time" in locals() else 0
@@ -832,6 +847,41 @@ class ChatAgent:
             logger.error(
                 f"[{chat_id}] 处理工具 '{tool_name}' 记忆失败: {str(e)}", exc_info=True
             )
+
+    def _filter_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        过滤 messages 列表，只保留最新的一个包含 'reasoning' 或 'reasoning_content' 字段的消息。
+        如果原始 messages 列表不包含这些字段的消息，则返回原始列表。
+        """
+        # 创建可修改的副本
+        processed_messages = messages[:]
+
+        # 找到所有包含 'reasoning' 或 'reasoning_content' 字段，且不包含 'tool_calls' 字段的消息的索引
+        removable_thinking_message_indices = []
+        for i, message in enumerate(processed_messages):
+            is_thinking_message = isinstance(message, dict) and any(
+                key in message for key in ["reasoning", "reasoning_content"]
+            )
+            has_tool_calls = (
+                isinstance(message, dict)
+                and "tool_calls" in message
+                and message["tool_calls"] is not None
+            )
+
+            if is_thinking_message and not has_tool_calls:
+                removable_thinking_message_indices.append(i)
+
+        # 如果可移除的思考消息的数量大于1，则移除最靠前的那个
+        if len(removable_thinking_message_indices) > 1:
+            first_removable_thinking_message_index = removable_thinking_message_indices[
+                0
+            ]
+            del processed_messages[first_removable_thinking_message_index]
+            logger.info(
+                f"移除了最靠前的思考消息（不含tool_calls），原索引: {first_removable_thinking_message_index}"
+            )
+
+        return processed_messages
 
     async def _get_current_user_query(self) -> Optional[str]:
         """获取当前用户查询
