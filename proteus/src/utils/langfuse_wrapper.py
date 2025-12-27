@@ -5,6 +5,8 @@ import inspect
 import sys
 from typing import Optional, Any, Callable, Dict
 from src.utils.langfuse_config import LangfuseConfigManager
+from langfuse import Langfuse
+from langfuse import get_client
 
 # 配置专用的 logger，确保日志能够正常输出
 logger = logging.getLogger(__name__)
@@ -231,7 +233,7 @@ class LangfuseAdapter:
 
 class LangfuseWrapper:
     _instance: Optional["LangfuseWrapper"] = None
-    _langfuse_instance: Optional[Any] = None
+    _langfuse_instance: Optional[Langfuse] = None
     _langfuse_enabled: bool = False
     _config_manager: Optional["LangfuseConfigManager"] = None
 
@@ -245,7 +247,7 @@ class LangfuseWrapper:
         """初始化 LangfuseWrapper"""
         # 检查环境变量以确定是否启用 Langfuse
         self._langfuse_enabled = (
-            os.getenv("LANGFUSE_ENABLED", "false").lower() == "true"
+            os.getenv("LANGFUSE_TRACING_ENABLED", "false").lower() == "true"
         )
 
         logger.debug(f"LangfuseWrapper: Langfuse 启用状态: {self._langfuse_enabled}")
@@ -269,13 +271,11 @@ class LangfuseWrapper:
         if self._langfuse_enabled:
             try:
                 logger.debug("LangfuseWrapper: 尝试导入 langfuse 库...")
-                from langfuse import Langfuse
 
                 # 检查必要的环境变量
                 required_env_vars = [
                     "LANGFUSE_SECRET_KEY",
                     "LANGFUSE_PUBLIC_KEY",
-                    "LANGFUSE_HOST",
                 ]
                 logger.debug(
                     f"LangfuseWrapper: 检查必要的环境变量: {required_env_vars}"
@@ -295,7 +295,7 @@ class LangfuseWrapper:
                 logger.debug(
                     "LangfuseWrapper: 所有必要环境变量已设置，创建 Langfuse 实例..."
                 )
-                self._langfuse_instance = Langfuse()
+                self._langfuse_instance = get_client()
                 logger.debug("LangfuseWrapper: Langfuse 实例创建成功，开始认证检查...")
 
                 # 验证认证
@@ -602,7 +602,10 @@ class LangfuseWrapper:
             try:
                 setattr(wrapper, "__langfuse_dynamic_observed__", True)
             except Exception:
-                logger.debug("无法在 wrapper 上设置 __langfuse_dynamic_observed__ 属性", exc_info=True)
+                logger.debug(
+                    "无法在 wrapper 上设置 __langfuse_dynamic_observed__ 属性",
+                    exc_info=True,
+                )
 
             return wrapper
 

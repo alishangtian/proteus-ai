@@ -78,6 +78,7 @@ class ModelManager:
             "api_key": api_key,
             "model_name": model_config["model_name"],
             "type": model_config["type"],
+            "extra_params": model_config.get("extra_params", {}),
         }
 
     def list_models(self) -> List[str]:

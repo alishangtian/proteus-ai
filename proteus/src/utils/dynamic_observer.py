@@ -64,12 +64,18 @@ def _already_wrapped(func) -> bool:
         current = getattr(func, "__wrapped__", None)
         while current and id(current) not in seen:
             seen.add(id(current))
-            if getattr(current, _DEFAULT_MARK, False) or getattr(current, _LANGFUSE_MARK, False):
+            if getattr(current, _DEFAULT_MARK, False) or getattr(
+                current, _LANGFUSE_MARK, False
+            ):
                 return True
             current = getattr(current, "__wrapped__", None)
     except Exception:
         # best-effort: any failure => conservatively assume not wrapped
-        logger.debug("dynamic_observer: error while checking wrapped state for %r", func, exc_info=True)
+        logger.debug(
+            "dynamic_observer: error while checking wrapped state for %r",
+            func,
+            exc_info=True,
+        )
     return False
 
 
@@ -93,13 +99,27 @@ def _mark_wrapped(func) -> None:
             try:
                 setattr(underlying, _DEFAULT_MARK, True)
             except Exception:
-                logger.debug("Unable to set %s on underlying %r", _DEFAULT_MARK, underlying, exc_info=True)
+                logger.debug(
+                    "Unable to set %s on underlying %r",
+                    _DEFAULT_MARK,
+                    underlying,
+                    exc_info=True,
+                )
             try:
                 setattr(underlying, _LANGFUSE_MARK, True)
             except Exception:
-                logger.debug("Unable to set %s on underlying %r", _LANGFUSE_MARK, underlying, exc_info=True)
+                logger.debug(
+                    "Unable to set %s on underlying %r",
+                    _LANGFUSE_MARK,
+                    underlying,
+                    exc_info=True,
+                )
     except Exception:
-        logger.debug("dynamic_observer: failed to mark underlying wrapped function for %r", func, exc_info=True)
+        logger.debug(
+            "dynamic_observer: failed to mark underlying wrapped function for %r",
+            func,
+            exc_info=True,
+        )
 
 
 def _wrap_callable(func):
@@ -108,7 +128,11 @@ def _wrap_callable(func):
     This function is idempotent (uses marker attribute).
     """
     # only wrap python functions / coroutine functions
-    if not (inspect.isfunction(func) or inspect.ismethod(func) or inspect.iscoroutinefunction(func)):
+    if not (
+        inspect.isfunction(func)
+        or inspect.ismethod(func)
+        or inspect.iscoroutinefunction(func)
+    ):
         return func
     if _already_wrapped(func):
         return func
@@ -123,7 +147,13 @@ def _wrap_callable(func):
         return func
 
 
-def apply_to_module(module_or_name, include: Optional[Sequence[str]] = None, exclude: Optional[Sequence[str]] = None, only_in_module: bool = True, verbose: bool = False):
+def apply_to_module(
+    module_or_name,
+    include: Optional[Sequence[str]] = None,
+    exclude: Optional[Sequence[str]] = None,
+    only_in_module: bool = True,
+    verbose: bool = False,
+):
     """
     Scan the given module and apply dynamic_observe to eligible callables.
 
@@ -165,13 +195,21 @@ def apply_to_module(module_or_name, include: Optional[Sequence[str]] = None, exc
             if only_in_module and getattr(attr, "__module__", None) != module_name:
                 continue
             fullname = f"{module_name}.{name}"
-            if include_p and not _matches_any(name, include_p) and not _matches_any(fullname, include_p):
+            if (
+                include_p
+                and not _matches_any(name, include_p)
+                and not _matches_any(fullname, include_p)
+            ):
                 continue
-            if exclude_p and (_matches_any(name, exclude_p) or _matches_any(fullname, exclude_p)):
+            if exclude_p and (
+                _matches_any(name, exclude_p) or _matches_any(fullname, exclude_p)
+            ):
                 continue
             if _already_wrapped(attr):
                 if verbose:
-                    logger.debug("dynamic_observer: skip already wrapped function %s", fullname)
+                    logger.debug(
+                        "dynamic_observer: skip already wrapped function %s", fullname
+                    )
                 continue
             new = _wrap_callable(attr)
             if new is not attr:
@@ -194,45 +232,73 @@ def apply_to_module(module_or_name, include: Optional[Sequence[str]] = None, exc
                         func = v.__func__
                         if _already_wrapped(func):
                             continue
-                        if include_p and not (_matches_any(k, include_p) or _matches_any(full_name, include_p)):
+                        if include_p and not (
+                            _matches_any(k, include_p)
+                            or _matches_any(full_name, include_p)
+                        ):
                             continue
-                        if exclude_p and (_matches_any(k, exclude_p) or _matches_any(full_name, exclude_p)):
+                        if exclude_p and (
+                            _matches_any(k, exclude_p)
+                            or _matches_any(full_name, exclude_p)
+                        ):
                             continue
                         new = _wrap_callable(func)
                         if new is not func:
                             setattr(cls, k, staticmethod(new))
                             if verbose:
-                                logger.info("dynamic_observer: wrapped staticmethod %s", full_name)
+                                logger.info(
+                                    "dynamic_observer: wrapped staticmethod %s",
+                                    full_name,
+                                )
                     # classmethod
                     elif isinstance(v, classmethod):
                         func = v.__func__
                         if _already_wrapped(func):
                             continue
-                        if include_p and not (_matches_any(k, include_p) or _matches_any(full_name, include_p)):
+                        if include_p and not (
+                            _matches_any(k, include_p)
+                            or _matches_any(full_name, include_p)
+                        ):
                             continue
-                        if exclude_p and (_matches_any(k, exclude_p) or _matches_any(full_name, exclude_p)):
+                        if exclude_p and (
+                            _matches_any(k, exclude_p)
+                            or _matches_any(full_name, exclude_p)
+                        ):
                             continue
                         new = _wrap_callable(func)
                         if new is not func:
                             setattr(cls, k, classmethod(new))
                             if verbose:
-                                logger.info("dynamic_observer: wrapped classmethod %s", full_name)
+                                logger.info(
+                                    "dynamic_observer: wrapped classmethod %s",
+                                    full_name,
+                                )
                     # regular function (instance method)
                     elif inspect.isfunction(v):
                         func = v
                         if _already_wrapped(func):
                             continue
-                        if include_p and not (_matches_any(k, include_p) or _matches_any(full_name, include_p)):
+                        if include_p and not (
+                            _matches_any(k, include_p)
+                            or _matches_any(full_name, include_p)
+                        ):
                             continue
-                        if exclude_p and (_matches_any(k, exclude_p) or _matches_any(full_name, exclude_p)):
+                        if exclude_p and (
+                            _matches_any(k, exclude_p)
+                            or _matches_any(full_name, exclude_p)
+                        ):
                             continue
                         new = _wrap_callable(func)
                         if new is not func:
                             setattr(cls, k, new)
                             if verbose:
-                                logger.info("dynamic_observer: wrapped method %s", full_name)
+                                logger.info(
+                                    "dynamic_observer: wrapped method %s", full_name
+                                )
                 except Exception:
-                    logger.exception("dynamic_observer: failed processing %s.%s", cls.__name__, k)
+                    logger.exception(
+                        "dynamic_observer: failed processing %s.%s", cls.__name__, k
+                    )
 
     return True
 
@@ -271,13 +337,29 @@ class _ObserverLoaderWrapper(importlib.abc.Loader):
             # patterns were compiled to regex objects; extract patterns strings for apply_to_module
             include = [p.pattern for p in (self.include_p or [])]
             exclude = [p.pattern for p in (self.exclude_p or [])]
-            apply_to_module(module, include=include, exclude=exclude, only_in_module=self.only_in_module, verbose=self.verbose)
+            apply_to_module(
+                module,
+                include=include,
+                exclude=exclude,
+                only_in_module=self.only_in_module,
+                verbose=self.verbose,
+            )
         except Exception:
-            logger.exception("dynamic_observer: failed to apply to module %s", getattr(module, "__name__", "<unknown>"))
+            logger.exception(
+                "dynamic_observer: failed to apply to module %s",
+                getattr(module, "__name__", "<unknown>"),
+            )
 
 
 class _ObserverFinder(importlib.abc.MetaPathFinder):
-    def __init__(self, target_prefix: str, include_p, exclude_p, only_in_module: bool, verbose: bool):
+    def __init__(
+        self,
+        target_prefix: str,
+        include_p,
+        exclude_p,
+        only_in_module: bool,
+        verbose: bool,
+    ):
         self.target_prefix = target_prefix
         self.include_p = include_p
         self.exclude_p = exclude_p
@@ -295,21 +377,35 @@ class _ObserverFinder(importlib.abc.MetaPathFinder):
         if not spec or not spec.loader:
             return None
         # wrap loader
-        spec.loader = _ObserverLoaderWrapper(spec.loader, self.include_p, self.exclude_p, self.only_in_module, self.verbose)
+        spec.loader = _ObserverLoaderWrapper(
+            spec.loader,
+            self.include_p,
+            self.exclude_p,
+            self.only_in_module,
+            self.verbose,
+        )
         return spec
 
 
 _installed_finders = {}
 
 
-def install_import_hook(package_prefix: str, include: Optional[Sequence[str]] = None, exclude: Optional[Sequence[str]] = None, only_in_module: bool = True, verbose: bool = False):
+def install_import_hook(
+    package_prefix: str,
+    include: Optional[Sequence[str]] = None,
+    exclude: Optional[Sequence[str]] = None,
+    only_in_module: bool = True,
+    verbose: bool = False,
+):
     """
     Install an import hook that will apply dynamic_observe to modules whose
     fullname starts with package_prefix.
     """
     include_p = _compile_patterns(include)
     exclude_p = _compile_patterns(exclude)
-    finder = _ObserverFinder(package_prefix, include_p, exclude_p, only_in_module, verbose)
+    finder = _ObserverFinder(
+        package_prefix, include_p, exclude_p, only_in_module, verbose
+    )
     # insert at front to catch imports early
     sys.meta_path.insert(0, finder)
     _installed_finders[package_prefix] = finder
@@ -325,7 +421,13 @@ def uninstall_import_hook(package_prefix: str):
 
 
 # convenience helper for module-local explicit call
-def auto_apply_here(globals_dict, include: Optional[Sequence[str]] = None, exclude: Optional[Sequence[str]] = None, only_in_module: bool = True, verbose: bool = False):
+def auto_apply_here(
+    globals_dict,
+    include: Optional[Sequence[str]] = None,
+    exclude: Optional[Sequence[str]] = None,
+    only_in_module: bool = True,
+    verbose: bool = False,
+):
     """
     Convenience function to be placed at the bottom of a module:
 
@@ -335,9 +437,16 @@ def auto_apply_here(globals_dict, include: Optional[Sequence[str]] = None, exclu
     `globals_dict` should be the module's globals() mapping.
     """
     module_name = globals_dict.get("__name__")
+    logger.info("dynamic_observer: auto-applying to module %s", module_name)
     if not module_name:
         raise RuntimeError("auto_apply_here requires module globals()")
     module = sys.modules.get(module_name)
     if not module:
         module = importlib.import_module(module_name)
-    return apply_to_module(module, include=include, exclude=exclude, only_in_module=only_in_module, verbose=verbose)
+    return apply_to_module(
+        module,
+        include=include,
+        exclude=exclude,
+        only_in_module=only_in_module,
+        verbose=verbose,
+    )

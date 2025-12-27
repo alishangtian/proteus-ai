@@ -29,8 +29,8 @@ from src.api.events import (
 logger = logging.getLogger(__name__)
 
 
-class ChatAgent:
-    """Chat Agent 类 - 处理纯聊天模式的对话
+class OrchestraAgent:
+    """Orchestra Agent 类 - 处理纯聊天模式的对话
 
     该类封装了 chat 模式下的所有逻辑，包括：
     - 流式 LLM 调用
@@ -88,7 +88,7 @@ class ChatAgent:
         text: str,
         file_analysis_context: str = "",
     ) -> str:
-        """运行 Chat Agent
+        """运行 Orchestra Agent
 
         Args:
             chat_id: 聊天会话ID
@@ -117,7 +117,6 @@ class ChatAgent:
                 conversation_history = conversation_manager.load_conversation_history(
                     self.conversation_id, max_messages=self.conversation_round * 3
                 )
-                # conversation_history = self._load_conversation_history()
                 if conversation_history:
                     messages.extend(conversation_history)
 

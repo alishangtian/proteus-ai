@@ -3481,24 +3481,84 @@ body {
 .result-value .mermaid,
 .explanation .mermaid,
 .answer .mermaid,
+.action_complete .mermaid,
 .mermaid {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin: 16px auto;
+    display: block;
     padding: 20px;
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    border-radius: 12px;
-    border: 1px solid #e6eefc;
-    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
-    overflow-x: auto;
-    max-width: 100%;
+    margin: 20px 0;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid #e8e8e8;
+    overflow: auto;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 200px;
+    max-height: 600px;  /* 限制高度，避免纵向图表过大 */
+    width: 100%;
+    text-align: center;
 }
 
+.mermaid:hover {
+    background: #f0f0f0;
+    border-color: #1677FF;
+    box-shadow: 0 2px 8px rgba(22, 119, 255, 0.15);
+}
+
+/* 默认 SVG 样式 - 适用于所有非甘特图 */
 .mermaid svg {
     max-width: 100%;
     height: auto;
+    display: inline-block;
+}
+
+/* 甘特图特殊样式 - 横向拉伸 */
+.mermaid svg[id*="mermaid"]:has(g.grid),
+.mermaid:has(g.taskText) svg {
+    max-width: none !important;
+    min-width: 2000px !important;
+    max-height: 500px;
+    height: auto !important;
     display: block;
+}
+
+/* 甘特图容器特殊处理 */
+.mermaid:has(g.taskText) {
+    text-align: left;
+    max-height: 550px;
+}
+
+/* 甘特图元素样式优化 */
+.mermaid g.rect {
+    stroke-width: 1.5;
+}
+
+.mermaid .label {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 13px;
+    white-space: normal !important;
+    word-wrap: break-word !important;
+}
+
+.mermaid .task {
+    stroke-width: 1.5;
+}
+
+.mermaid .sectionTitle {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-weight: 600;
+}
+
+.mermaid .taskText {
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px;
+    fill: #333;
+}
+
+/* 流程图、时序图等纵向图表保持正常尺寸 */
+.mermaid svg:not(:has(g.taskText)) {
+    max-width: 100% !important;
+    min-width: auto !important;
+    max-height: 600px;
 }
 
 /* Mermaid 图表在暗色主题下的样式调整 */

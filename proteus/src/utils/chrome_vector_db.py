@@ -223,6 +223,29 @@ class ChromeVectorDB:
             self.logger.error(f"删除文档失败: {e}")
             raise
 
+    def get_documents(
+        self,
+        collection_name: str,
+        ids: Optional[List[str]] = None,
+        where: Optional[Dict] = None,
+    ) -> Dict[str, Any]:
+        """获取指定文档
+
+        Args:
+            collection_name: 集合名称
+            ids: 文档ID列表
+            where: 过滤条件
+
+        Returns:
+            Dict: 文档信息
+        """
+        try:
+            collection = self.create_collection(collection_name)
+            return collection.get(ids=ids, where=where)
+        except Exception as e:
+            self.logger.error(f"获取文档失败: {e}")
+            raise
+
     def test_embedding_function(self, text: str = "测试文本") -> bool:
         """测试嵌入函数是否正常工作
 

@@ -78,6 +78,31 @@ class FileStorage(StorageBase):
             logger.error(f"读取用户数据失败: {e}")
             return None
 
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根据邮箱获取用户数据
+
+        Args:
+            email: 邮箱地址
+
+        Returns:
+            Optional[Dict]: 用户数据字典，不存在则返回None
+        """
+        try:
+            for filename in os.listdir(self.data_dir):
+                if filename.startswith("user_") and filename.endswith(".json"):
+                    file_path = os.path.join(self.data_dir, filename)
+                    with open(file_path, "r") as f:
+                        try:
+                            user_data = json.load(f)
+                            if user_data.get("email") == email:
+                                return user_data
+                        except json.JSONDecodeError:
+                            continue
+            return None
+        except Exception as e:
+            logger.error(f"根据邮箱查找用户失败: {e}")
+            return None
+
     def save_session(self, session_id: str, session_data: Dict) -> bool:
         """保存会话数据到文件
 

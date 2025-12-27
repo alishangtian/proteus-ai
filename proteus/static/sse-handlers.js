@@ -69,9 +69,28 @@ if (typeof mermaid !== 'undefined') {
         startOnLoad: false,
         theme: 'default',
         securityLevel: 'loose',
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: 'Noto Sans SC, Arial, sans-serif',
         suppressErrors: true,  // 抑制错误显示
-        useMaxWidth: false    // 禁用最大宽度，让图表使用自然宽度，避免挤压
+        useMaxWidth: false,    // 禁用最大宽度，让图表使用自然宽度
+        gantt: {
+            barHeight: 35,         // 适中的任务条高度
+            barGap: 6,             // 适中的间距
+            fontSize: 14,          // 字体大小
+            sectionFontSize: 16,   // 分区字体
+            numberSectionStyles: 4,
+            leftPadding: 100,      // 减少左侧padding，给图表更多空间
+            topPadding: 50,
+            bottomPadding: 50,
+            gridLineStartPadding: 35,
+            useWidth: 2000,        // 设置固定宽度为2000px，横向拉长
+            axisFormat: '%H:%M'
+        },
+        flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true,
+            curve: 'basis',
+            padding: 20
+        }
     });
 }
 

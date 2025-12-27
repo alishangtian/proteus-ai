@@ -8,10 +8,10 @@ from threading import Lock
 from pathlib import Path
 from PyPDF2 import PdfReader
 from .base import BaseNode
-from .web_crawler_local import SeleniumWebCrawlerNode
 from ..api.config import API_CONFIG
 from ..api.llm_api import call_llm_api
-from ..utils.redis_cache import RedisCache, get_redis_connection
+from ..utils.redis_cache import RedisCache
+from ..utils.langfuse_wrapper import langfuse_wrapper
 
 logger = logging.getLogger(__name__)
 
@@ -66,47 +66,76 @@ class SerperWebCrawlerNode(BaseNode):
 
     # 提示词模板
     MARKDOWN_SUMMARY_PROMPT = {
-        "system": """你是一名专业的Markdown文档处理专家，请严格遵循以下要求：
-1. 文档内容判断，当认为内容是一些毫无意义的格式信息或者无意义信息，请直接返回"此链接 {url} 内容无效，请忽略"
-2. 核心任务：将用户提供的Markdown文档转化为结构清晰、保留关键要素的总结性文档
-3. 格式要求：
-   - 必须保持Markdown格式
-   - 保留必要的图片(![]())和表格(| |)
-   - 使用章节分级整理内容
-4. 内容要求：
-   - 保持原文核心观点和技术细节
-   - 删除冗余示例和重复描述
-   - 维持原有技术术语的准确性
-5. 注意事项：
-   - 不要添加原文未出现的内容
-   - 如遇复杂结构，保持信息完整性优于格式简洁
-   - 请只返回Markdown格式的总结，不要包含任何额外的说明或提示
-   - 保持原文严谨度，字数缩减至20%以内，避免主观阐释  
-   """,
-        "user": """请处理以下Markdown文档：\n
-{text}\n
-文档原始链接：{url}
+        "system": """你是一名专业的文档精简专家，擅长对文本进行高效压缩与核心信息提取。请根据以下要求处理用户输入的文档内容：
+
+**核心任务：**
+将输入的文档压缩至原长度的 30% 左右，同时保留原文的核心信息、关键数据和逻辑结构。
+
+** 内容有效性判断 **
+1. 若内容为无意义的格式信息、错误页面或空白内容，直接返回"此链接 {url} 内容无效，请忽略"
+
+**处理原则：**
+1. **识别核心内容**：保留主旨句、关键结论、重要定义、核心数据、行动项及必要背景。
+2. **删减冗余内容**：剔除重复叙述、过渡性语句、次要细节、冗长举例及非必要的修饰词。
+3. **合并同类信息**：将相近观点或事实整合为简洁表述。
+4. **维持逻辑连贯**：确保压缩后的文本条理清晰、语义通顺。
+5. **保留关键术语与专有名词**：确保专业概念准确无误。
+
+**输出要求：**
+- 直接输出压缩后的文本，无需额外解释。
+- 尽量使用原文中的关键词与表述方式。
+- 若原文结构清晰（如分章节、列表），可保持原有组织形式。
+
+**示例风格（仅供参考）：**
+- 原文段落：“在本次项目复盘会议中，各部门代表均发表了详细意见。市场部指出，推广活动在第一季度取得了超出预期的效果，曝光量同比增长 45%，但转化率仍有提升空间；技术部反馈系统稳定性已有显著改善，故障率下降 60%...”
+- 压缩后：“项目复盘显示：Q1 市场推广曝光量增 45%，转化率待提升；技术部系统故障率降 60%。”
+
+请根据上述规则，对用户输入的文档进行压缩与提取。
+""",
+        "user": """原始文档如下：\n\n
+<raw_text>
+{text}
+</raw_text>
+\n
+文档原始链接：{url}\n
+总结后的文档：\n
 """,
     }
 
     TEXT_SUMMARY_PROMPT = {
-        "system": """你是一名专业的文档处理专家，请严格遵循以下要求：
-1. 文档内容判断，当认为内容是一些毫无意义的格式信息或者无意义信息，请直接返回"此链接 {url} 内容无效，请忽略"
-2. 核心任务：将用户提供的文档转化为结构清晰、保留关键要素的总结文档
-3. 格式要求：
-   - 使用章节分级整理内容
-4. 内容要求：
-   - 保持原文核心观点和技术细节
-   - 删除冗余示例和重复描述
-   - 维持原有技术术语的准确性
-5. 注意事项：
-   - 不要添加原文未出现的内容
-   - 如遇复杂结构，保持信息完整性优于格式简洁
-   - 请只返回总结，不要包含任何额外的说明或提示
-   - 保持原文严谨度，字数缩减至50%以内，避免主观阐释""",
-        "user": """请处理以下文档：\n
-{text}\n
-文档原始链接：{url}
+        "system": """你是一名专业的文档精简专家，擅长对文本进行高效压缩与核心信息提取。请根据以下要求处理用户输入的文档内容：
+
+**核心任务：**
+将输入的文档压缩至原长度的 30% 左右，同时保留原文的核心信息、关键数据和逻辑结构。
+
+** 内容有效性判断 **
+1. 若内容为无意义的格式信息、错误页面或空白内容，直接返回"此链接 {url} 内容无效，请忽略"
+
+**处理原则：**
+1. **识别核心内容**：保留主旨句、关键结论、重要定义、核心数据、行动项及必要背景。
+2. **删减冗余内容**：剔除重复叙述、过渡性语句、次要细节、冗长举例及非必要的修饰词。
+3. **合并同类信息**：将相近观点或事实整合为简洁表述。
+4. **维持逻辑连贯**：确保压缩后的文本条理清晰、语义通顺。
+5. **保留关键术语与专有名词**：确保专业概念准确无误。
+
+**输出要求：**
+- 直接输出压缩后的文本，无需额外解释。
+- 尽量使用原文中的关键词与表述方式。
+- 若原文结构清晰（如分章节、列表），可保持原有组织形式。
+
+**示例风格（仅供参考）：**
+- 原文段落：“在本次项目复盘会议中，各部门代表均发表了详细意见。市场部指出，推广活动在第一季度取得了超出预期的效果，曝光量同比增长 45%，但转化率仍有提升空间；技术部反馈系统稳定性已有显著改善，故障率下降 60%...”
+- 压缩后：“项目复盘显示：Q1 市场推广曝光量增 45%，转化率待提升；技术部系统故障率降 60%。”
+
+请根据上述规则，对用户输入的文档进行压缩与提取。
+""",
+        "user": """原始文档如下：\n\n
+<raw_text>
+{text}
+</raw_text>
+\n
+文档原始链接：{url}\n
+总结后的文档：\n
 """,
     }
 
@@ -152,11 +181,118 @@ class SerperWebCrawlerNode(BaseNode):
             logger.error(f"PDF处理失败: {url}, 错误: {str(e)}")
             raise
 
+    @langfuse_wrapper.dynamic_observe()
+    async def _execute_llm_generation(
+        self,
+        messages: list,
+        model_name: str,
+        url: str,
+    ) -> Tuple[str, Dict]:
+        """执行 LLM 生成（带追踪）
+
+        Args:
+            messages: 消息列表
+            model_name: 模型名称
+            url: 原始URL（用于日志记录）
+
+        Returns:
+            tuple: (响应文本, 使用情况)
+        """
+        start_time = time.time()
+        response_text = ""
+        usage_info = {}
+
+        try:
+            langfuse_instance = langfuse_wrapper.get_langfuse_instance()
+            with langfuse_instance.start_as_current_span(
+                name="web-crawler-llm-call"
+            ) as span:
+                # 创建嵌套的generation span
+                span.update_trace(tags=["web_crawler", "summary"])
+                with span.start_as_current_generation(
+                    name="summarize-web-content",
+                    model=model_name,
+                    input={"prompt": messages, "url": url},
+                    model_parameters={
+                        "temperature": 0.7,
+                    },
+                    metadata={
+                        "url": url,
+                        "content_length": len(messages[-1].get("content", "")),
+                    },
+                ) as generation:
+                    # 调用 LLM API
+                    response_text, usage_info = await call_llm_api(
+                        messages=messages,
+                        model_name=model_name,
+                    )
+
+                    # 计算执行时间
+                    execution_time = time.time() - start_time
+
+                    # 构建输出内容
+                    output_content = {
+                        "summary": response_text,
+                        "original_url": url,
+                    }
+
+                    # 构建使用详情
+                    usage_details = {
+                        "input_usage": usage_info.get("prompt_tokens", 0),
+                        "output_usage": usage_info.get("completion_tokens", 0),
+                    }
+
+                    # 更新 generation
+                    generation.update(
+                        output=output_content,
+                        usage_details=usage_details,
+                        metadata={
+                            "execution_time": execution_time,
+                            "summary_length": len(response_text),
+                        },
+                    )
+
+                    # 评分 - 根据响应质量评分
+                    relevance_score = (
+                        0.95 if response_text and len(response_text) > 50 else 0.5
+                    )
+                    generation.score(
+                        name="relevance", value=relevance_score, data_type="NUMERIC"
+                    )
+
+                    logger.info(
+                        f"LLM生成完成 (url: {url}, "
+                        f"耗时: {execution_time:.2f}s, "
+                        f"tokens: {usage_details['input_usage']+usage_details['output_usage']})"
+                    )
+
+            return response_text, usage_info
+
+        except Exception as e:
+            execution_time = time.time() - start_time if "start_time" in locals() else 0
+
+            # 尝试更新 generation span 的错误状态
+            if "generation" in locals():
+                try:
+                    if hasattr(generation, "update"):
+                        generation.update(
+                            output={"error": str(e)},
+                            status_message=f"LLM call failed: {str(e)}",
+                            metadata={"execution_time": execution_time},
+                        )
+                except Exception as update_error:
+                    logger.warning(f"Failed to update generation span: {update_error}")
+
+            logger.error(f"LLM生成失败 (url: {url}): {str(e)}", exc_info=True)
+            raise
+
     async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
         start_time = time.time()
         url = str(params.get("url", "")).strip()
         need_summary = bool(params.get("need_summary", True))
+        # need_summary = True
         include_markdown = bool(params.get("include_markdown", True))
+        # include_markdown = True
         if not url:
             raise ValueError("url参数不能为空")
 
@@ -208,7 +344,7 @@ class SerperWebCrawlerNode(BaseNode):
                 if not text or len(text.strip()) < 50 or "not found" in text.lower():
                     text = f"此网页内容无效，请忽略。链接：{url}"
                 elif include_markdown:
-                    text = await call_llm_api(
+                    text, usage_info = await self._execute_llm_generation(
                         messages=[
                             {
                                 "role": "system",
@@ -223,11 +359,11 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="gpt-5-nano",
+                        model_name="gemini-2.5-flash",
+                        url=url,
                     )
-                    text = text[0]
                 else:
-                    text = await call_llm_api(
+                    text, usage_info = await self._execute_llm_generation(
                         messages=[
                             {
                                 "role": "system",
@@ -242,9 +378,9 @@ class SerperWebCrawlerNode(BaseNode):
                                 ),
                             },
                         ],
-                        model_name="gpt-5-nano",
+                        model_name="gemini-2.5-flash",
+                        url=url,
                     )
-                    text = text[0]
 
             end_time = time.time()
             execution_time = end_time - start_time

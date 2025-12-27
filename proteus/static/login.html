@@ -282,7 +282,11 @@
             </form>
             <div class="login-footer">
                 <p>还没有账号? <a href="/register" class="register-link">立即注册</a></p>
-                <p><a href="#" id="updateNicknameLink" class="update-nickname-link">修改用户昵称</a></p>
+                <p>
+                    <a href="#" id="updateNicknameLink" class="update-nickname-link">修改用户昵称</a>
+                    <span style="margin: 0 10px; color: #ccc;">|</span>
+                    <a href="#" id="resetPasswordLink" class="update-nickname-link">忘记密码？</a>
+                </p>
             </div>
         </div>
     </div>
@@ -312,6 +316,42 @@
                 <div id="updateSuccessMsg" class="success-message" style="display:none;"></div>
                 <button type="submit" class="login-btn" id="updateBtn">
                     <span class="btn-text">确认修改</span>
+                    <span class="spinner" style="display:none;"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 重置密码模态框 -->
+    <div id="resetPasswordModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="closeResetModal">&times;</span>
+            <h3 class="modal-title">重置密码</h3>
+            <form id="resetPasswordForm">
+                <div class="form-group">
+                    <label for="reset_email">邮箱地址</label>
+                    <input type="email" id="reset_email" name="email" placeholder="请输入注册邮箱" required
+                        class="login-input">
+                </div>
+                <div class="form-group">
+                    <label for="reset_username">用户名</label>
+                    <input type="text" id="reset_username" name="username" placeholder="请输入用户名" required
+                        class="login-input">
+                </div>
+                <div class="form-group">
+                    <label for="reset_new_password">新密码</label>
+                    <input type="password" id="reset_new_password" name="new_password" placeholder="请输入新密码" required
+                        class="login-input" minlength="6">
+                </div>
+                <div class="form-group">
+                    <label for="reset_confirm_password">确认新密码</label>
+                    <input type="password" id="reset_confirm_password" name="confirm_password" placeholder="请再次输入新密码"
+                        required class="login-input" minlength="6">
+                </div>
+                <div id="resetErrorMsg" class="error-message" style="display:none;"></div>
+                <div id="resetSuccessMsg" class="success-message" style="display:none;"></div>
+                <button type="submit" class="login-btn" id="resetBtn">
+                    <span class="btn-text">重置密码</span>
                     <span class="spinner" style="display:none;"></span>
                 </button>
             </form>
@@ -476,6 +516,107 @@
             document.getElementById('confirm_password').value = '';
             updateErrorMsg.style.display = 'none';
             updateSuccessMsg.style.display = 'none';
+        }
+
+        // 重置密码相关逻辑
+        const resetPasswordLink = document.getElementById('resetPasswordLink');
+        const resetPasswordModal = document.getElementById('resetPasswordModal');
+        const closeResetModal = document.getElementById('closeResetModal');
+        const resetPasswordForm = document.getElementById('resetPasswordForm');
+        const resetBtn = document.getElementById('resetBtn');
+        const resetErrorMsg = document.getElementById('resetErrorMsg');
+        const resetSuccessMsg = document.getElementById('resetSuccessMsg');
+        const resetBtnText = resetBtn.querySelector('.btn-text');
+        const resetSpinner = resetBtn.querySelector('.spinner');
+
+        // 打开重置密码模态框
+        resetPasswordLink.addEventListener('click', function (e) {
+            e.preventDefault();
+            resetPasswordModal.style.display = 'block';
+            resetResetForm();
+        });
+
+        // 关闭模态框
+        closeResetModal.addEventListener('click', function () {
+            resetPasswordModal.style.display = 'none';
+        });
+
+        // 点击模态框外部关闭
+        window.addEventListener('click', function (e) {
+            if (e.target === resetPasswordModal) {
+                resetPasswordModal.style.display = 'none';
+            }
+        });
+
+        // 处理重置密码表单提交
+        resetPasswordForm.addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            // 验证两次密码是否一致
+            const newPassword = document.getElementById('reset_new_password').value;
+            const confirmPassword = document.getElementById('reset_confirm_password').value;
+
+            if (newPassword !== confirmPassword) {
+                showResetError('两次输入的密码不一致');
+                return;
+            }
+
+            // 显示加载状态
+            resetBtnText.textContent = '重置中...';
+            resetSpinner.style.display = 'inline-block';
+            resetBtn.disabled = true;
+            resetErrorMsg.style.display = 'none';
+            resetSuccessMsg.style.display = 'none';
+
+            // 使用 FormData 获取表单数据
+            const formData = new FormData(resetPasswordForm);
+            const formObject = Object.fromEntries(formData.entries());
+
+            try {
+                const response = await fetch('/reset_password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify(formObject)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    resetSuccessMsg.textContent = result.data.message || '密码重置成功';
+                    resetSuccessMsg.style.display = 'block';
+                    // 清空表单
+                    resetResetForm();
+                    // 3秒后关闭模态框
+                    setTimeout(() => {
+                        resetPasswordModal.style.display = 'none';
+                    }, 3000);
+                } else {
+                    showResetError(result.error || '重置失败');
+                }
+            } catch (error) {
+                showResetError('网络请求失败');
+            } finally {
+                // 重置按钮状态
+                resetBtnText.textContent = '重置密码';
+                resetSpinner.style.display = 'none';
+                resetBtn.disabled = false;
+            }
+        });
+
+        function showResetError(message) {
+            resetErrorMsg.textContent = message;
+            resetErrorMsg.style.display = 'block';
+        }
+
+        function resetResetForm() {
+            document.getElementById('reset_email').value = '';
+            document.getElementById('reset_username').value = '';
+            document.getElementById('reset_new_password').value = '';
+            document.getElementById('reset_confirm_password').value = '';
+            resetErrorMsg.style.display = 'none';
+            resetSuccessMsg.style.display = 'none';
         }
     </script>
 </body>

@@ -7,29 +7,147 @@
     <title>Proteus AI - 智能助手</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
     <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/marked.min.js"></script>
     <style>
         /* 主页导航样式 */
         .home-container {
             min-height: 100vh;
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: linear-gradient(135deg, #f8f9ff 0%, #eef2ff 100%);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             padding: 20px;
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        /* 布局调整 */
+        .content-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 60px;
+            width: 100%;
+            max-width: 1600px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .left-column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .right-column {
+            flex: 1;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        @media (min-width: 768px) {
+            .content-wrapper {
+                flex-direction: row;
+                align-items: flex-start;
+            }
+        }
+
+        /* 每日一思卡片 */
+        .story-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            height: 100%;
+            min-height: 500px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+        }
+
+        .story-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+
+        .story-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .story-icon {
+            font-size: 24px;
+        }
+
+        .story-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .story-content {
+            flex: 1;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #444;
+            overflow-y: auto;
+            max-height: 600px;
+            padding-right: 10px;
+        }
+
+        /* Markdown 样式微调 */
+        .story-content p {
+            margin-bottom: 1em;
+        }
+
+        .story-content h1,
+        .story-content h2,
+        .story-content h3 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            color: #2c3e50;
+        }
+
+        .loading-text {
+            color: #888;
+            font-style: italic;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 1;
+            }
+
+            100% {
+                opacity: 0.6;
+            }
         }
 
         .home-header {
             text-align: center;
-            margin-bottom: 60px;
+            margin-bottom: 50px;
         }
 
         .home-title {
             font-size: 48px;
             font-weight: 700;
             color: #333;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -37,43 +155,45 @@
 
         .home-subtitle {
             font-size: 18px;
-            color: #666;
+            color: #555;
             max-width: 500px;
             margin: 0 auto;
-            line-height: 1.6;
+            line-height: 1.7;
+            font-weight: 400;
         }
 
         .nav-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
+            gap: 40px;
             max-width: 800px;
             width: 100%;
+            justify-items: center;
         }
 
         .nav-card {
-            background: white;
-            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
             padding: 40px 30px;
             text-align: center;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
             transition: all 0.3s ease;
             cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(8px);
         }
 
         .nav-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            transform: translateY(-8px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
         }
 
         .nav-card.chat:hover {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
         }
 
         .nav-card.knowledge:hover {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
         }
 
         .nav-card:hover .card-icon {
@@ -139,33 +259,192 @@
                 font-size: 20px;
             }
         }
+
+        /* 推荐内容样式 */
+        .recommendation-section {
+            margin-top: 60px;
+            width: 100%;
+            max-width: 1200px;
+            /* Match content-wrapper width */
+            display: none;
+            /* 默认隐藏，加载后显示 */
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 24px;
+            text-align: left;
+            /* Align left to match flow */
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding-left: 10px;
+        }
+
+        .recommendation-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            /* Force 3 columns */
+            gap: 20px;
+        }
+
+        .rec-card {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
+            min-height: 160px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .rec-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(to bottom, #4f46e5, #7c3aed);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .rec-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+            background: white;
+        }
+
+        .rec-card:hover::before {
+            opacity: 1;
+        }
+
+        .rec-card-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #222;
+            margin-bottom: 12px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.6;
+        }
+
+        .rec-card-meta {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: auto;
+            padding-top: 12px;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .rec-card-author {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .recommendation-grid {
+                grid-template-columns: 1fr;
+                /* Stack on mobile */
+                max-width: 400px;
+                margin: 0 auto;
+            }
+
+            .section-title {
+                text-align: center;
+                justify-content: center;
+                padding-left: 0;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .recommendation-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
     </style>
 </head>
 
 <body>
     <div class="home-container">
-        <div class="home-header">
-            <h1 class="home-title">Proteus AI</h1>
-            <p class="home-subtitle">智能助手与知识库系统，为您提供全方位的AI服务体验</p>
-        </div>
+        <div class="content-wrapper">
+            <div class="left-column">
+                <div class="home-header">
+                    <h1 class="home-title">Proteus AI</h1>
+                    <p class="home-subtitle">智能助手与知识库系统，为您提供全方位的AI服务体验</p>
+                </div>
 
-        <div class="nav-grid">
-            <!-- Chat 导航卡片 -->
-            <div class="nav-card chat" onclick="navigateToChat()">
-                <div class="card-icon">💬</div>
-                <h2 class="card-title">智能对话</h2>
-                <p class="card-description">
-                    与AI助手进行自然对话，获取智能回答、创作内容、分析问题，支持多种工作模式和工具调用。
-                </p>
+                <div class="nav-grid">
+                    <!-- Chat 导航卡片 -->
+                    <div class="nav-card chat" onclick="navigateToChat()">
+                        <div class="card-icon">💬</div>
+                        <h2 class="card-title">智能对话</h2>
+                        <p class="card-description">
+                            与AI助手进行自然对话，获取智能回答、创作内容、分析问题，支持多种工作模式和工具调用。
+                        </p>
+                    </div>
+
+                    <!-- 知识库导航卡片 -->
+                    <div class="nav-card knowledge" onclick="navigateToKnowledgeBase()">
+                        <div class="card-icon">📚</div>
+                        <h2 class="card-title">知识库</h2>
+                        <p class="card-description">
+                            浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等各类知识资源。
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            <!-- 知识库导航卡片 -->
-            <div class="nav-card knowledge" onclick="navigateToKnowledgeBase()">
-                <div class="card-icon">📚</div>
-                <h2 class="card-title">知识库</h2>
-                <p class="card-description">
-                    浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等各类知识资源。
-                </p>
+            <!-- <div class="right-column">
+                <div class="story-card">
+                    <div class="story-header">
+                        <span class="story-icon">🧘</span>
+                        <h3 class="story-title">每日一思</h3>
+                    </div>
+                    <div id="story-content" class="story-content">
+                        <div class="loading-text">正在生成今日哲学故事...</div>
+                    </div>
+                </div>
+            </div> -->
+        </div>
+
+        <!-- 知识库推荐区域 (Moved outside left-column) -->
+        <div class="recommendation-section" id="rec-section">
+            <h3 class="section-title">
+                <span>✨</span> 知识库推荐
+            </h3>
+            <div class="recommendation-grid" id="rec-grid">
+                <!-- 推荐卡片将通过 JS 动态插入 -->
             </div>
         </div>
     </div>
@@ -180,7 +459,7 @@
         }
 
         // 添加键盘快捷键支持
-        document.addEventListener('keydown', function(event) {
+        document.addEventListener('keydown', function (event) {
             if (event.key === '1' || event.key === 'c') {
                 navigateToChat();
             } else if (event.key === '2' || event.key === 'k') {
@@ -190,14 +469,134 @@
 
         // 添加触摸设备优化
         document.querySelectorAll('.nav-card').forEach(card => {
-            card.addEventListener('touchstart', function() {
+            card.addEventListener('touchstart', function () {
                 this.style.transform = 'translateY(-5px)';
             });
 
-            card.addEventListener('touchend', function() {
+            card.addEventListener('touchend', function () {
                 this.style.transform = '';
             });
         });
+
+        // 加载推荐内容和每日一思
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRecommendations();
+            // generateDailyStory();
+        });
+
+        async function generateDailyStory() {
+            const storyContent = document.getElementById('story-content');
+
+            try {
+                // 1. 创建会话
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: "请写一篇富有哲学的短篇小说，字数在300字左右，标题自拟。请直接输出小说内容，不要包含其他寒暄。",
+                        modul: "chat",
+                        conversation_id: "1766537112985-4i3w4vby2"
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success && data.chat_id) {
+                    // 2. 连接 SSE 流
+                    const eventSource = new EventSource(`/stream/${data.chat_id}`);
+                    let fullText = '';
+
+                    eventSource.addEventListener('answer', (event) => {
+                        try {
+                            const eventData = JSON.parse(event.data);
+                            if (eventData.success && eventData.data) {
+                                fullText += eventData.data;
+                                // 使用 marked 渲染 Markdown
+                                if (typeof marked !== 'undefined') {
+                                    storyContent.innerHTML = marked.parse(fullText);
+                                } else {
+                                    storyContent.innerText = fullText;
+                                }
+                            }
+                        } catch (e) {
+                            console.error('解析 answer 事件失败', e);
+                        }
+                    });
+
+                    eventSource.addEventListener('agent_complete', (event) => {
+                        eventSource.close();
+                    });
+
+                    eventSource.onerror = (err) => {
+                        console.error('SSE 连接错误', err);
+                        eventSource.close();
+                        if (!fullText) {
+                            storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">生成中断，请刷新重试。</div>';
+                        }
+                    };
+                } else {
+                    storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">无法启动生成任务。</div>';
+                }
+            } catch (e) {
+                console.error('生成每日一思失败:', e);
+                storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">生成失败，请检查网络连接。</div>';
+            }
+        }
+
+        async function loadRecommendations() {
+            try {
+                const response = await fetch('/knowledge_base/list');
+                const data = await response.json();
+
+                if (data.success && data.knowledge_base_items && data.knowledge_base_items.length > 0) {
+                    const items = data.knowledge_base_items;
+                    // 随机选择最多3个条目
+                    const selected = [];
+                    const indices = new Set();
+                    const count = Math.min(3, items.length);
+
+                    // 如果条目少于等于3个，直接全部显示
+                    if (items.length <= 3) {
+                        selected.push(...items);
+                    } else {
+                        while (selected.length < count) {
+                            const idx = Math.floor(Math.random() * items.length);
+                            if (!indices.has(idx)) {
+                                indices.add(idx);
+                                selected.push(items[idx]);
+                            }
+                        }
+                    }
+
+                    const grid = document.getElementById('rec-grid');
+                    grid.innerHTML = selected.map(item => `
+                        <div class="rec-card" onclick="window.location.href='/knowledge/index?id=${item.id}'">
+                            <div class="rec-card-title">${escapeHtml(item.title || '无标题')}</div>
+                            <div class="rec-card-meta">
+                                <span class="rec-card-author">👤 ${escapeHtml(item.author || '匿名')}</span>
+                                <span>${formatDate(item.updated_at || item.timestamp)}</span>
+                            </div>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('rec-section').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('加载推荐内容失败:', error);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
     </script>
 </body>
 

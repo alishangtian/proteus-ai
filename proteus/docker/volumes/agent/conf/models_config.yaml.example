@@ -1,17 +1,71 @@
 # 模型配置YAML文件
 deepseek-chat:
+  type: openai
   base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitcKU******PdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
-  model_name: deepseek-chat
-lang_context_model:
-  base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitcK********OLZ8lZXNvOHbXlPcw/l/tFQ==
-  model_name: deepseek-chat
-deepseek-chat:
-  base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitc*********PdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  api_key: Rw4qs+UjVi09dvtN+0AcnysnqU7VqGP2rSsYil2ZbUcY3lapzO3X6M4UMo4awNtRckHlbcCeHlS3FTrJoe/Xlw==
   model_name: deepseek-chat
 deepseek-reasoner:
+  type: openai
   base_url: https://api.deepseek.com/v1
-  api_key: vTwpJaVSl1ctTJtRGimzcPitcKU*******M+uPdNxHRJSOLZ8lZXNvOHbXlPcw/l/tFQ==
+  api_key: Rw4qs+UjVi09dvtN+0AcnysnqU7VqGP2rSsYil2ZbUcY3lapzO3X6M4UMo4awNtRckHlbcCeHlS3FTrJoe/Xlw==
   model_name: deepseek-reasoner
+gemini-2.5-flash:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: google/gemini-2.5-flash
+gemini-3-flash-preview:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: google/gemini-3-flash-preview
+gemini-3-pro-preview: 
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: google/gemini-3-pro-preview
+gpt-5-mini:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: openai/gpt-5-mini
+gpt-5.2:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: openai/gpt-5.2
+gpt-5-nano:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: openai/gpt-5-nano
+claude-haiku-4.5:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: anthropic/claude-haiku-4.5
+gemini-2.5-flash-lite:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: google/gemini-2.5-flash-lite
+qwen3-next-80b-a3b-instruct:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: qwen/qwen3-next-80b-a3b-instruct
+qwen3-next-80b-a3b-thinking:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: qwen/qwen3-next-80b-a3b-thinking
+kimi-k2-thinking:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: moonshotai/kimi-k2-thinking
+tongyi-deepresearch-30b-a3b:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: N2Mze2ORgiKZX7Ib2hqp5sFttd2itpVm2qg7KI3I/xbrE8YFubOv9CE6HAvywuK+wnIuCi5NQVHbnAkFpPcLlfjMHRN+wZFGg1GTTJ1tqVqQQ9rqwb+97G6R7bbJp7/D
+  model_name: alibaba/tongyi-deepresearch-30b-a3b

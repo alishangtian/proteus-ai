@@ -12,9 +12,7 @@ from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
 from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
 from fastapi.responses import Response
-from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
 from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
-from src.utils.tool_converter import load_tools_from_yaml
 import uuid  # 导入 uuid 用于生成唯一 ID
 from src.utils.file_parser import parse_file  # 导入文件解析函数
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,22 +28,19 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
-from src.agent.prompt.react_playbook_prompt_v2 import REACT_PLAYBOOK_PROMPT_v2
 from src.agent.prompt.react_playbook_prompt_v3 import REACT_PLAYBOOK_PROMPT_v3
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
+from src.agent.prompt.code_agent_system_prompt import CODE_AGENT_SYSTEM_PROMPT
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
 from src.agent.pagentic_team import PagenticTeam, TeamRole
 from src.agent.agent import Agent
 from src.agent.react_agent import ReactAgent
 from src.agent.chat_agent import ChatAgent
-from src.agent.common.configuration import AgentConfiguration
-from src.agent.base_agent import IncludeFields
-from src.manager.multi_agent_manager import get_multi_agent_manager
 from src.utils.langfuse_wrapper import langfuse_wrapper
+from src.agent.common.configuration import AgentConfiguration
+from src.manager.multi_agent_manager import get_multi_agent_manager
 from src.api.events import (
     create_complete_event,
-    create_agent_complete_event,
-    create_agent_stream_thinking_event,
 )
 
 # 加载环境变量
@@ -219,6 +214,7 @@ async def auth_middleware(request: Request, call_next):
         "/favicon.ico",  # 网站图标
         "/newui",  # 新的聊天页面
         "/update_nickname",
+        "/reset_password",
     }
 
     path = request.url.path
@@ -515,6 +511,11 @@ async def get_knowledge_base_page(request: Request):
     )
 
 
+@langfuse_wrapper.dynamic_observe(
+    name="create_chat",
+    capture_input=True,
+    capture_output=True,
+)
 @app.post("/chat")
 async def create_chat(
     request: Request,
@@ -869,7 +870,6 @@ async def _cleanup_team_binding(chat_id: str):
 
 from src.utils.md_title_extractor import (
     extract_title_from_md,
-    remove_title_from_content,
 )
 
 
@@ -932,6 +932,7 @@ async def generate_conversation_title(text_content: str) -> str:
         return fallback_title
 
 
+@langfuse_wrapper.dynamic_observe()
 async def save_conversation_summary(
     conversation_id: str,
     chat_id: str,
@@ -994,6 +995,7 @@ async def save_conversation_summary(
         logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
 
 
+@langfuse_wrapper.dynamic_observe()
 async def process_agent(
     chat_id: str,
     query: str,
@@ -1071,7 +1073,7 @@ async def process_agent(
                 conversation_id=conversation_id,
                 conversation_round=conversation_round,
                 user_name=user_name,
-                enable_sop_memory=sop_memory_enabled,
+                enable_skills_memory=sop_memory_enabled,
                 enable_tool_memory=tool_memory_enabled,
             )
 
@@ -1183,43 +1185,32 @@ async def process_agent(
             await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "codeact-agent":
 
-            # CodeAct Agent模式：只允许使用python_execute和user_input工具
-            all_tools = [
-                "python_execute",
-                "user_input",
-            ]
-            prompt_template = REACT_PLAYBOOK_PROMPT_v2
-            include_fields = [IncludeFields.ACTION_INPUT, IncludeFields.OBSERVATION]
+            # chat 模式：使用 ChatAgent 类处理
+            logger.info(
+                f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {enable_tools}"
+            )
 
-            # 创建详细的instruction
-            explanation = """
-                你是一个CodeAct Agent，主要使用Python代码执行工具(python_execute)来完成用户请求的任务。
-                你可以使用Python代码进行任何计算、数据获取和处理。
-                在编写代码时，请确保代码安全且只执行必要的操作。"""
-
-            # 获取基础工具集合 - 延迟初始化node_manager
-            agent = ReactAgent(
-                tools=all_tools,
-                instruction=explanation,
+            # 创建 ChatAgent 实例
+            chat_agent = ChatAgent(
                 stream_manager=stream_manager,
-                max_iterations=itecount,
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
                 model_name=model_name,
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
+                enable_tools=True,
+                tool_choices=["python_execute"],
+                max_tool_iterations=itecount,
                 conversation_id=conversation_id,
-                include_fields=include_fields,
                 conversation_round=conversation_round,
                 user_name=user_name,
-                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
+                enable_sop_memory=sop_memory_enabled,
+                enable_tool_memory=tool_memory_enabled,
+                system_prompt=CODE_AGENT_SYSTEM_PROMPT,
             )
 
-            # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(
-                query, chat_id, context=file_analysis_context
+            # 运行 ChatAgent
+            final_result = await chat_agent.run(
+                chat_id=chat_id,
+                text=query,
+                file_analysis_context=file_analysis_context,
             )
-            await stream_manager.send_message(chat_id, await create_complete_event())
         elif agentmodul == "browser-agent":
             prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
             agent = ReactAgent(
@@ -1433,7 +1424,28 @@ if __name__ == "__main__":
     import uvicorn
 
     logger.info("尝试启动 Uvicorn 服务器...")
-    uvicorn.run(app, host="0.0.0.0", port=8003)
+
+    ssl_certfile = os.getenv("SSL_CERTFILE")
+    ssl_keyfile = os.getenv("SSL_KEYFILE")
+    http_port = int(os.getenv("HTTP_PORT", 80))  # 允许从环境变量配置端口
+    https_port = int(os.getenv("HTTPSPORT", 443))  # 允许从环境变量配置端口
+
+    if ssl_certfile and ssl_keyfile:
+        logger.info(
+            f"检测到 SSL 证书和私钥，将在 HTTPS 模式下启动 Uvicorn 服务器，端口: {https_port}..."
+        )
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=https_port,
+            ssl_certfile=ssl_certfile,
+            ssl_keyfile=ssl_keyfile,
+        )
+    else:
+        logger.info(
+            f"未检测到 SSL 证书和私钥，将在 HTTP 模式下启动 Uvicorn 服务器，端口: {http_port}..."
+        )
+        uvicorn.run(app, host="0.0.0.0", port=http_port)
 
 
 # 提供模型配置列表接口，供前端下拉使用

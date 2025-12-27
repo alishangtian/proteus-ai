@@ -187,3 +187,4 @@ agent_history.gif
 /proteus/docker/volumes/agent/conf/langfuse_config.json
 /proteus/uploads/
 /proteus/chroma_db/
+/proteus/ssl

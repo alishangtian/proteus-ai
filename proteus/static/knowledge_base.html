@@ -601,7 +601,7 @@
         /* Mermaid 图表容器样式 */
         .mermaid {
             display: block;
-            padding: 24px;
+            padding: 20px;
             margin: 20px 0;
             background: #fafafa;
             border-radius: 8px;
@@ -610,6 +610,7 @@
             cursor: pointer;
             transition: all 0.2s ease;
             min-height: 200px;
+            max-height: 600px;
             width: 100%;
             text-align: center;
         }
@@ -620,25 +621,61 @@
             box-shadow: 0 2px 8px rgba(22, 119, 255, 0.15);
         }
 
-        /* 统一 SVG 样式：允许 SVG 扩展，容器提供滚动 */
+        /* 默认 SVG 样式 - 适用于所有非甘特图 */
         .mermaid svg {
-            max-width: none;
-            min-width: 100%;
+            max-width: 100%;
             height: auto;
             display: inline-block;
         }
-        
-        /* 甘特图特定优化 */
-        .mermaid g.rect {
-            stroke-width: 1;
+
+        /* 甘特图特殊样式 - 横向拉伸 */
+        .mermaid svg[id*="mermaid"]:has(g.grid),
+        .mermaid:has(g.taskText) svg {
+            max-width: none !important;
+            min-width: 2000px !important;
+            max-height: 500px;
+            height: auto !important;
+            display: block;
         }
-        
+
+        /* 甘特图容器特殊处理 */
+        .mermaid:has(g.taskText) {
+            text-align: left;
+            max-height: 550px;
+        }
+
+        /* 甘特图元素样式优化 */
+        .mermaid g.rect {
+            stroke-width: 1.5;
+        }
+
         .mermaid .label {
             font-family: 'Noto Sans SC', sans-serif;
-            font-size: 12px;
+            font-size: 13px;
             white-space: normal !important;
             word-wrap: break-word !important;
-            max-width: 200px; /* 限制标签最大宽度，允许换行 */
+        }
+
+        .mermaid .task {
+            stroke-width: 1.5;
+        }
+
+        .mermaid .sectionTitle {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-weight: 600;
+        }
+
+        .mermaid .taskText {
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 14px;
+            fill: #333;
+        }
+
+        /* 流程图、时序图等纵向图表保持正常尺寸 */
+        .mermaid svg:not(:has(g.taskText)) {
+            max-width: 100% !important;
+            min-width: auto !important;
+            max-height: 600px;
         }
 
         /* 图片查看器浮框样式 */
@@ -691,7 +728,8 @@
             object-fit: contain;
             border-radius: 4px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            background-color: #FFFFFF; /* 为图片添加白色背景 */
+            background-color: #FFFFFF;
+            /* 为图片添加白色背景 */
         }
 
         .image-viewer-content svg {
@@ -702,7 +740,8 @@
             object-fit: contain;
             border-radius: 4px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            background-color: #FFFFFF; /* 确保SVG背景为白色 */
+            background-color: #FFFFFF;
+            /* 确保SVG背景为白色 */
             display: block;
         }
 
@@ -847,27 +886,37 @@
             <div class="sidebar-content">
                 <!-- 搜索框和收回按钮容器 -->
                 <div class="sidebar-header"
-                    style="padding: 16px; border-bottom: 1px solid #E0E0E0; display: flex; align-items: center; justify-content: space-between;">
-                    <div style="position: relative; flex: 1;">
-                        <input type="text" id="knowledge-search" placeholder="搜索知识库..."
-                            style="width: 100%; padding: 8px 12px 8px 36px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s ease;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2"
-                            style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999;">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <path d="m21 21-4.3-4.3"></path>
-                        </svg>
+                    style="padding: 16px; border-bottom: 1px solid #E0E0E0; display: flex; flex-direction: column; gap: 12px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                        <div style="position: relative; flex: 1;">
+                            <input type="text" id="knowledge-search" placeholder="搜索知识库..."
+                                style="width: 100%; padding: 8px 12px 8px 36px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s ease;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2"
+                                style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999;">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <path d="m21 21-4.3-4.3"></path>
+                            </svg>
+                        </div>
+                        <!-- 收回按钮 -->
+                        <div class="collapse-toggle" id="sidebar-toggle" style="margin-left: 8px; flex-shrink: 0;">
+                            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img"
+                                width="16" height="16" viewBox="0 0 1024 1024" name="LeftBar" data-v-5586598d=""
+                                class="iconify">
+                                <path
+                                    d="M861.866667 162.133333c-17.066667-17.066667-42.666667-29.866667-68.266667-29.866666H226.133333c-25.6 0-51.2 8.533333-68.266666 29.866666S128 204.8 128 230.4v567.466667c0 25.6 8.533333 51.2 29.866667 68.266666 17.066667 17.066667 42.666667 29.866667 68.266666 29.866667h567.466667c25.6 0 51.2-8.533333 68.266667-29.866667 17.066667-17.066667 29.866667-42.666667 29.866666-68.266666V226.133333c0-25.6-8.533333-46.933333-29.866666-64zM366.933333 814.933333H226.133333c-4.266667 0-8.533333 0-12.8-4.266666-4.266667-4.266667-4.266667-8.533333-4.266666-12.8V226.133333c0-4.266667 0-8.533333 4.266666-12.8 4.266667-4.266667 8.533333-4.266667 12.8-4.266666h140.8v605.866666z m448-17.066666c0 4.266667 0 8.533333-4.266666 12.8-4.266667 4.266667-8.533333 4.266667-12.8 4.266666h-354.133334V209.066667h354.133334c4.266667 0 8.533333 0 12.8 4.266666 4.266667 4.266667 4.266667 8.533333 4.266666 12.8v571.733334z"
+                                    fill="currentColor"></path>
+                            </svg>
+                        </div>
                     </div>
-                    <!-- 收回按钮 -->
-                    <div class="collapse-toggle" id="sidebar-toggle" style="margin-left: 8px; flex-shrink: 0;">
-                        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img"
-                            width="16" height="16" viewBox="0 0 1024 1024" name="LeftBar" data-v-5586598d=""
-                            class="iconify">
-                            <path
-                                d="M861.866667 162.133333c-17.066667-17.066667-42.666667-29.866667-68.266667-29.866666H226.133333c-25.6 0-51.2 8.533333-68.266666 29.866666S128 204.8 128 230.4v567.466667c0 25.6 8.533333 51.2 29.866667 68.266666 17.066667 17.066667 42.666667 29.866667 68.266666 29.866667h567.466667c25.6 0 51.2-8.533333 68.266667-29.866667 17.066667-17.066667 29.866667-42.666667 29.866666-68.266666V226.133333c0-25.6-8.533333-46.933333-29.866666-64zM366.933333 814.933333H226.133333c-4.266667 0-8.533333 0-12.8-4.266666-4.266667-4.266667-4.266667-8.533333-4.266666-12.8V226.133333c0-4.266667 0-8.533333 4.266666-12.8 4.266667-4.266667 8.533333-4.266667 12.8-4.266666h140.8v605.866666z m448-17.066666c0 4.266667 0 8.533333-4.266666 12.8-4.266667 4.266667-8.533333 4.266667-12.8 4.266666h-354.133334V209.066667h354.133334c4.266667 0 8.533333 0 12.8 4.266666 4.266667 4.266667 4.266667 8.533333 4.266666 12.8v571.733334z"
-                                fill="currentColor"></path>
+                    <!-- 添加知识库按钮 -->
+                    <button id="add-knowledge-btn" style="width: 100%; padding: 8px 12px; background: #1677FF; color: white; border: none; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s ease;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                    </div>
+                        添加知识库
+                    </button>
                 </div>
                 <div class="directory-tree">
                 </div>
@@ -977,14 +1026,27 @@
                 startOnLoad: false,
                 theme: 'default',
                 securityLevel: 'loose',
-                fontFamily: 'Arial, sans-serif',
+                fontFamily: 'Noto Sans SC, Arial, sans-serif',
                 suppressErrors: true,  // 抑制错误显示
-                useMaxWidth: false,    // 禁用最大宽度，让图表使用自然宽度，避免挤压
+                useMaxWidth: false,    // 禁用最大宽度，让图表使用自然宽度
                 gantt: {
-                    barHeight: 24,     // 甘特图条状高度
-                    fontSize: 14,      // 字体大小
-                    sectionFontSize: 16, // 分区字体大小
-                    numberSectionStyles: 4 // 分区样式数量
+                    barHeight: 35,         // 适中的任务条高度
+                    barGap: 6,             // 适中的间距
+                    fontSize: 14,          // 字体大小
+                    sectionFontSize: 16,   // 分区字体
+                    numberSectionStyles: 4,
+                    leftPadding: 100,      // 减少左侧padding，给图表更多空间
+                    topPadding: 50,
+                    bottomPadding: 50,
+                    gridLineStartPadding: 35,
+                    useWidth: 2000,        // 设置固定宽度为2000px，横向拉长
+                    axisFormat: '%H:%M'
+                },
+                flowchart: {
+                    useMaxWidth: false,
+                    htmlLabels: true,
+                    curve: 'basis',
+                    padding: 20
                 }
             });
         }
@@ -1160,8 +1222,16 @@
                         // 默认展开第一个知识库 - 使用 setTimeout 确保 DOM 已准备好
                         if (this.knowledgeItems.length > 0) {
                             setTimeout(() => {
-                                const firstItemId = this.knowledgeItems[0].id;
-                                this.selectKnowledgeItem(firstItemId);
+                                // 检查 URL 参数是否有 id
+                                const urlParams = new URLSearchParams(window.location.search);
+                                const targetId = urlParams.get('id');
+                                
+                                if (targetId && this.knowledgeItems.some(item => item.id === targetId)) {
+                                    this.selectKnowledgeItem(targetId);
+                                } else {
+                                    const firstItemId = this.knowledgeItems[0].id;
+                                    this.selectKnowledgeItem(firstItemId);
+                                }
                             }, 100);
                         }
                     } else {
@@ -1888,6 +1958,14 @@
             }
 
             setupEventListeners() {
+                // 设置添加知识库按钮监听器
+                const addBtn = document.getElementById('add-knowledge-btn');
+                if (addBtn) {
+                    addBtn.addEventListener('click', () => {
+                        this.showAddModal();
+                    });
+                }
+
                 // 设置搜索框事件监听器
                 const searchInput = document.getElementById('knowledge-search');
                 if (searchInput) {
@@ -2109,6 +2187,91 @@
                     day: '2-digit',
                     hour: '2-digit',
                     minute: '2-digit'
+                });
+            }
+
+            // 添加知识库条目的模态框
+            showAddModal() {
+                // 创建模态框HTML
+                const modalHtml = `
+                    <div class="add-modal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+                        <div class="add-modal" style="background: white; padding: 24px; border-radius: 8px; width: 800px; max-width: 90vw; max-height: 90vh; display: flex; flex-direction: column;">
+                            <h3 style="margin-bottom: 16px; font-family: 'Noto Sans SC', sans-serif;">添加知识库</h3>
+                            <div style="margin-bottom: 16px; flex: 1; display: flex; flex-direction: column;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 500;">内容 (支持 Markdown，第一行建议为 # 标题)</label>
+                                <textarea id="add-content" placeholder="# 知识库标题\n\n在这里输入知识库内容..." style="width: 100%; flex: 1; min-height: 400px; padding: 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; resize: none;"></textarea>
+                            </div>
+                            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                <button class="action-btn cancel-add" style="background: #f5f5f5; border: 1px solid #d9d9d9;">取消</button>
+                                <button class="action-btn save-add" style="background: #1677FF; color: white; border: 1px solid #1677FF;">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // 添加模态框到页面
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+                // 获取模态框元素
+                const modal = document.querySelector('.add-modal-overlay');
+                const contentTextarea = document.getElementById('add-content');
+                const cancelBtn = modal.querySelector('.cancel-add');
+                const saveBtn = modal.querySelector('.save-add');
+
+                // 取消按钮事件
+                cancelBtn.addEventListener('click', () => {
+                    modal.remove();
+                });
+
+                // 保存按钮事件
+                saveBtn.addEventListener('click', async () => {
+                    const content = contentTextarea.value.trim();
+
+                    if (!content) {
+                        alert('请输入内容');
+                        return;
+                    }
+
+                    try {
+                        saveBtn.disabled = true;
+                        saveBtn.textContent = '保存中...';
+
+                        const response = await fetch('/knowledge_base/save', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                content: content
+                            })
+                        });
+
+                        const result = await response.json();
+
+                        if (result.success) {
+                            modal.remove();
+                            // 重新加载列表并选中新项
+                            await this.loadKnowledgeList();
+                            if (result.item_id) {
+                                await this.selectKnowledgeItem(result.item_id);
+                            }
+                            this.showSuccess('知识库已成功添加');
+                        } else {
+                            throw new Error(result.error || '保存失败');
+                        }
+                    } catch (error) {
+                        console.error('保存知识库失败:', error);
+                        alert('保存失败: ' + error.message);
+                        saveBtn.disabled = false;
+                        saveBtn.textContent = '保存';
+                    }
+                });
+
+                // 点击模态框外部关闭
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        modal.remove();
+                    }
                 });
             }
 
@@ -2395,11 +2558,6 @@
                         this.content.innerHTML = '';
                         this.content.appendChild(clonedSvg);
                         this.currentSvgContent = svg.outerHTML;
-
-                        // 设置初始缩放，使SVG更大，解决图片太小问题
-                        this.scale = 4;
-                        this.translateX = 0;
-                        this.translateY = 0;
 
                         console.log('SVG已加载到查看器:', {
                             viewBox: clonedSvg.getAttribute('viewBox'),

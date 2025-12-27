@@ -91,6 +91,29 @@ class RedisStorage(StorageBase):
             logger.error(f"获取用户数据失败: {e}")
             return None
 
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根据邮箱获取用户数据"""
+        try:
+            client = self._get_client()
+            # 遍历所有用户key
+            cursor = 0
+            while True:
+                cursor, keys = client.scan(cursor, match="user:*", count=100)
+                for key in keys:
+                    try:
+                        user_data = client.hgetall(key)
+                        if user_data.get("email") == email:
+                            return user_data
+                    except redis.ResponseError:
+                        # 忽略类型错误的key，可能是其他用途的key
+                        continue
+                if cursor == 0:
+                    break
+            return None
+        except redis.RedisError as e:
+            logger.error(f"根据邮箱查找用户失败: {e}")
+            return None
+
     def save_session(self, session_id: str, session_data: Dict) -> bool:
         """保存会话数据到Redis"""
         try:

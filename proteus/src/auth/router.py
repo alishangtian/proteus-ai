@@ -14,6 +14,7 @@ from .models import (
     SessionData,
     ApiResponse,
     UpdateNicknameRequest,
+    ResetPasswordRequest,
 )
 from .storage import get_storage
 from .security import verify_password, get_password_hash
@@ -203,4 +204,38 @@ async def update_nickname(request: Request, update_data: UpdateNicknameRequest):
         event="update_nickname",
         success=True,
         data={"message": f"用户昵称已修改为 {update_data.new_nick_name}"},
+    ).dict()
+
+
+@router.post("/reset_password", response_model=ApiResponse)
+async def reset_password(reset_data: ResetPasswordRequest):
+    """重置密码接口（无需旧密码）"""
+    logger.info(f"尝试重置密码，邮箱: {reset_data.email}")
+
+    # 根据邮箱查找用户
+    user_data = storage.get_user(reset_data.username)
+    if not user_data:
+        return ApiResponse(
+            event="reset_password", success=False, error="该邮箱未注册"
+        ).dict()
+
+    if not user_data["email"] or user_data["email"] != reset_data.email:
+        return ApiResponse(
+            event="reset_password", success=False, error="无效的邮箱地址"
+        ).dict()
+
+    # 更新密码
+    user_data["hashed_password"] = get_password_hash(reset_data.new_password)
+
+    # 保存更新后的用户数据
+    if not storage.save_user(user_data["user_name"], user_data):
+        return ApiResponse(
+            event="reset_password", success=False, error="系统错误，请稍后重试"
+        ).dict()
+
+    logger.info(f"用户 {user_data['user_name']} (邮箱: {reset_data.email}) 密码已重置")
+    return ApiResponse(
+        event="reset_password",
+        success=True,
+        data={"message": "密码重置成功"},
     ).dict()

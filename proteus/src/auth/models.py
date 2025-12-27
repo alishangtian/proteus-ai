@@ -39,6 +39,29 @@ class UpdateNicknameRequest(BaseModel):
     password: str = Field(..., min_length=6)
 
 
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求模型"""
+
+    email: str = Field(
+        ...,
+        pattern=r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$",
+        description="邮箱地址",
+    )
+    username: str = Field(
+        ...,
+        description="用户名",
+    )
+    new_password: str = Field(..., min_length=6, description="新密码")
+    confirm_password: str = Field(..., min_length=6, description="确认新密码")
+
+    @validator("confirm_password")
+    def passwords_match(cls, v, values):
+        """验证两次输入的密码是否一致"""
+        if "new_password" in values and v != values["new_password"]:
+            raise ValueError("密码不一致")
+        return v
+
+
 class SessionData(BaseModel):
     """会话数据模型"""
 

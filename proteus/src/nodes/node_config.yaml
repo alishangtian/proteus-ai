@@ -276,7 +276,7 @@ MysqlNode:
 LoopNode:
   type: "loop_node"
   class: "src.nodes.loop_node.LoopNode"
-  name: "循环执行节点"
+  name : "循环执行节点"
   description: "循环执行节点，支持对数组进行循环，并执行指定的工作流。工作流中可以通过引用表达式访问循环项的上下文变量。"
   output:
     results: "循环执行的结果列表，数组类型，每个子元素包含工作流执行结果，工作流执行结果包含所有节点的结果"
@@ -466,3 +466,95 @@ TeamRunnerNode:
      required: false
      default: 5
      description: "最大迭代次数，控制每个Agent的最大运行次数"
+
+ToolMemoryNode:
+  type: "tool_memory"
+  class: "src.nodes.tool_memory_node.ToolMemoryNode"
+  name: "工具记忆更新"
+  description: "用于更新特定工具的使用经验记忆，以优化LLM的工具选择和使用。"
+  output:
+    success: "操作是否成功"
+    tool_name: "更新记忆的工具名称"
+    user_name: "执行操作的用户名称 (如果存在)"
+    new_memory: "更新后的工具记忆内容"
+    message: "操作结果消息"
+    error: "错误信息 (如果存在)"
+  params:
+    tool_name:
+      type: "str"
+      required: true
+      description: "要更新记忆的工具名称。"
+      example: "serper_search"
+    tool_memory:
+      type: "str"
+      required: true
+      description: "工具使用经验的详细描述。例如：'当需要搜索最新信息时，最好明确指定搜索关键词，避免模糊查询。'"
+      example: "当需要搜索最新信息时，最好明确指定搜索关键词，避免模糊查询。"
+    user_name:
+      type: "str"
+      required: false
+      description: "用户名，用于隔离不同用户的工具记忆。如果未提供，则更新全局记忆。"
+      example: "test_user"
+    is_error:
+      type: "bool"
+      required: false
+      default: false
+      description: "指示此次记忆更新是否基于工具的错误执行。用于记录失败经验。"
+      example: true
+    error_message:
+      type: "str"
+      required: false
+      description: "如果 is_error 为 True，提供具体的错误信息，以便分析失败原因。"
+      example: "搜索关键词为空导致工具执行失败。"
+
+SopMemoryNode:
+  type: "sop_memory"
+  class: "src.nodes.sop_memory_node.SopMemoryNode"
+  name: "SOP记忆管理"
+  description: "用于生成、更新或新增SOP（标准操作流程）记忆，以优化LLM解决同类问题的能力。"
+  output:
+    success: "操作是否成功"
+    user_query: "处理的原始用户查询"
+    problem_type: "推断或指定的问题类型"
+    user_name: "执行操作的用户名称 (如果存在)"
+    sop_experience: "生成的SOP经验内容"
+    message: "操作结果消息"
+    error: "错误信息 (如果存在)"
+  params:
+    user_query:
+      type: "str"
+      required: true
+      description: "用户原始查询文本，用于识别问题类型和SOP匹配。"
+      example: "如何使用Serper搜索获取最新的Python技术文章？"
+    tool_chain:
+      type: "list"
+      required: false
+      default: []
+      description: "解决问题时涉及的工具调用链，每个元素是一个字典，包含 'tool_name' (str) 和 'action_input' (dict)。"
+      example: [{"tool_name": "SerperSearchNode", "action_input": {"query": "latest Python tech articles"}}]
+    final_result:
+      type: "str"
+      required: true
+      description: "问题解决的最终结果或摘要。"
+      example: "已成功搜索到最新的Python技术文章，并提取了关键信息。"
+    problem_type:
+      type: "str"
+      required: false
+      description: "可选：明确指定问题类型，如果未提供，LMM将自动推断。"
+      example: "信息检索类问题"
+    is_success:
+      type: "bool"
+      required: false
+      default: true
+      description: "指示问题是否成功解决。只有成功解决的问题才会生成SOP。"
+      example: true
+    user_name:
+      type: "str"
+      required: false
+      description: "用户名，用于隔离不同用户的SOP记忆。如果未提供，则更新全局记忆。"
+      example: "test_user"
+    model_name:
+      type: "str"
+      required: false
+      description: "用于SOP分析的LLM模型名称。如果未提供，将使用默认模型。"
+      example: "deepseek-chat"

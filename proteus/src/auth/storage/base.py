@@ -36,6 +36,18 @@ class StorageBase(ABC):
         pass
 
     @abstractmethod
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根据邮箱获取用户数据
+
+        Args:
+            email: 邮箱地址
+
+        Returns:
+            Optional[Dict]: 用户数据字典，不存在则返回None
+        """
+        pass
+
+    @abstractmethod
     def save_session(self, session_id: str, session_data: Dict) -> bool:
         """保存会话数据
 

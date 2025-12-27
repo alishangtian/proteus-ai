@@ -251,6 +251,9 @@ async def call_llm_api(
             "stream": False,
             "temperature": temperature,
         }
+        if model_config["extra_params"] is not None:
+            data.update(model_config["extra_params"])
+
         if output_json:
             data["response_format"] = {"type": "json_object"}
 
@@ -434,6 +437,8 @@ async def call_multimodal_llm_api(
             "stream": False,
             "temperature": temperature,
         }
+        if model_config["extra_params"] is not None:
+            data.update(model_config["extra_params"])
         if output_json:
             data["response_format"] = {"type": "json_object"}
 
@@ -600,6 +605,8 @@ async def call_llm_api_stream(
             "stream": True,
             "temperature": temperature,
         }
+        if model_config["extra_params"] is not None:
+            data.update(model_config["extra_params"])
 
         if output_json:
             data["response_format"] = {"type": "json_object"}
@@ -832,6 +839,8 @@ async def call_llm_api_with_tools(
             "stream": False,
             "temperature": temperature,
         }
+        if model_config["extra_params"] is not None:
+            data.update(model_config["extra_params"])
 
         # 如果提供了工具定义，添加到请求中
         if tools:
@@ -1002,6 +1011,8 @@ async def call_llm_api_with_tools_stream(
             "stream": True,
             "temperature": temperature,
         }
+        if model_config["extra_params"] is not None:
+            data.update(model_config["extra_params"])
 
         # 如果提供了工具定义，添加到请求中
         if tools:
@@ -1060,6 +1071,7 @@ async def call_llm_api_with_tools_stream(
                                 # 安全地获取 reasoning_content 和 reasoning 字段
                                 reasoning_content = delta.get("reasoning_content")
                                 reasoning = delta.get("reasoning")
+                                reasoning_details = delta.get("reasoning_details")
 
                                 if reasoning_content and reasoning_content != "":
                                     yield {
@@ -1073,6 +1085,11 @@ async def call_llm_api_with_tools_stream(
                                         "type": "thinking",
                                         "thinking_type": "reasoning",
                                         "content": reasoning,
+                                    }
+                                if reasoning_details and reasoning_details[0]:
+                                    yield {
+                                        "type": "reasoning_details",
+                                        "content": reasoning_details,
                                     }
 
                                 # 处理普通内容
