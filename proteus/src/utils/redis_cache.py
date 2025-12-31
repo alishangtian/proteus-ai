@@ -278,6 +278,16 @@ class RedisCache:
             logger.error(f"列表移除元素失败 (lrem): {e}")
             return 0
 
+    def lset(self, key: str, index: int, value: str) -> bool:
+        """通过索引设置列表元素的值"""
+        try:
+            client = self._get_client()
+            client.lset(key, index, value)
+            return True
+        except redis.RedisError as e:
+            logger.error(f"设置列表元素失败 (lset): {e}")
+            return False
+
     def blpop(self, keys, timeout: int = 0):
         """阻塞式地从左侧弹出元素，支持传入单个key或key列表（timeout秒，0为阻塞直到有元素）"""
         try:

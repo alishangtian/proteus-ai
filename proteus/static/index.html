@@ -27,7 +27,7 @@
             flex-direction: column;
             gap: 60px;
             width: 100%;
-            max-width: 1600px;
+            /* max-width: 1600px; */
             align-items: center;
             justify-content: space-between;
         }
@@ -38,13 +38,6 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
-            max-width: 800px;
-        }
-
-        .right-column {
-            flex: 1;
-            width: 100%;
-            max-width: 500px;
         }
 
         @media (min-width: 768px) {
@@ -52,21 +45,6 @@
                 flex-direction: row;
                 align-items: flex-start;
             }
-        }
-
-        /* 每日一思卡片 */
-        .story-card {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            height: 100%;
-            min-height: 500px;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(10px);
-            display: flex;
-            flex-direction: column;
-            transition: all 0.3s ease;
         }
 
         .story-card:hover {
@@ -264,7 +242,7 @@
         .recommendation-section {
             margin-top: 60px;
             width: 100%;
-            max-width: 1200px;
+            /* max-width: 1200px; */
             /* Match content-wrapper width */
             display: none;
             /* 默认隐藏，加载后显示 */
@@ -372,10 +350,9 @@
             gap: 4px;
         }
 
-        @media (max-width: 768px) {
+        /* @media (max-width: 768px) {
             .recommendation-grid {
                 grid-template-columns: 1fr;
-                /* Stack on mobile */
                 max-width: 400px;
                 margin: 0 auto;
             }
@@ -391,7 +368,7 @@
             .recommendation-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-        }
+        } */
     </style>
 </head>
 
@@ -424,18 +401,6 @@
                     </div>
                 </div>
             </div>
-
-            <!-- <div class="right-column">
-                <div class="story-card">
-                    <div class="story-header">
-                        <span class="story-icon">🧘</span>
-                        <h3 class="story-title">每日一思</h3>
-                    </div>
-                    <div id="story-content" class="story-content">
-                        <div class="loading-text">正在生成今日哲学故事...</div>
-                    </div>
-                </div>
-            </div> -->
         </div>
 
         <!-- 知识库推荐区域 (Moved outside left-column) -->

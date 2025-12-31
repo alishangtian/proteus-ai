@@ -875,6 +875,48 @@
         .knowledge-content img:hover {
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
         }
+
+        /* 投票按钮样式 */
+        .vote-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 6px;
+            background: #fff;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 14px;
+        }
+
+        .vote-btn:hover {
+            background: #f5f5f5;
+            border-color: #bfbfbf;
+        }
+
+        .vote-btn.active {
+            color: #fff;
+        }
+
+        .upvote-btn.active {
+            background: #1677FF;
+            border-color: #1677FF;
+        }
+
+        .downvote-btn.active {
+            background: #FF4D4F;
+            border-color: #FF4D4F;
+        }
+
+        .vote-section {
+            margin: 16px 0 24px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
     </style>
 </head>
 
@@ -1426,9 +1468,24 @@
                     <div class="knowledge-content">
                         <h1 class="main-title">${this.escapeHtml(item.title)}</h1>
                         <div class="meta-info">
-                            <span class="meta-author">${this.escapeHtml(item.author || '未知作者')}</span>
+                            <span class="meta-author">${this.escapeHtml(item.nick_name || item.author || '未知作者')}</span>
                             <span class="meta-separator">·</span>
                             <span class="meta-date">${this.formatTime(item.updated_at || item.timestamp)}</span>
+                        </div>
+                        <!-- 投票区域 -->
+                        <div class="vote-section">
+                            <button class="vote-btn upvote-btn ${item.user_vote === 'up' ? 'active' : ''}" data-vote="up">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path>
+                                </svg>
+                                <span class="upvote-count">${item.likes || 0}</span>
+                            </button>
+                            <button class="vote-btn downvote-btn ${item.user_vote === 'down' ? 'active' : ''}" data-vote="down">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zM17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"></path>
+                                </svg>
+                                <span class="downvote-count">${item.dislikes || 0}</span>
+                            </button>
                         </div>
                         <div class="knowledge-content-text">${renderedContent}</div>
                         <div class="complete-actions">
@@ -1484,6 +1541,49 @@
                             console.error('复制失败:', err);
                         });
                     });
+                }
+
+                // 投票功能
+                const upvoteBtn = contentContainer.querySelector('.upvote-btn');
+                const downvoteBtn = contentContainer.querySelector('.downvote-btn');
+                const upvoteCount = contentContainer.querySelector('.upvote-count');
+                const downvoteCount = contentContainer.querySelector('.downvote-count');
+                
+                const handleVote = async (voteType) => {
+                    try {
+                        const response = await fetch('/knowledge_base/vote', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                knowledge_id: item.id,
+                                vote: voteType
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            // 更新计数
+                            upvoteCount.textContent = data.likes || 0;
+                            downvoteCount.textContent = data.dislikes || 0;
+                            
+                            // 更新按钮状态
+                            upvoteBtn.classList.toggle('active', data.user_vote === 'up');
+                            downvoteBtn.classList.toggle('active', data.user_vote === 'down');
+                        } else {
+                            alert('投票失败: ' + (data.error || '未知错误'));
+                        }
+                    } catch (error) {
+                        console.error('投票请求失败:', error);
+                        alert('投票请求失败: ' + error.message);
+                    }
+                };
+                
+                if (upvoteBtn) {
+                    upvoteBtn.addEventListener('click', () => handleVote('up'));
+                }
+                if (downvoteBtn) {
+                    downvoteBtn.addEventListener('click', () => handleVote('down'));
                 }
 
                 // 截图功能

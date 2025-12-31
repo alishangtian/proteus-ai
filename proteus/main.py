@@ -1924,6 +1924,8 @@ async def save_to_knowledge_base(request: Request, kb_content: KnowledgeBaseCont
             "title": title,
             "author": user_name,  # 存储用户名
             "updated_at": timestamp,  # 新增更新时间字段，初始值与创建时间相同
+            "likes": 0,
+            "dislikes": 0,
         }
 
         # 映射条目：包含完整内容
@@ -1934,6 +1936,8 @@ async def save_to_knowledge_base(request: Request, kb_content: KnowledgeBaseCont
             "content": cleaned_content,  # 使用清理后的内容（已移除标题行）
             "author": user_name,  # 存储用户名
             "updated_at": timestamp,  # 新增更新时间字段，初始值与创建时间相同
+            "likes": 0,
+            "dislikes": 0,
         }
 
         # 使用pipeline确保原子性操作
@@ -2033,6 +2037,17 @@ async def get_knowledge_base_item(request: Request, item_id: str):
             raise HTTPException(status_code=404, detail="知识库条目不存在")
 
         item_data = json.loads(item_raw)
+
+        # 获取用户对该条目的投票
+        user_vote_key = f"knowledge_base_vote:{item_id}:{user_name}"
+        user_vote = redis_conn.get(user_vote_key)
+        if user_vote:
+            # 映射后端投票值到前端值
+            vote_map = {"like": "up", "dislike": "down"}
+            item_data["user_vote"] = vote_map.get(user_vote, None)
+        else:
+            item_data["user_vote"] = None
+
         return {"success": True, "knowledge_base_item": item_data}
     except HTTPException:
         raise
@@ -2083,6 +2098,8 @@ async def update_knowledge_base_item(
             "author": user_name,  # 存储用户名
             "nick_name": nick_name,
             "updated_at": update_timestamp,  # 更新时设置新的更新时间
+            "likes": existing_item.get("likes", 0),
+            "dislikes": existing_item.get("dislikes", 0),
         }
 
         # 更新队列中的条目信息
@@ -2196,6 +2213,15 @@ class KnowledgeBaseSearch(BaseModel):
     query: str = Field(..., description="搜索查询词")
 
 
+class KnowledgeBaseVote(BaseModel):
+    vote: str = Field(..., description="投票类型，like 或 dislike")
+
+
+class KnowledgeBaseVoteCompat(BaseModel):
+    knowledge_id: str = Field(..., description="知识库条目ID")
+    vote: str = Field(..., description="投票类型，up 或 down")
+
+
 @app.post("/knowledge_base/search")
 async def search_knowledge_base(request: Request, search_request: KnowledgeBaseSearch):
     """
@@ -2256,6 +2282,210 @@ async def search_knowledge_base(request: Request, search_request: KnowledgeBaseS
     except Exception as e:
         logger.error(f"搜索知识库失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"搜索知识库失败: {str(e)}")
+
+
+@app.post("/knowledge_base/item/{item_id}/vote")
+async def vote_knowledge_base_item(
+    request: Request, item_id: str, vote_data: KnowledgeBaseVote
+):
+    """
+    对知识库条目进行点赞/点踩投票。
+    每个用户只能投票一次，可以更改投票。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        if vote_data.vote not in ["like", "dislike"]:
+            raise HTTPException(
+                status_code=400, detail="投票类型必须是 like 或 dislike"
+            )
+
+        redis_conn = get_redis_connection()
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        # 获取当前条目
+        item_raw = redis_conn.hget(knowledge_base_map_key, item_id)
+        if not item_raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        item_data = json.loads(item_raw)
+        current_likes = item_data.get("likes", 0)
+        current_dislikes = item_data.get("dislikes", 0)
+
+        # 获取用户之前的投票
+        user_vote_key = f"knowledge_base_vote:{item_id}:{user_name}"
+        previous_vote = redis_conn.get(user_vote_key)
+        previous_vote = previous_vote.decode("utf-8") if previous_vote else None
+
+        # 计算新的计数
+        new_likes = current_likes
+        new_dislikes = current_dislikes
+
+        if previous_vote == vote_data.vote:
+            # 相同投票，无需更改
+            pass
+        else:
+            if previous_vote == "like":
+                new_likes -= 1
+            elif previous_vote == "dislike":
+                new_dislikes -= 1
+
+            if vote_data.vote == "like":
+                new_likes += 1
+            elif vote_data.vote == "dislike":
+                new_dislikes += 1
+
+            # 更新用户投票记录
+            redis_conn.setex(user_vote_key, 365 * 24 * 3600, vote_data.vote)  # 保存1年
+
+        # 更新映射条目
+        item_data["likes"] = new_likes
+        item_data["dislikes"] = new_dislikes
+        redis_conn.hset(
+            knowledge_base_map_key, item_id, json.dumps(item_data, ensure_ascii=False)
+        )
+
+        # 更新队列条目
+        queue_items_raw = redis_conn.lrange(knowledge_base_queue_key, 0, -1)
+        updated = False
+        for i, item_raw in enumerate(queue_items_raw):
+            try:
+                queue_item = json.loads(item_raw)
+                if queue_item.get("id") == item_id:
+                    queue_item["likes"] = new_likes
+                    queue_item["dislikes"] = new_dislikes
+                    redis_conn.lset(
+                        knowledge_base_queue_key,
+                        i,
+                        json.dumps(queue_item, ensure_ascii=False),
+                    )
+                    updated = True
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        logger.info(
+            f"用户 {user_name} 对知识库条目 {item_id} 投票: {vote_data.vote}, 新计数: likes={new_likes}, dislikes={new_dislikes}"
+        )
+        return {
+            "success": True,
+            "message": "投票成功",
+            "likes": new_likes,
+            "dislikes": new_dislikes,
+            "user_vote": vote_data.vote,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"投票失败 (item_id: {item_id}): {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"投票失败: {str(e)}")
+
+
+@app.post("/knowledge_base/vote")
+async def vote_knowledge_base_compat(
+    request: Request, vote_data: KnowledgeBaseVoteCompat
+):
+    """
+    对知识库条目进行点赞/点踩投票（兼容前端命名）。
+    每个用户只能投票一次，可以更改投票。
+    """
+    try:
+        user = await get_current_user(request)
+        user_name = user.user_name if user else "anonymous"
+
+        # 映射前端 vote 值到后端 vote 值
+        vote_map = {"up": "like", "down": "dislike"}
+        if vote_data.vote not in vote_map:
+            raise HTTPException(status_code=400, detail="投票类型必须是 up 或 down")
+
+        backend_vote = vote_map[vote_data.vote]
+        item_id = vote_data.knowledge_id
+
+        redis_conn = get_redis_connection()
+        knowledge_base_map_key = f"user:{user_name}:knowledge_base:map"
+        knowledge_base_queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        # 获取当前条目
+        item_raw = redis_conn.hget(knowledge_base_map_key, item_id)
+        if not item_raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        item_data = json.loads(item_raw)
+        current_likes = item_data.get("likes", 0)
+        current_dislikes = item_data.get("dislikes", 0)
+
+        # 获取用户之前的投票
+        user_vote_key = f"knowledge_base_vote:{item_id}:{user_name}"
+        previous_vote = redis_conn.get(user_vote_key)
+        # previous_vote = previous_vote.decode("utf-8") if previous_vote else None
+
+        # 计算新的计数
+        new_likes = current_likes
+        new_dislikes = current_dislikes
+
+        if previous_vote == backend_vote:
+            # 相同投票，无需更改
+            pass
+        else:
+            if previous_vote == "like":
+                new_likes -= 1
+            elif previous_vote == "dislike":
+                new_dislikes -= 1
+
+            if backend_vote == "like":
+                new_likes += 1
+            elif backend_vote == "dislike":
+                new_dislikes += 1
+
+            # 更新用户投票记录
+            redis_conn.set(user_vote_key, backend_vote)  # 保存1年
+
+        # 更新映射条目
+        item_data["likes"] = new_likes
+        item_data["dislikes"] = new_dislikes
+        redis_conn.hset(
+            knowledge_base_map_key, item_id, json.dumps(item_data, ensure_ascii=False)
+        )
+
+        # 更新队列条目
+        queue_items_raw = redis_conn.lrange(knowledge_base_queue_key, 0, -1)
+        updated = False
+        for i, item_raw in enumerate(queue_items_raw):
+            try:
+                queue_item = json.loads(item_raw)
+                if queue_item.get("id") == item_id:
+                    queue_item["likes"] = new_likes
+                    queue_item["dislikes"] = new_dislikes
+                    redis_conn.lset(
+                        knowledge_base_queue_key,
+                        i,
+                        json.dumps(queue_item, ensure_ascii=False),
+                    )
+                    updated = True
+                    break
+            except json.JSONDecodeError:
+                continue
+
+        logger.info(
+            f"用户 {user_name} 对知识库条目 {item_id} 投票: {vote_data.vote}, 新计数: likes={new_likes}, dislikes={new_dislikes}"
+        )
+        # 映射回前端字段名
+        return {
+            "success": True,
+            "message": "投票成功",
+            "upvotes": new_likes,
+            "downvotes": new_dislikes,
+            "likes": new_likes,
+            "dislikes": new_dislikes,
+            "user_vote": vote_data.vote,  # 返回前端投票值
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"投票失败 (item_id: {item_id}): {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"投票失败: {str(e)}")
 
 
 def _generate_content_preview(
