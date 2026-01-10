@@ -1,5 +1,5 @@
 ---
-name: planning-with-files
+name: manus
 version: "2.0.1"
 description: Implements Manus-style file-based planning for complex tasks. Creates task_plan.md, findings.md, and progress.md. Use when starting complex multi-step tasks, research projects, or any task requiring >5 tool calls.
 allowed-tools: serper_search,web_crawler,python_execute,skills_extract
