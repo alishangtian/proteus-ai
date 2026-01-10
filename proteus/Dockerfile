@@ -33,7 +33,6 @@ RUN useradd -m proteus && chown -R proteus:proteus /app
 
 # Copy application code
 COPY main.py /app/main.py
-COPY proteus_mcp_config.json /app/proteus_mcp_config.json
 COPY src /app/src
 COPY static /app/static
 

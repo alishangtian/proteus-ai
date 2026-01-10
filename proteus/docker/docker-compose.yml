@@ -9,6 +9,7 @@ services:
       - ./volumes/agent/.env:/app/.env
       - ./volumes/agent/conf:/app/conf
       - ./volumes/agent/data:/app/sandbox/data
+      - ./volumes/agent/skills:/app/.proteus/skills
     environment:
       - log_file_path=/app/logs/agent.log
       - TZ=Asia/Shanghai
@@ -71,6 +72,8 @@ services:
       - ./volumes/sandbox/.env:/app/.env
       - ./volumes/sandbox/logs:/var/logs/sandbox
       - ./volumes/agent/data:/var/data/sandbox
+      - ./volumes/agent/skills:/app/.proteus/skills
+
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Shanghai

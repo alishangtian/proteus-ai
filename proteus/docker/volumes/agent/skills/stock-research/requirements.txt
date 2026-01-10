@@ -1,0 +1,29 @@
+# Stock Research Skill Dependencies
+
+# Core data analysis
+yfinance>=0.2.38
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Technical analysis (optional but recommended)
+# ta-lib might require system dependencies, so we list as optional
+# ta>=0.10.0
+
+# Visualization
+matplotlib>=3.7.0
+plotly>=5.18.0
+mplfinance>=0.12.10
+
+# Data processing
+scipy>=1.10.0
+statsmodels>=0.14.0
+
+# Alternative data sources for Chinese stocks
+akshare>=1.12.0
+
+# Utilities
+python-dateutil>=2.8.0
+requests>=2.31.0
+
+# For web-based reports
+jinja2>=3.1.0

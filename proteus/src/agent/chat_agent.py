@@ -3,6 +3,7 @@
 import logging
 import json
 import time
+import os
 from string import Template
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -11,9 +12,9 @@ from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
 from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
+from src.agent.prompt.chat_agent_system_prompt_v2 import CHAT_AGENT_SYSTEM_PROMPT_V2
 from src.utils.redis_cache import get_redis_connection
 from src.manager.tool_memory_manager import ToolMemoryManager
-from src.skills.skills_manager import SkillManager
 from src.manager.conversation_manager import conversation_manager
 import uuid
 from src.api.events import (
@@ -77,9 +78,8 @@ class ChatAgent:
         self.tool_memory_manager = ToolMemoryManager()
 
         # 初始化skills记忆管理器
-        self.skills_manager = SkillManager()
         self.user_name = user_name
-        self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_PROMPT
+        self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_PROMPT_V2
 
     @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
     async def run(
@@ -134,11 +134,12 @@ class ChatAgent:
                 skills_memories
             )
             all_values["SKILLS_MEMORIES"] = skills_memories_content
+            all_values["LANGUAGE"] = os.getenv("LANGUAGE", "中文")
 
             if not messages:
                 system_message = {
                     "role": "system",
-                    "content": CHAT_AGENT_SYSTEM_PROMPT,
+                    "content": CHAT_AGENT_SYSTEM_PROMPT_V2,
                 }
                 if file_analysis_context:
                     system_message["content"] = (
@@ -1087,7 +1088,7 @@ class ChatAgent:
             str: 格式化的skills记忆内容
         """
         if not skills_memories or not self.enable_skills_memory:
-            return "暂无相关技能经验。"
+            return "暂无相关经验可供参考。"
 
         # 构建skills记忆标题
         skills_content = ""
@@ -1137,10 +1138,10 @@ class ChatAgent:
         # 添加使用指导
         skills_content += (
             "**💡 使用建议**:\n"
-            "1. 参考上述技能经验中的解决思路和步骤\n"
+            "1. 参考上述经验中的解决思路和步骤\n"
             "2. 根据当前问题的具体情况灵活调整工具调用链路\n"
-            "3. 注意技能中提到的关键参数和注意事项\n"
-            "4. 优先考虑相似度较高的技能经验\n"
+            "3. 注意经验中提到的关键参数和注意事项\n"
+            "4. 优先考虑相似度较高的经验\n"
         )
 
         return skills_content

@@ -11,6 +11,7 @@ services:
       - ./sandbox/.env:/app/.env
       - ./sandbox/logs:/var/log/sandbox
       - ./agent/data:/var/data/sandbox
+      - ./agent/skills:/app/.proteus/skills
     environment:
       - PYTHONUNBUFFERED=1
       - TZ=Asia/Shanghai
