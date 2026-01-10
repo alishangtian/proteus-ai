@@ -4,7 +4,7 @@ import json
 import logging
 from functools import wraps
 from contextlib import contextmanager
-from ..utils.redis_cache import RedisCache, get_redis_connection
+from src.utils.redis_cache import RedisCache, get_redis_connection
 
 logger = logging.getLogger(__name__)
 

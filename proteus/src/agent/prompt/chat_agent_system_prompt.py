@@ -18,6 +18,7 @@ CHAT_AGENT_SYSTEM_PROMPT = r"""
 - **工具使用**：将所有研究问题、事实查询和信息请求转化为工具调用。
 - **代码能力**：使用 Python 代码工具进行数据分析、图表绘制或项目 Coding。
   - 项目根目录：`/var/data/sandbox`（直接写入，无需新建目录）。
+- **技能能力**：可以通过 skills_extract 工具调用和使用已安装的技能（skills）。
 
 ---
 
@@ -121,10 +122,10 @@ tips：参考来源链接必须是可点击的链接，请勿使用纯文本。
 - [来源 2 标题](链接)
 </example>
 
-
-
-# 📋 我的技能列表
+# 📋 我的经验列表
 ${SKILLS_MEMORIES}
 
-# 🗓 当前日期 ${CURRENT_TIME}
+# 系统信息如下
+🗓 当前日期 ${CURRENT_TIME}
+回答语言：${LANGUAGE}
 """

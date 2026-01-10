@@ -5,7 +5,7 @@ PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
   name: "Python/Shell代码执行"
-  description: "通用代码执行和coding节点，支持 1. Python3和Shell脚本执行 2.项目代码写入项目目录 。支持变量传递、网络访问控制，适用于系统处理、demo 演示、金融数据爬取等场景。当缺少依赖时先使用python 代码进行依赖的安装，最终结果print 出来才能接收到，当代码中需要写入文件时，文件的根目录是/var/data/sandbox"
+  description: "Python/Shell代码执行组件，支持 Python3 代码和 Shell 脚本执行。执行结果必须通过 print 输出才能被接收。支持使用 Python 代码进行文件操作，文件的通用目录是 /var/data/sandbox（此目录文件可通过网络请求访问），技能目录是 /app/.proteus/skills（技能根目录）。支持变量传递、网络访问控制，适用于系统处理、demo 演示、金融数据爬取等场景。当缺少依赖时，请先使用 Python 代码安装依赖。"
   output:
     result: "执行结果（标准输出）"
     stdout: "标准输出内容"
@@ -558,3 +558,34 @@ SopMemoryNode:
       required: false
       description: "用于SOP分析的LLM模型名称。如果未提供，将使用默认模型。"
       example: "deepseek-chat"
+
+SkillsExtractNode:
+  type: "skills_extract"
+  class: "src.nodes.skills_extract.SkillsExtractNode"
+  name: "技能解析管理"
+  description: "从技能目录中加载所有技能的名称和描述（技能列表功能）；根据技能名称获取技能详情，包括技能文件夹结构、skill.md完整内容（不截断）；根据技能名称和文件路径获取技能其他文件内容。"
+  output:
+    success: "操作是否成功"
+    error: "错误信息(如果有)"
+    data: "返回的数据，根据操作类型不同而不同"
+  params:
+    action:
+      type: "str"
+      required: true
+      description: "操作类型：list（列出所有技能）、get（获取技能详情，包括文件夹结构和skill.md完整内容）、getContent（获取技能其他文件内容）"
+      example: "list"
+    skill_name:
+      type: "str"
+      required: false
+      description: "技能名称（当action为get或getContent时必需）"
+      example: "backend-dev-guidelines"
+    file_path:
+      type: "str"
+      required: false
+      description: "文件路径（当action为getContent时必需）"
+      example: "templates/config.yaml"
+    skills_dir:
+      type: "str"
+      required: false
+      default: "./src/skills"
+      description: "技能目录路径，默认为./src/skills"
