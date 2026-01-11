@@ -73,131 +73,66 @@ Proteus（普罗透斯）源自希腊神话中的海神，他以能够随意改�
 
 ## 🚀 快速开始
 
-### 环境要求
+请严格遵循以下流程构建和启动项目。
 
-- **Python 3.11+**
-- **Docker** (可选，用于容器化部署)
-- **LLM API 密钥** (支持多种 LLM 服务，默认配置为 Deepseek Chat)
-- **Redis** (用于缓存和会话管理)
+### 前提条件
 
-### 安装步骤
+- **Docker** & **Docker Compose**
+- **OpenSSL** (用于生成 SSL 证书)
 
-#### 1. 克隆项目
+### 构建与启动流程
+
+#### 1. 构建 Sandbox 镜像
+
+首先构建用于安全执行代码的沙箱环境镜像。
+
 ```bash
-git clone https://github.com/yourusername/proteus-ai.git
-cd proteus-ai
+cd sandbox
+./build.sh
+cd ..
 ```
 
-#### 2. 创建并激活虚拟环境
+#### 2. 构建 Proteus 镜像
+
+构建核心 Agent 服务的镜像。
+
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
+cd proteus
+docker build -t proteus-agent .
 ```
 
-#### 3. 安装核心依赖
+#### 3. 生成 SSL 证书
+
+为 Nginx 服务生成 SSL 证书，以支持 HTTPS 访问。
+
 ```bash
-pip install -r proteus/requirements.txt
+# 确保在 proteus 目录下
+./bin/generate-ssl-cert.sh
 ```
 
-#### 4. 配置环境变量
-复制 `.env.example` 到 `.env`，并根据需要编辑配置文件：
+#### 4. 启动服务
+
+进入 Docker 目录并启动所有服务。
 
 ```bash
-cp proteus/.env.example proteus/.env
-```
+cd docker
 
-编辑 `proteus/.env` 文件，设置必要的环境变量：
-```bash
-# LLM API 配置
-API_KEY=your_llm_api_key_here
-MODEL_NAME=deepseek-chat
-
-# Redis 配置
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_password
-
-# 其他可选配置
-SERPER_API_KEY=your_serper_api_key  # 用于 Web 搜索
-MCP_CONFIG_PATH=./proteus/proteus_mcp_config.json
-```
-
-#### 5. 浏览器自动化依赖 (可选)
-如果需要使用浏览器自动化功能（如 `browser_agent` 或 `web_crawler_local` 节点），请安装 Playwright：
-
-```bash
-playwright install
-```
-
-### 启动服务
-
-#### 本地开发模式
-
-```bash
-# 确保已安装所有依赖
-pip install -r proteus/requirements.txt
-playwright install  # 如果需要浏览器自动化功能
+# 首次启动前，请确保配置了必要的环境变量
+# 复制示例配置文件
+# cp volumes/agent/.env.example volumes/agent/.env
+# cp volumes/sandbox/.env.example volumes/sandbox/.env
 
 # 启动服务
-cd proteus
-python main.py
+docker-compose up -d
 ```
 
-服务启动后，访问 `http://localhost:8000` 即可打开 Web 界面。
-
-#### 使用 Docker 部署
-
-```bash
-# 构建 Docker 镜像（在项目根目录执行）
-docker build -t proteus -f proteus/Dockerfile .
-
-# 使用 Docker Compose 启动所有服务
-docker-compose -f proteus/docker/docker-compose.yml up -d
-```
-
-服务启动后，访问 `http://localhost:8000` 即可打开 Web 界面。也可以通过 `https://localhost:9443` 访问 Nginx 代理后的 HTTPS 服务。
-
-### 命令行工具 (CLI)
-
-Proteus AI 提供功能强大的命令行工具，方便在终端中直接交互：
-
-```bash
-# 安装 CLI 依赖
-pip install -r cli/requirements_cli.txt
-
-# 运行 CLI 工具进行聊天
-python cli/proteus-cli.py chat "你好"
-
-# 查看 CLI 帮助
-python cli/proteus-cli.py --help
-```
-
-关于 CLI 工具的详细用法和高级功能，请参阅 [`cli/CLI_README.md`](cli/CLI_README.md)。
+服务启动后：
+- Web 界面访问地址: `https://localhost` (通过 Nginx 代理) 或 `http://localhost:8000`
+- Sandbox 服务运行在: `http://localhost:8000` (容器内部端口)
 
 ## ⚙️ 配置说明
 
-主要配置项在 `proteus/.env` 文件中，您需要从 `proteus/.env.example` 复制并配置：
-
-### 必需配置
-- `API_KEY`: LLM API 密钥（必填）
-- `MODEL_NAME`: 使用的模型名称（默认为 `deepseek-chat`）
-
-### 可选配置
-- `REASONER_MODEL_NAME`: 推理模型名称（可选）
-- `SERPER_API_KEY`: 用于 Web 搜索的 Serper API 密钥（可选）
-- `MCP_CONFIG_PATH`: MCP 配置文件路径（默认为 `./proteus/proteus_mcp_config.json`）
-- `REDIS_HOST`: Redis 服务器地址（默认为 `localhost`）
-- `REDIS_PORT`: Redis 服务器端口（默认为 `6379`）
-- `REDIS_DB`: Redis 数据库索引（默认为 `0`）
-- `REDIS_PASSWORD`: Redis 密码（可选）
-- `SANDBOX_URL`: 沙箱服务 URL（默认为 `http://localhost:8001`）
-
-### 高级配置
-- `LANGFUSE_ENABLED`: 是否启用 Langfuse 监控（默认为 `true`）
-- `BROWSER_USE_MODEL`: 浏览器自动化使用的模型
-- `CAIYUN_TOKEN`: 彩云天气 API token
-- `EMAIL_USER`, `EMAIL_PASSWORD`: 邮件发送配置
+主要配置项位于 `proteus/docker/volumes/agent/.env` 文件中。您需要从 `.env.example` 复制并配置：
 
 ## 🧠 Agent 功能详解
 
@@ -331,183 +266,14 @@ result = await browser_agent.run(
 基于真实代码实现的智能团队组建和协调系统，能够自动分析复杂任务需求并组建专业团队：
 
 #### 核心工作流程
-超级智能体遵循严格的问题评估→策略选择→团队组建→用户确认→团队执行的完整流程：
+超级智能体遵循严格的问题评估→策略选择→团队组建→用户确认→团队执行的完整流程。
 
 **1. 问题复杂度评估**
 - **简单问题**：直接回答，不使用团队
 - **复杂问题**：需要多步骤思考、专业知识、多领域结合或深度分析的问题
 
 **2. 团队组建流程**
-```xml
-<!-- 第一步：生成团队配置 -->
-<action>
-  <thinking>
-    这是一个关于构建机器学习模型进行股票预测的复杂问题，需要数据分析、特征工程、模型选择和评估等多个步骤。我应该组建一个专业团队来解决这个问题。
-  </thinking>
-  <team_generator>
-    <user_input>需要一个团队来构建股票预测模型，包括数据科学家负责数据分析和特征工程，机器学习工程师负责模型构建和调优，金融分析师提供领域知识，以及软件工程师负责部署</user_input>
-    <save_to_file>true</save_to_file>
-    <file_name>stock_prediction_team.yaml</file_name>
-  </team_generator>
-</action>
-
-<!-- 第二步：必须的用户确认步骤 -->
-<action>
-  <thinking>
-    团队配置已生成，现在需要向用户展示生成的团队配置详情，并询问是否符合要求。用户确认后才会进行下一步的团队运行。
-  </thinking>
-  <user_input>
-    <prompt>我已为您生成了股票预测模型构建团队的配置。团队包含以下角色：
-
-团队配置详情：
-[这里会显示生成的团队配置内容]
-
-请问这个团队配置是否符合您的要求？您可以选择：
-1. 确认并继续 - 如果配置符合要求
-2. 需要调整 - 如果需要修改某些角色或职责
-3. 重新生成 - 如果需要完全重新规划团队
-
-请输入您的选择（1/2/3）或详细说明您的要求：</prompt>
-    <input_type>text</input_type>
-  </user_input>
-</action>
-
-<!-- 第三步：根据用户确认执行团队运行 -->
-<action>
-  <thinking>
-    用户已确认团队配置符合要求，现在可以运行这个团队来解决股票预测模型构建的问题
-  </thinking>
-  <team_runner>
-    <config_path>stock_prediction_team.yaml</config_path>
-    <query>请构建一个LSTM模型来预测未来7天的股票价格走势，使用过去3年的历史数据，考虑技术指标和基本面因素</query>
-    <max_iterations>10</max_iterations>
-  </team_runner>
-</action>
-```
-
-**3. 实际代码实现**
-```python
-# 在 proteus/main.py 中的超级智能体实现
-if agentmodul == "super-agent":
-    # 超级智能体，智能组建team并完成任务
-    logger.info(f"[{chat_id}] 开始超级智能体请求")
-    prompt_template = COT_TEAM_PROMPT_TEMPLATES
-    agent = ReactAgent(
-        tools=["team_generator", "team_runner", "user_input"],
-        instruction="",
-        stream_manager=stream_manager,
-        max_iterations=itecount,
-        iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-        model_name=model_name,
-        prompt_template=prompt_template,
-        role_type=TeamRole.GENERAL_AGENT,
-        conversation_id=conversation_id,
-        conversation_round=conversation_round,
-        user_name=user_name,
-        tool_memory_enabled=tool_memory_enabled,
-        sop_memory_enabled=sop_memory_enabled,
-    )
-
-    # 调用Agent的run方法，启用stream功能
-    result = await agent.run(query, chat_id)
-    await stream_manager.send_message(chat_id, await create_complete_event())
-```
-
-**4. 团队生成节点 (TeamGeneratorNode)**
-```python
-# proteus/src/nodes/team_generator.py
-class TeamGeneratorNode(BaseNode):
-    """团队生成节点 - 根据用户输入生成团队配置的节点"""
-    
-    async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        user_input = str(params.get("user_input", "")).strip()
-        save_to_file = bool(params.get("save_to_file", False))
-        file_name = params.get("file_name", "")
-        
-        # 调用team_manager生成团队配置
-        team_config = await self.team_manager.generate_team_config(user_input, request_id)
-        
-        # 如果需要保存到文件
-        if save_to_file:
-            file_path = self.team_manager.save_team_config(team_config, file_name)
-            
-        return {
-            "success": True,
-            "error": None,
-            "team_config": team_config,
-            "file_path": file_path if save_to_file else None
-        }
-```
-
-**5. 团队运行节点 (TeamRunnerNode)**
-```python
-# proteus/src/nodes/team_runner.py
-class TeamRunnerNode(BaseNode):
-    """团队运行节点 - 接收配置文件地址，装配team并运行"""
-    
-    async def execute(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        config_path = str(params.get("config_path", "")).strip()
-        query = str(params.get("query", "")).strip()
-        chat_id = params.get("chat_id", f"chat-{int(time.time())}")
-        max_iterations = int(params.get("max_iterations", 5))
-        
-        # 加载YAML配置
-        with open(full_config_path, "r", encoding="utf-8") as f:
-            team_config = yaml.safe_load(f)
-            
-        # 创建团队实例
-        self.team = PagenticTeam(
-            team_rules=team_config["team_rules"],
-            tools_config=tools_config,
-            start_role=start_role_enum,
-            conversation_id=conversation_id,
-        )
-        
-        # 注册并运行团队
-        await self.team.register_agents()
-        await self.team.run(query, chat_id)
-        
-        return {
-            "success": True,
-            "error": None,
-            "chat_id": chat_id,
-            "execution_time": execution_time,
-        }
-```
-
-**6. 团队配置文件示例**
-```yaml
-# conf/stock_prediction_team.yaml
-team_rules: |
-  这是一个股票预测模型构建团队，各角色需要紧密协作：
-  - 数据科学家负责数据分析和特征工程
-  - 机器学习工程师负责模型构建和调优
-  - 金融分析师提供领域知识和市场分析
-  - 软件工程师负责模型部署和系统集成
-
-start_role: COORDINATOR
-
-roles:
-  COORDINATOR:
-    tools: ["serper_search", "web_crawler", "user_input"]
-    prompt_template: "COORDINATOR_PROMPT_TEMPLATES"
-    agent_description: "团队协调员，负责任务分配和进度管理"
-    role_description: "你是一个经验丰富的项目协调员"
-    termination_conditions:
-      - type: "ToolTerminationCondition"
-        max_iterations: 5
-    model_name: "deepseek-chat"
-
-  DATA_SCIENTIST:
-    tools: ["python_execute", "serper_search"]
-    prompt_template: "RESEARCHER_PROMPT_TEMPLATES"
-    agent_description: "数据科学家，负责数据分析和特征工程"
-    role_description: "你是一个专业的数据科学家"
-    termination_conditions:
-      - type: "ToolTerminationCondition"
-        max_iterations: 8
-    model_name: "deepseek-chat"
-```
+（此处省略详细 XML 示例，详见源码或完整文档）
 
 **核心特性：**
 - **智能团队组建**：基于任务需求自动生成专业团队配置
@@ -547,39 +313,6 @@ result = await team.run(
 - 记忆共享和知识传递
 - 任务交接和进度跟踪
 
-### 🔧 高级功能
-
-#### 工具记忆系统
-```python
-# 启用工具记忆
-agent = ReactAgent(
-    tools=all_tools,
-    instruction="",
-    stream_manager=stream_manager,
-    tool_memory_enabled=True,  # 启用工具记忆
-    sop_memory_enabled=True,   # 启用SOP记忆
-    user_name=user_name        # 用户隔离
-)
-```
-
-#### 会话管理
-```python
-# 会话历史管理
-conversation_manager = ConversationManager(
-    conversation_id=conversation_id,
-    user_name=user_name,
-    max_rounds=50  # 最大对话轮次
-)
-```
-
-#### 实时监控
-```python
-# 实时状态监控
-async for message in stream_manager.get_messages(chat_id):
-    data = JSON.parse(message.data)
-    # 处理智能体思考过程、工具调用、执行结果等实时信息
-```
-
 ## 🛠️ 开发指南
 
 ### 1. 项目结构
@@ -597,6 +330,7 @@ proteus-ai/
 │   ├── conf/               # 配置文件
 │   ├── docker/             # Docker 配置
 │   └── requirements.txt    # Python 依赖
+├── sandbox/                # 沙箱环境
 ├── examples/               # 使用示例
 ├── cli/                    # 命令行工具
 └── docs/                   # 文档
@@ -605,74 +339,18 @@ proteus-ai/
 ### 2. 添加新节点类型
 
 1. **在 `proteus/src/nodes/` 目录下创建新的节点文件**
-
-```python
-# proteus/src/nodes/custom_node.py
-from src.nodes.base import BaseNode
-
-class CustomNode(BaseNode):
-    def __init__(self, node_id, params):
-        super().__init__(node_id, params)
-    
-    async def execute(self, context):
-        # 实现节点逻辑
-        result = await self._process_data(context)
-        return {"success": True, "data": result}
-    
-    async def _process_data(self, context):
-        # 自定义处理逻辑
-        return "处理结果"
-```
-
 2. **在 `proteus/src/nodes/node_config.yaml` 中注册节点配置**
-
-```yaml
-CustomNode:
-  type: "custom_node"
-  class: "src.nodes.custom_node.CustomNode"
-  name: "自定义节点"
-  description: "自定义节点功能描述"
-  output:
-    result: "执行结果"
-  params:
-    param1:
-      type: "str"
-      required: true
-      description: "参数1描述"
-```
 
 ### 3. 扩展 Agent 功能
 
 1. **在 `proteus/src/agent/prompt/` 中添加新的提示词模板**
-
-```python
-# proteus/src/agent/prompt/custom_prompt.py
-CUSTOM_PROMPT_TEMPLATE = """
-你是一个自定义智能体，请根据以下要求执行任务：
-{instruction}
-
-可用工具：{tools}
-
-当前任务：{query}
-"""
-```
-
 2. **修改 `proteus/src/agent/agent.py` 实现新的推理方法**
-
 3. **注册新的工具到 Agent 系统**
 
 ### 4. 前端开发
 
 1. **静态资源位于 `proteus/static/` 目录**
-2. **使用 SSE 接收实时更新**：
-
-```javascript
-const eventSource = new EventSource(`/stream/${chatId}`);
-eventSource.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    // 处理实时数据
-};
-```
+2. **使用 SSE 接收实时更新**
 
 ### 5. 测试指南
 
@@ -690,41 +368,8 @@ python -m pytest tests/e2e/
 ### 6. 使用 MCP 功能
 
 1. **配置 MCP 服务器**
-
-在 `proteus/proteus_mcp_config.json` 中配置 MCP 服务器信息：
-
-```json
-{
-    "mcpServers": {
-        "server-name": {
-            "type": "sse", 
-            "url": "https://your-mcp-server-url"
-        }
-    }
-}
-```
-
 2. **在代码中使用 MCP 管理器**
-
-```python
-from proteus.src.manager.mcp_manager import get_mcp_manager, initialize_mcp_manager
-
-# 初始化 MCP 管理器
-await initialize_mcp_manager()
-
-# 获取 MCP 管理器实例
-mcp_manager = get_mcp_manager()
-
-# 获取所有工具
-tools = mcp_manager.get_all_tools()
-
-# 获取所有资源  
-resources = mcp_manager.get_all_resources()
-```
-
 3. **在 Agent 中使用 MCP 工具**
-   - 选择"MCP 智能体"模式
-   - 或在自定义 Agent 中配置 MCP 工具
 
 ## 🔮 未来计划
 
@@ -769,28 +414,6 @@ resources = mcp_manager.get_all_resources()
 - 遵循 Git 提交规范
 - 通过所有 CI 检查
 
-### 开发环境设置
-
-1. **Fork 项目仓库**
-2. **克隆你的 fork**：
-   ```bash
-   git clone https://github.com/yourusername/proteus-ai.git
-   cd proteus-ai
-   ```
-3. **创建功能分支**：
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-4. **提交更改**：
-   ```bash
-   git commit -m "Add your feature description"
-   ```
-5. **推送到分支**：
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-6. **创建 Pull Request**
-
 ## 📄 许可证
 
 本项目采用 MIT 许可证，详见 [LICENSE](LICENSE) 文件。
@@ -806,7 +429,7 @@ resources = mcp_manager.get_all_resources()
 
 如果您在使用过程中遇到问题或有改进建议，请通过以下方式联系我们：
 
-- 提交 [GitHub Issue](https://github.com/yourusername/proteus-ai/issues)
+- 提交 [GitHub Issue](https://github.com/alishangtian/proteus-ai/issues)
 - 查看 [文档](docs/)
 - 参与社区讨论
 

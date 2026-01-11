@@ -44,6 +44,7 @@ Before ANY complex task:
 5. **Update after each phase** — Mark complete, log errors
 
 > **Note:** All three planning files should be created in your current working directory (your project root), not in the skill's installation folder.
+> **Note:** your project directory is `/var/data/manus/<project-name>` 
 
 ## The Core Pattern
 
