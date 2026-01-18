@@ -2,7 +2,7 @@
 name: manus
 version: "2.0.1"
 description: Implements Manus-style file-based planning for complex tasks. Creates task_plan.md, findings.md, and progress.md. Use when starting complex multi-step tasks, research projects, or any task requiring >5 tool calls.
-allowed-tools: serper_search,web_crawler,python_execute,skills_extract
+allowed-tools: serper_search,web_crawler,python_execute
 hooks:
   PreToolUse:
     - matcher: "python_execute"
@@ -44,7 +44,7 @@ Before ANY complex task:
 5. **Update after each phase** — Mark complete, log errors
 
 > **Note:** All three planning files should be created in your current working directory (your project root), not in the skill's installation folder.
-> **Note:** your project directory is `/var/data/manus/<project-name>` 
+> **Note:** your project directory is `/var/data/sandbox/manus/<project-name>` 
 
 ## The Core Pattern
 

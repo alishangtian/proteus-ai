@@ -5753,3 +5753,40 @@ body {
         }
     }
 }
+
+/* 消息压缩状态样式 */
+.compress-status {
+    margin: var(--spacing-md) 0;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--bg-color-warning);
+    border-left: 4px solid var(--yellow);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    color: #856404;
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.compress-status.complete {
+    background: var(--bg-color-success);
+    border-left-color: var(--green);
+    color: var(--green-dark);
+}
+
+.compress-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.compress-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(133, 100, 4, 0.2);
+    border-top-color: #856404;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}

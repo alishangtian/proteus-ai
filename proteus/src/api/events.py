@@ -35,6 +35,8 @@ class EventType:
     PLAYBOOK_UPDATE = "playbook_update"  # playbook 更新事件
     AGENT_STREAM_CONTENT = "agent_stream_content"  # agent流式内容事件
     AGENT_STREAM_THINKING = "agent_stream_thinking"  # agent流式思考事件
+    COMPRESS_START = "compress_start"  # 压缩开始事件
+    COMPRESS_COMPLETE = "compress_complete"  # 压缩完成事件
 
 
 async def create_event(event_type: str, data: Any) -> Dict:
@@ -362,6 +364,28 @@ async def create_playbook_update_event(playbook_content: str) -> Dict:
         {
             "playbook": playbook_content,
             "tasks": extracted_tasks,  # 添加提取的任务列表
+            "timestamp": time.time(),
+        },
+    )
+
+
+async def create_compress_start_event(original_length: int) -> Dict:
+    """创建压缩开始事件"""
+    return await create_event(
+        EventType.COMPRESS_START,
+        {"original_length": original_length, "timestamp": time.time()},
+    )
+
+
+async def create_compress_complete_event(
+    original_length: int, compressed_length: int
+) -> Dict:
+    """创建压缩完成事件"""
+    return await create_event(
+        EventType.COMPRESS_COMPLETE,
+        {
+            "original_length": original_length,
+            "compressed_length": compressed_length,
             "timestamp": time.time(),
         },
     )

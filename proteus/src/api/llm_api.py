@@ -14,7 +14,7 @@ from datetime import timedelta
 
 from .config import API_CONFIG, retry_on_error
 from .model_manager import ModelManager
-from ..utils.langfuse_wrapper import langfuse_wrapper
+from src.utils.langfuse_wrapper import langfuse_wrapper
 
 
 class RequestLogManager:
@@ -160,6 +160,61 @@ def calculate_messages_length(messages: List[Dict[str, str]]) -> int:
     return total_length
 
 
+def generate_long_message(target_tokens: int, model: str = "gpt-3.5-turbo-0613") -> str:
+    """
+    生成一个大约包含 target_tokens 个 token 的文本消息。
+
+    Args:
+        target_tokens: 目标 token 数量
+        model: 用于 token 计数的模型名称
+
+    Returns:
+        生成的文本内容
+    """
+    try:
+        import tiktoken
+
+        try:
+            encoding = tiktoken.encoding_for_model(model)
+        except KeyError:
+            encoding = tiktoken.get_encoding("cl100k_base")
+    except ImportError:
+        # 如果 tiktoken 不可用，则使用简单估算（1 token ≈ 4 个字符）
+        avg_chars_per_token = 4
+        num_chars = target_tokens * avg_chars_per_token
+        return "x" * num_chars
+
+    # 使用一个基础字符串，计算其 token 数量
+    base_string = "这是一个测试文本，用于生成长消息。"
+    base_tokens = len(encoding.encode(base_string))
+    if base_tokens == 0:
+        base_string = "test "
+        base_tokens = len(encoding.encode(base_string))
+
+    # 计算需要重复的次数
+    repeats = max(1, target_tokens // base_tokens)
+    # 生成文本
+    generated = base_string * repeats
+    # 计算实际 token 数量
+    actual_tokens = len(encoding.encode(generated))
+    # 如果不足，添加一些填充
+    if actual_tokens < target_tokens:
+        # 添加单个字符直到达到目标
+        padding = " "
+        padding_tokens = len(encoding.encode(padding))
+        if padding_tokens > 0:
+            while actual_tokens < target_tokens:
+                generated += padding
+                actual_tokens += padding_tokens
+    # 如果超出，截断（简单处理，移除最后一个重复）
+    if actual_tokens > target_tokens:
+        # 逐步移除字符直到接近目标
+        while actual_tokens > target_tokens and len(generated) > 0:
+            generated = generated[:-1]
+            actual_tokens = len(encoding.encode(generated))
+    return generated
+
+
 def encode_image_to_base64(image_path: Union[str, Path]) -> str:
     """
     将图片编码为Base64字符串
@@ -181,6 +236,7 @@ async def call_llm_api(
     temperature: float = 0.1,
     output_json: bool = False,
     model_name: str = None,
+    long_message_tokens: int = 0,
 ) -> Tuple[str, Dict]:
     """
     调用llm API服务，支持自动重试
@@ -190,6 +246,8 @@ async def call_llm_api(
         request_id: 请求ID,用于日志追踪
         temperature: 温度参数，控制输出的随机性，默认0.1
         output_json: 是否输出JSON结构,默认为False
+        model_name: 模型名称，默认为 deepseek-chat
+        long_message_tokens: 如果大于0，将在消息列表前追加一个大约包含该数量token的长消息
 
     Returns:
         返回完整响应字符串
@@ -627,13 +685,23 @@ async def call_llm_api_stream(
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"API调用失败: {error_text}")
-                        # 对于HTTP错误，不重试，直接抛出异常
-                        raise ValueError(f"API调用失败: {error_text}")
+
+                        # 分析错误类型
+                        error_type = await _analyze_error(error_text)
+                        current_logger.info(f"错误分析结果: {error_type}")
+
+                        yield {
+                            "type": "error",
+                            "error": f"API调用失败: {error_text}",
+                            "error_type": error_type,
+                        }
+                        return
 
                     current_logger.info(f"流式API调用开始接收数据")
 
                     # 用于累积完整的usage信息
                     accumulated_usage = {}
+                    is_thinking = False
 
                     async for line in response.content:
                         line = line.decode("utf-8").strip()
@@ -663,25 +731,43 @@ async def call_llm_api_stream(
                                 # 处理thinking内容
                                 reasoning_content = delta.get("reasoning_content")
                                 reasoning = delta.get("reasoning")
-                                if reasoning and reasoning != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "content": reasoning,
-                                    }
-                                if reasoning_content and reasoning_content != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "content": reasoning_content,
-                                    }
+                                if (reasoning and reasoning != "") or (
+                                    reasoning_content and reasoning_content != ""
+                                ):
+                                    is_thinking = True
+                                    if reasoning and reasoning != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "content": reasoning,
+                                        }
+                                    if reasoning_content and reasoning_content != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "content": reasoning_content,
+                                        }
 
                                 # 处理普通内容
                                 if "content" in delta:
                                     content = delta["content"]
                                     if content:
+                                        if is_thinking:
+                                            yield {
+                                                "type": "thinking",
+                                                "content": "",
+                                                "is_end": True,
+                                            }
+                                            is_thinking = False
                                         yield {"type": "content", "content": content}
 
                                 # 检查是否完成
                                 if choice.get("finish_reason") == "stop":
+                                    if is_thinking:
+                                        yield {
+                                            "type": "thinking",
+                                            "content": "",
+                                            "is_end": True,
+                                        }
+                                        is_thinking = False
                                     current_logger.info(f"流式API调用完成")
                                     return  # 成功完成，退出函数
 
@@ -925,6 +1011,41 @@ async def call_llm_api_with_tools(
 
 
 @langfuse_wrapper.dynamic_observe()
+async def _analyze_error(error_text: str) -> str:
+    """
+    使用 LLM 分析错误类型
+
+    Args:
+        error_text: 错误信息文本
+
+    Returns:
+        错误类型字符串
+    """
+    try:
+        prompt = f"""请分析以下 API 错误信息，并将其分类为以下三种类型之一：
+1. token_limit_exceeded (token 超限)
+2. rate_limit_exceeded (tpm 或者 rpm 超限)
+3. invalid_api_key (api_key无效)
+4. other (其他错误)
+
+错误信息：
+{error_text}
+
+请只返回分类代码（例如：token_limit_exceeded），不要返回其他内容。"""
+
+        messages = [{"role": "user", "content": prompt}]
+        # 强制使用 deepseek-chat
+        response_text, _ = await call_llm_api(
+            messages=messages, model_name="deepseek-chat", temperature=0.1
+        )
+        return response_text.strip()
+    except Exception as e:
+        # 避免循环依赖或递归错误导致崩溃，记录日志并返回 other
+        logging.getLogger(__name__).error(f"错误分析失败: {e}")
+        return "other"
+
+
+@langfuse_wrapper.dynamic_observe()
 async def call_llm_api_with_tools_stream(
     messages: List[Dict[str, str]],
     tools: List[Dict] = None,
@@ -1031,17 +1152,28 @@ async def call_llm_api_with_tools_stream(
                     headers=headers,
                     json=data,
                 ) as response:
+                    logger.info(f"response.status = {response.status}")
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"API调用失败: {error_text}")
-                        # 对于HTTP错误，不重试，直接抛出异常
-                        raise ValueError(f"API调用失败: {error_text}")
+                        error_type = await _analyze_error(error_text)
+                        # 分析错误类型
+                        error_type = await _analyze_error(error_text)
+                        current_logger.info(f"错误分析结果: {error_type}")
+
+                        yield {
+                            "type": "error",
+                            "error": f"API调用失败: {error_text}",
+                            "error_type": error_type,
+                        }
+                        return
 
                     current_logger.info(f"流式API调用开始接收数据")
 
                     # 用于累积完整的usage信息和工具调用
                     accumulated_usage = {}
                     accumulated_tool_calls = []
+                    is_thinking = False
 
                     async for line in response.content:
                         line = line.decode("utf-8").strip()
@@ -1073,19 +1205,23 @@ async def call_llm_api_with_tools_stream(
                                 reasoning = delta.get("reasoning")
                                 reasoning_details = delta.get("reasoning_details")
 
-                                if reasoning_content and reasoning_content != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "thinking_type": "reasoning_content",
-                                        "content": reasoning_content,
-                                    }
+                                if (reasoning_content and reasoning_content != "") or (
+                                    reasoning and reasoning != ""
+                                ):
+                                    is_thinking = True
+                                    if reasoning_content and reasoning_content != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "thinking_type": "reasoning_content",
+                                            "content": reasoning_content,
+                                        }
 
-                                if reasoning and reasoning != "":
-                                    yield {
-                                        "type": "thinking",
-                                        "thinking_type": "reasoning",
-                                        "content": reasoning,
-                                    }
+                                    if reasoning and reasoning != "":
+                                        yield {
+                                            "type": "thinking",
+                                            "thinking_type": "reasoning",
+                                            "content": reasoning,
+                                        }
                                 if reasoning_details and reasoning_details[0]:
                                     yield {
                                         "type": "reasoning_details",
@@ -1096,10 +1232,25 @@ async def call_llm_api_with_tools_stream(
                                 if "content" in delta:
                                     content = delta["content"]
                                     if content:
+                                        if is_thinking:
+                                            yield {
+                                                "type": "thinking",
+                                                "content": "",
+                                                "is_end": True,
+                                            }
+                                            is_thinking = False
                                         yield {"type": "content", "content": content}
 
                                 # 处理工具调用
                                 if "tool_calls" in delta:
+                                    if is_thinking:
+                                        yield {
+                                            "type": "thinking",
+                                            "content": "",
+                                            "is_end": True,
+                                        }
+                                        is_thinking = False
+                                    tool_calls = delta["tool_calls"]
                                     tool_calls = delta["tool_calls"]
                                     if tool_calls:
                                         # 累积工具调用信息
@@ -1152,6 +1303,13 @@ async def call_llm_api_with_tools_stream(
                                     "stop",
                                     "tool_calls",
                                 ]:
+                                    if is_thinking:
+                                        yield {
+                                            "type": "thinking",
+                                            "content": "",
+                                            "is_end": True,
+                                        }
+                                        is_thinking = False
                                     current_logger.info(
                                         f"流式API调用完成，finish_reason: {choice.get('finish_reason')}"
                                     )

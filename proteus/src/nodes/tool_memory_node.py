@@ -1,9 +1,10 @@
 from typing import Any, Dict, Optional
 from proteus.src.nodes.base import BaseNode
-from proteus.src.manager.tool_memory_manager import ToolMemoryManager
+from src.manager.tool_memory_manager import ToolMemoryManager
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class ToolMemoryNode(BaseNode):
     """
@@ -67,5 +68,7 @@ class ToolMemoryNode(BaseNode):
                 "message": f"工具 '{tool_name}' 的记忆已更新。",
             }
         except Exception as e:
-            logger.error(f"ToolMemoryNode: 更新工具 '{tool_name}' 记忆失败: {e}", exc_info=True)
+            logger.error(
+                f"ToolMemoryNode: 更新工具 '{tool_name}' 记忆失败: {e}", exc_info=True
+            )
             return {"success": False, "tool_name": tool_name, "error": str(e)}

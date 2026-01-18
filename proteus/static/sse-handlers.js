@@ -2109,6 +2109,54 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
         }
     });
 
+    // compress_start
+    eventSource.addEventListener('compress_start', event => {
+        try {
+            const data = JSON.parse(event.data);
+            // 检查是否已存在指示器，如果存在则先移除
+            const existingIndicator = document.getElementById('compress-status-indicator');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+
+            const compressDiv = document.createElement('div');
+            compressDiv.className = 'compress-status';
+            compressDiv.id = 'compress-status-indicator';
+            compressDiv.innerHTML = `
+                <div class="compress-spinner"></div>
+                <span class="compress-icon">📏</span>
+                <span class="compress-message">Token 超限 (当前长度: ${data.original_length})，正在压缩历史消息以节省空间...</span>
+            `;
+            if (answerElement) answerElement.appendChild(compressDiv);
+            if (typeof scrollToBottom === 'function') scrollToBottom();
+        } catch (error) {
+            console.error('解析 compress_start 事件失败:', error);
+        }
+    });
+
+    // compress_complete
+    eventSource.addEventListener('compress_complete', event => {
+        try {
+            const data = JSON.parse(event.data);
+            const compressDiv = document.getElementById('compress-status-indicator');
+            if (compressDiv) {
+                compressDiv.className = 'compress-status complete';
+                compressDiv.innerHTML = `
+                    <span class="compress-icon">✅</span>
+                    <span class="compress-message">消息压缩完成！(原始: ${data.original_length} -> 压缩后: ${data.compressed_length})</span>
+                `;
+                // 3秒后自动移除提示
+                setTimeout(() => {
+                    compressDiv.style.opacity = '0';
+                    compressDiv.style.transition = 'opacity 0.5s ease';
+                    setTimeout(() => compressDiv.remove(), 500);
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('解析 compress_complete 事件失败:', error);
+        }
+    });
+
     // onerror
     eventSource.onerror = () => {
         eventSource.close();

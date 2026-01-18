@@ -33,3 +33,4 @@ bs4==0.0.2
 chromadb
 openpyxl
 xlrd
+tiktoken

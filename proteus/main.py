@@ -574,7 +574,10 @@ async def create_chat(
             )
         )
 
-    tool_choices = ["serper_search", "web_crawler", "python_execute", "skills_extract"]
+    tool_choices = ["serper_search", "web_crawler", "python_execute"]
+
+    if sop_memory_enabled:
+        tool_choices.append("skills_extract")
 
     if modul in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）

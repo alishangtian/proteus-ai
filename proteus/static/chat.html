@@ -202,7 +202,7 @@
     <div class="sidebar left-sidebar" id="leftSidebar">
         <button class="sidebar-toggle" title="收起侧边栏">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M15 18l-6-6 6-6"/>
+                <path d="M15 18l-6-6 6-6" />
             </svg>
         </button>
         <div class="conversation-list-container">
@@ -258,16 +258,16 @@
                             <button id="close-options-panel" type="button" aria-label="关闭">&times;</button>
                         </div> -->
                         <div class="options-panel-body">
-                            <div class="model-select-wrapper">
+                            <div class="model-select-wrapper" style="display:none">
                                 <label for="model-select"><span>📚 工作模式</span></label>
                                 <select id="model-select" class="select-control" aria-label="工作模式" title="选择工作模式">
                                     <option value="chat" selected>智能助手</option>
-                                    <option value="deep-research">深度研究</option>
+                                    <!-- <option value="deep-research">深度研究</option>
                                     <option value="deep-research-multi">深度研究-多智能体</option>
                                     <option value="super-agent">超级智能体</option>
                                     <option value="codeact-agent">CodeAct智能体</option>
                                     <option value="mcp-agent">MCP智能体</option>
-                                    <option value="browser-agent">Browser智能体</option>
+                                    <option value="browser-agent">Browser智能体</option> -->
                                 </select>
                             </div>
                             <div id="tool-call-container">
@@ -278,6 +278,12 @@
                                     <input type="checkbox" id="tool-call-toggle" class="memory-toggle" checked
                                         title="搜索、爬虫和代码执行器">
                                 </div>
+                            </div>
+                            <div class="memory-wrapper">
+                                <label for="sop-memory-toggle">
+                                    <span>🔧技能调用</span>
+                                </label>
+                                <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
                             </div>
                             <div class="model-select-wrapper">
                                 <label for="model-name-select"><span>👨‍🔬 模型</span></label>
@@ -303,17 +309,11 @@
                                 <input type="checkbox" id="tool-memory-toggle" class="memory-toggle">
                             </div>
 
-                            <div class="memory-wrapper">
-                                <label for="sop-memory-toggle">
-                                    <span>📋 SOP记忆</span>
-                                </label>
-                                <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
-                            </div>
-
-                            <div id="sop-score-threshold-container" class="model-select-wrapper" style="margin-top: 8px;">
+                            <div id="sop-score-threshold-container" class="model-select-wrapper"
+                                style="margin-top: 8px;display:none">
                                 <label for="sop-score-threshold"><span>🎯 召回相似度</span></label>
-                                <input type="number" id="sop-score-threshold" class="select-control" min="0" max="1" step="0.01" value="0.50"
-                                    placeholder="相似度阈值 (0-1)" />
+                                <input type="number" id="sop-score-threshold" class="select-control" min="0" max="1"
+                                    step="0.01" value="0.50" placeholder="相似度阈值 (0-1)" />
                             </div>
                         </div>
                     </div>
@@ -329,7 +329,7 @@
     <div class="sidebar right-sidebar" id="rightSidebar">
         <button class="sidebar-toggle" title="收起侧边栏">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6"/>
+                <path d="M9 18l6-6-6-6" />
             </svg>
         </button>
         <div class="playbook-container">

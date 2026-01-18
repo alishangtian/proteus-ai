@@ -8,7 +8,11 @@ from string import Template
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from src.api.stream_manager import StreamManager
-from src.api.llm_api import call_llm_api_stream, call_llm_api_with_tools_stream
+from src.api.llm_api import (
+    call_llm_api,
+    call_llm_api_stream,
+    call_llm_api_with_tools_stream,
+)
 from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
@@ -25,7 +29,10 @@ from src.api.events import (
     create_error_event,
     create_retry_event,
     create_usage_event,
+    create_compress_start_event,
+    create_compress_complete_event,
 )
+from src.utils.token_utils import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -206,86 +213,128 @@ class ChatAgent:
             )
             tool_iteration = 0
             while tool_iteration < max_iterations:
-                # 执行一次 LLM 生成迭代
-                (
-                    response_text,
-                    thinking_text,
-                    tool_calls,
-                    accumulated_usage,
-                    thinking_type,
-                    reasoning_details,
-                ) = await self._execute_llm_generation(
-                    chat_id=chat_id,
-                    messages=self._filter_messages(
-                        messages
-                    ),  # 过滤消息，只保留最新的思考消息
-                    tools=tools,
-                    enable_thinking=enable_thinking,
-                    tool_iteration=tool_iteration,
-                )
-
-                # 保存最终响应
-                final_response_text = response_text
-
-                # 如果没有工具调用，说明模型返回了最终答案，退出循环
-                if not tool_calls:
-                    logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
-                    if thinking_text:
-                        thought_message = {
-                            "role": "assistant",
-                            thinking_type: thinking_text,
-                            "content": response_text,
-                        }
-                        messages.append(thought_message)
-                    break
-
-                # 执行工具调用
-                tool_messages = await self._execute_tools(
-                    chat_id=chat_id,
-                    tool_calls=tool_calls,
-                    tool_iteration=tool_iteration,
-                )
-
-                # 将助手消息（包含工具调用）添加到messages
-                assistant_message = {
-                    "role": "assistant",
-                    thinking_type: thinking_text,
-                    "content": response_text,
-                    "tool_calls": tool_calls,
-                    "reasoning_details": reasoning_details,
-                }
-                messages.append(assistant_message)
-
-                # 立即保存助手消息到 Redis（保存完整的 message 对象）
-                if self.conversation_id:
-                    conversation_manager.save_message(
-                        conversation_id=self.conversation_id, message=assistant_message
-                    )
-                    # self._save_conversation_to_redis(message=assistant_message)
-                    logger.info(
-                        f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
+                try:
+                    # 执行一次 LLM 生成迭代
+                    (
+                        response_text,
+                        thinking_text,
+                        tool_calls,
+                        accumulated_usage,
+                        thinking_type,
+                        reasoning_details,
+                        need_compress,
+                    ) = await self._execute_llm_generation(
+                        chat_id=chat_id,
+                        messages=self._filter_messages(
+                            messages
+                        ),  # 过滤消息，只保留最新的思考消息
+                        tools=tools,
+                        enable_thinking=enable_thinking,
+                        tool_iteration=tool_iteration,
                     )
 
-                # 将工具结果添加到messages，并立即保存到 Redis
-                for tool_msg in tool_messages:
-                    messages.append(tool_msg)
-                    # 立即保存每个工具调用结果到 Redis（保存完整的 message 对象）
+                    # 检查是否需要压缩
+                    if need_compress:
+                        logger.info(f"[{chat_id}] 触发消息压缩")
+                        original_tokens = count_tokens(messages, model=self.model_name)
+
+                        # 发送压缩开始事件
+                        if self.stream_manager:
+                            await self.stream_manager.send_message(
+                                chat_id,
+                                await create_compress_start_event(original_tokens),
+                            )
+
+                        # 执行压缩
+                        messages = await self._compress_messages(chat_id, messages)
+
+                        compressed_tokens = count_tokens(messages)
+                        logger.info(
+                            f"[{chat_id}] 压缩完成: {original_tokens} -> {compressed_tokens} tokens"
+                        )
+
+                        # 发送压缩完成事件
+                        if self.stream_manager:
+                            await self.stream_manager.send_message(
+                                chat_id,
+                                await create_compress_complete_event(
+                                    original_tokens, compressed_tokens
+                                ),
+                            )
+
+                        # 压缩后，我们需要重新执行当前迭代，而不是继续往下走
+                        # 因为当前的 LLM 调用由于超限失败了，没有产生有效的 response 或 tool_calls
+                        logger.info(f"[{chat_id}] 压缩完成，重新执行当前迭代")
+                        need_compress = False
+                        continue
+
+                    # 保存最终响应
+                    final_response_text = response_text
+
+                    # 如果没有工具调用，说明模型返回了最终答案，退出循环
+                    if not tool_calls:
+                        logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
+                        if thinking_text:
+                            thought_message = {
+                                "role": "assistant",
+                                thinking_type: thinking_text,
+                                "content": response_text,
+                            }
+                            messages.append(thought_message)
+                        break
+
+                    # 执行工具调用
+                    tool_messages = await self._execute_tools(
+                        chat_id=chat_id,
+                        tool_calls=tool_calls,
+                        tool_iteration=tool_iteration,
+                    )
+
+                    # 将助手消息（包含工具调用）添加到messages
+                    assistant_message = {
+                        "role": "assistant",
+                        thinking_type: thinking_text,
+                        "content": response_text,
+                        "tool_calls": tool_calls,
+                        "reasoning_details": reasoning_details,
+                    }
+                    messages.append(assistant_message)
+
+                    # 立即保存助手消息到 Redis（保存完整的 message 对象）
                     if self.conversation_id:
                         conversation_manager.save_message(
-                            conversation_id=self.conversation_id, message=tool_msg
+                            conversation_id=self.conversation_id,
+                            message=assistant_message,
                         )
-                        # self._save_conversation_to_redis(message=tool_msg)
+                        # self._save_conversation_to_redis(message=assistant_message)
+                        logger.info(
+                            f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
+                        )
 
-                if self.conversation_id and tool_messages:
+                    # 将工具结果添加到messages，并立即保存到 Redis
+                    for tool_msg in tool_messages:
+                        messages.append(tool_msg)
+                        # 立即保存每个工具调用结果到 Redis（保存完整的 message 对象）
+                        if self.conversation_id:
+                            conversation_manager.save_message(
+                                conversation_id=self.conversation_id, message=tool_msg
+                            )
+                            # self._save_conversation_to_redis(message=tool_msg)
+
+                    if self.conversation_id and tool_messages:
+                        logger.info(
+                            f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
+                        )
+
+                    # 增加迭代计数
+                    tool_iteration += 1
                     logger.info(
-                        f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
+                        f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
                     )
 
-                # 增加迭代计数
-                tool_iteration += 1
-                logger.info(
-                    f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
-                )
+                except Exception as e:
+                    logger.error(f"[{chat_id}] 压缩消息失败: {str(e)}", exc_info=True)
+                    raise e
 
             # 发送完成事件
             if self.stream_manager:
@@ -412,7 +461,7 @@ class ChatAgent:
         thinking_type = ""
         reasoning_details = []
         first_content_chunk_sent = False
-        has_thinking_content = False
+        need_compress = False
         tool_calls = None
         accumulated_usage = {}
         start_time = time.time()
@@ -449,7 +498,18 @@ class ChatAgent:
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
-                                has_thinking_content = True
+                                if chunk.get("is_end"):
+                                    if self.stream_manager:
+                                        event = (
+                                            await create_agent_stream_thinking_event(
+                                                "[THINKING_DONE]"
+                                            )
+                                        )
+                                        await self.stream_manager.send_message(
+                                            chat_id, event
+                                        )
+                                    continue
+
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
                                 thinking_type = chunk.get("thinking_type")
@@ -461,24 +521,10 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "reasoning_details":
+                            elif chunk_type == "reasoning_details":
                                 reasoning_details = chunk.get("content", [])
 
-                            if chunk_type == "content":
-                                if (
-                                    not first_content_chunk_sent
-                                    and has_thinking_content
-                                ):
-                                    first_content_chunk_sent = True
-                                    if self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
-                                                "[THINKING_DONE]"
-                                            )
-                                        )
-                                        await self.stream_manager.send_message(
-                                            chat_id, event
-                                        )
+                            elif chunk_type == "content":
                                 content = chunk.get("content", "")
                                 response_text += content
                                 if self.stream_manager and content:
@@ -487,21 +533,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "tool_calls":
-                                if (
-                                    not first_content_chunk_sent
-                                    and has_thinking_content
-                                ):
-                                    first_content_chunk_sent = True
-                                    if self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
-                                                "[THINKING_DONE]"
-                                            )
-                                        )
-                                        await self.stream_manager.send_message(
-                                            chat_id, event
-                                        )
+                            elif chunk_type == "tool_calls":
                                 tool_calls = chunk.get("tool_calls", [])
                                 logger.info(
                                     f"[{chat_id}] 模型请求调用 {len(tool_calls)} 个工具"
@@ -510,21 +542,7 @@ class ChatAgent:
                                     if tool_call.get("id") is None:
                                         tool_call["id"] = "call_" + str(uuid.uuid4())
 
-                            if chunk_type == "usage":
-                                if (
-                                    not first_content_chunk_sent
-                                    and has_thinking_content
-                                ):
-                                    first_content_chunk_sent = True
-                                    if self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
-                                                "[THINKING_DONE]"
-                                            )
-                                        )
-                                        await self.stream_manager.send_message(
-                                            chat_id, event
-                                        )
+                            elif chunk_type == "usage":
                                 accumulated_usage = chunk.get("usage", {})
                                 logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
@@ -535,7 +553,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "retry":
+                            elif chunk_type == "retry":
                                 retry_msg = chunk.get("error", "未知错误")
                                 logger.error(f"[{chat_id}] 流式调用错误: {retry_msg}")
                                 if self.stream_manager:
@@ -543,22 +561,27 @@ class ChatAgent:
                                         chat_id, await create_retry_event(retry_msg)
                                     )
 
-                            if chunk_type == "error":
-                                if (
-                                    not first_content_chunk_sent
-                                    and has_thinking_content
-                                ):
-                                    first_content_chunk_sent = True
-                                    if self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
-                                                "[THINKING_DONE]"
-                                            )
-                                        )
-                                        await self.stream_manager.send_message(
-                                            chat_id, event
-                                        )
+                            elif chunk_type == "error":
+                                logger.error(f"[{chat_id}] chunkInfo:{chunk}")
+                                error_type = chunk.get("error_type", "")
                                 error_msg = chunk.get("error", "未知错误")
+                                if error_type == "token_limit_exceeded":
+                                    logger.info(
+                                        f"[{chat_id}] 检测到 Token 超限，准备触发压缩: {error_msg}"
+                                    )
+                                    need_compress = True
+                                    # 如果是超限错误，我们中断流式读取，返回 need_compress=True
+                                    return (
+                                        response_text,
+                                        thinking_text,
+                                        tool_calls,
+                                        accumulated_usage,
+                                        thinking_type,
+                                        reasoning_details,
+                                        need_compress,
+                                    )
+                                elif error_type == "rate_limit_exceeded":
+                                    pass
                                 logger.error(f"[{chat_id}] 流式调用错误: {error_msg}")
                                 if self.stream_manager:
                                     await self.stream_manager.send_message(
@@ -576,7 +599,18 @@ class ChatAgent:
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
-                                has_thinking_content = True
+                                if chunk.get("is_end"):
+                                    if self.stream_manager:
+                                        event = (
+                                            await create_agent_stream_thinking_event(
+                                                "[THINKING_DONE]"
+                                            )
+                                        )
+                                        await self.stream_manager.send_message(
+                                            chat_id, event
+                                        )
+                                    continue
+
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
                                 thinking_type = chunk.get("thinking_type")
@@ -588,21 +622,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "content":
-                                if (
-                                    not first_content_chunk_sent
-                                    and has_thinking_content
-                                ):
-                                    first_content_chunk_sent = True
-                                    if self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
-                                                "[THINKING_DONE]"
-                                            )
-                                        )
-                                        await self.stream_manager.send_message(
-                                            chat_id, event
-                                        )
+                            elif chunk_type == "content":
                                 content = chunk.get("content", "")
                                 response_text += content
                                 if self.stream_manager and content:
@@ -611,7 +631,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "usage":
+                            elif chunk_type == "usage":
                                 accumulated_usage = chunk.get("usage", {})
                                 logger.info(
                                     f"[{chat_id}] Token 使用情况: {accumulated_usage}"
@@ -622,7 +642,7 @@ class ChatAgent:
                                         chat_id, event
                                     )
 
-                            if chunk_type == "retry":
+                            elif chunk_type == "retry":
                                 retry_msg = chunk.get("error", "未知错误")
                                 logger.error(f"[{chat_id}] 流式调用错误: {retry_msg}")
                                 if self.stream_manager:
@@ -630,8 +650,26 @@ class ChatAgent:
                                         chat_id, await create_retry_event(retry_msg)
                                     )
 
-                            if chunk_type == "error":
+                            elif chunk_type == "error":
+                                logger.error(f"[{chat_id}] chunkInfo:{chunk}")
+                                error_type = chunk.get("error_type", "")
                                 error_msg = chunk.get("error", "未知错误")
+                                if error_type == "token_limit_exceeded":
+                                    logger.info(
+                                        f"[{chat_id}] 检测到 Token 超限，准备触发压缩: {error_msg}"
+                                    )
+                                    need_compress = True
+                                    return (
+                                        response_text,
+                                        thinking_text,
+                                        tool_calls,
+                                        accumulated_usage,
+                                        thinking_type,
+                                        reasoning_details,
+                                        need_compress,
+                                    )
+                                elif error_type == "rate_limit_exceeded":
+                                    pass
                                 logger.error(f"[{chat_id}] 流式调用错误: {error_msg}")
                                 if self.stream_manager:
                                     await self.stream_manager.send_message(
@@ -683,9 +721,31 @@ class ChatAgent:
                 accumulated_usage,
                 thinking_type,
                 reasoning_details,
+                need_compress,
             )
 
         except Exception as e:
+            # 检查是否是超限异常（有些异常可能在 call_llm_api 内部抛出）
+            error_str = str(e).lower()
+            if any(
+                kw in error_str
+                for kw in [
+                    "token_limit_exceeded",
+                    "context_length_exceeded",
+                    "too many tokens",
+                ]
+            ):
+                logger.warning(f"[{chat_id}] 捕获到超限异常，触发压缩: {str(e)}")
+                return (
+                    response_text,
+                    thinking_text,
+                    tool_calls,
+                    accumulated_usage,
+                    thinking_type,
+                    reasoning_details,
+                    True,  # need_compress
+                )
+
             execution_time = time.time() - start_time if "start_time" in locals() else 0
 
             # 尝试更新 generation span 的错误状态
@@ -1285,6 +1345,135 @@ class ChatAgent:
 
         except Exception as e:
             logger.error(f"[{chat_id}] 处理skills记忆失败: {str(e)}", exc_info=True)
+
+    @langfuse_wrapper.dynamic_observe()
+    async def _compress_messages(
+        self, chat_id: str, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """压缩消息列表"""
+        compressed_messages = []
+        trigger_compress = False
+
+        for i, msg in enumerate(messages):
+            role = msg.get("role")
+
+            # system 消息和最后一条消息不压缩
+            if role == "system" or i == len(messages) - 1:
+                compressed_messages.append(msg)
+                continue
+
+            if role == "tool" and msg.get("name") != "skills_extract":
+                # 只压缩 content 字段，长度超过 1000 才压缩
+                content = msg.get("content", "")
+                if len(content) > 1000:
+                    summary = await self._get_llm_summary(
+                        chat_id,
+                        f"请对以下工具执行结果origin_content进行总结，最终结果长度控制在 1000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                    )
+                    new_msg = msg.copy()
+                    new_msg["content"] = f"{summary}"
+                    compressed_messages.append(new_msg)
+                    trigger_compress = True
+                else:
+                    compressed_messages.append(msg)
+
+            elif role == "assistant":
+                # 压缩 content 和 reasoning_content 字段
+                content = msg.get("content", "")
+                reasoning_content = msg.get("reasoning_content", "")
+                reasoning = msg.get("reasoning", "")
+
+                compressed = False
+                new_msg = msg.copy()
+
+                # 压缩 content 字段
+                if len(content) > 2000:
+                    summary = await self._get_llm_summary(
+                        chat_id,
+                        f"请对以下助手回答内容origin_content进行总结，最终结果长度控制在 2000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                    )
+                    new_msg["content"] = f"{summary}"
+                    trigger_compress = True
+                    compressed = True
+
+                # 压缩 reasoning_content 字段
+                if len(reasoning_content) > 500:
+                    summary = await self._get_llm_summary(
+                        chat_id,
+                        f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning_content}\n</origin_content>",
+                    )
+                    # 确定使用哪个字段名
+                    new_msg["reasoning_content"] = f"{summary}"
+                    trigger_compress = True
+                    compressed = True
+
+                if len(reasoning) > 500:
+                    summary = await self._get_llm_summary(
+                        chat_id,
+                        f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning}\n</origin_content>",
+                    )
+                    # 确定使用哪个字段名
+                    new_msg["reasoning"] = f"{summary}"
+                    trigger_compress = True
+                    compressed = True
+
+                if compressed:
+                    compressed_messages.append(new_msg)
+                else:
+                    compressed_messages.append(msg)
+
+            else:
+                # user 消息或其他
+                content = msg.get("content", "")
+                if len(content) > 500:
+                    summary = await self._get_llm_summary(
+                        chat_id,
+                        f"请对以下用户提问内容origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                    )
+                    new_msg = msg.copy()
+                    new_msg["content"] = f"{summary}"
+                    compressed_messages.append(new_msg)
+                    trigger_compress = True
+                else:
+                    compressed_messages.append(msg)
+
+        # 如果整个循环中没有触发任何压缩，说明单条消息都未超过阈值
+        # 此时执行兜底策略：移除最早的历史消息（保留 system 和最近的消息）
+        if not trigger_compress:
+            logger.info(
+                f"[{chat_id}] 单条消息未触发压缩阈值，执行兜底策略：移除最早的历史消息"
+            )
+
+            # 确保有足够的消息可以移除（至少保留 system 和最后一条消息）
+            if len(compressed_messages) > 2:
+                # 移除 index 1 的消息（最早的非 system 消息）
+                removed_msg = compressed_messages.pop(1)
+                logger.info(
+                    f"[{chat_id}] 已移除消息: role={removed_msg.get('role')}, content_len={len(removed_msg.get('content', ''))}"
+                )
+            else:
+                logger.warning(
+                    f"[{chat_id}] 消息数量太少({len(compressed_messages)})，无法执行移除策略"
+                )
+                raise Exception(f"[{chat_id}] 消息过短且数量过少，无法压缩")
+
+        return compressed_messages
+
+    async def _get_llm_summary(self, chat_id: str, prompt: str) -> str:
+        """调用 LLM 获取摘要"""
+        try:
+            messages = [{"role": "user", "content": prompt}]
+            # 使用非流式 API 获取摘要
+            summary, _ = await call_llm_api(
+                messages=messages,
+                model_name=self.model_name,
+                request_id=f"compress-{chat_id}-{int(time.time())}",
+                temperature=0.3,
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.error(f"[{chat_id}] 获取 LLM 摘要失败: {str(e)}")
+            return "压缩失败"
 
 
 from src.utils.dynamic_observer import auto_apply_here
