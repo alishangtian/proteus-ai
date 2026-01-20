@@ -194,6 +194,247 @@
         .image-viewer-hint.show {
             opacity: 1;
         }
+
+        /* 技能标签样式 - 输入框内部紧凑样式 */
+        .skill-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--light-blue);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--primary-blue);
+            border: 1px solid var(--primary-blue);
+            transition: all 0.2s ease;
+        }
+
+        .skill-tag:hover {
+            background: var(--primary-blue);
+            color: var(--bg-color-white);
+        }
+
+        .skill-tag .skill-name {
+            font-weight: 500;
+        }
+
+        .skill-tag .skill-remove {
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            margin-left: 2px;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+
+        .skill-tag .skill-remove:hover {
+            opacity: 1;
+        }
+
+        /* 技能选择下拉列表样式 */
+        .skills-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 1000px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: var(--bg-color-white);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            z-index: 100;
+            border: 1px solid var(--border-color-light);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .skills-dropdown-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-bottom: 1px solid var(--border-color-light);
+            background: var(--bg-color-lighter-gray);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .skills-dropdown-header span {
+            font-weight: 600;
+            color: var(--text-color-dark);
+            font-size: 14px;
+        }
+
+        .close-skills-dropdown {
+            background: none;
+            border: none;
+            color: var(--text-color-lighter);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            transition: color 0.2s ease;
+        }
+
+        .close-skills-dropdown:hover {
+            color: var(--text-color-medium);
+        }
+
+        .skills-list {
+            padding: var(--spacing-sm);
+        }
+
+        .skill-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: var(--spacing-md) var(--spacing-lg);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            gap: 12px;
+        }
+
+        .skill-item:hover {
+            background: var(--light-blue);
+        }
+
+        .skill-item.selected {
+            background: var(--light-blue);
+            border-left: 3px solid var(--primary-blue);
+        }
+
+        .skill-item-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+        }
+
+        .skill-item-name {
+            font-weight: 500;
+            color: var(--text-color-dark);
+            font-size: 14px;
+        }
+
+        .skill-item-description {
+            font-size: 12px;
+            color: var(--text-color-lighter);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .skill-item-check {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid var(--border-color-medium);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .skill-item.selected .skill-item-check {
+            background: var(--primary-blue);
+            border-color: var(--primary-blue);
+            color: var(--bg-color-white);
+        }
+
+        .skill-item.selected .skill-item-check::before {
+            content: '✓';
+            font-size: 12px;
+        }
+
+        .skills-loading,
+        .skills-empty {
+            padding: var(--spacing-xl);
+            text-align: center;
+            color: var(--text-color-lighter);
+            font-size: 14px;
+        }
+
+        .skills-error {
+            padding: var(--spacing-xl);
+            text-align: center;
+            color: var(--red);
+            font-size: 14px;
+        }
+
+        /* 输入框内部技能标签布局 */
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            background: var(--bg-color-white);
+            border: 1px solid var(--border-color-light);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-sm);
+            transition: all 0.2s ease;
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px var(--light-blue);
+        }
+
+        .input-controls-left {
+            flex-shrink: 0;
+            margin-right: 8px;
+        }
+
+        .skills-tags-container {
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 4px 0;
+            align-items: center;
+            display: none;
+            max-width: 100%;
+        }
+
+        .skills-tags-container.visible {
+            display: inline-flex;
+        }
+
+        .input-wrapper textarea {
+            flex: 1;
+            min-width: 200px;
+            min-height: 60px;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 0;
+            background: transparent;
+        }
+
+        .input-wrapper textarea::placeholder {
+            color: var(--text-color-lighter);
+        }
+
+        .input-wrapper textarea:focus {
+            outline: none;
+        }
+
+        .input-controls {
+            flex-shrink: 0;
+            margin-left: 8px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
     </style>
 </head>
 
@@ -232,13 +473,27 @@
                 <div id="uploaded-files-container" class="uploaded-files-container">
                     <!-- 已上传文件将在这里显示 -->
                 </div>
+                <!-- 技能选择下拉列表 -->
+                <div id="skills-dropdown" class="skills-dropdown" style="display: none;">
+                    <div class="skills-dropdown-header">
+                        <span>选择技能</span>
+                        <button id="close-skills-dropdown" class="close-skills-dropdown">&times;</button>
+                    </div>
+                    <div id="skills-list" class="skills-list">
+                        <!-- 技能列表项将在这里显示 -->
+                    </div>
+                </div>
                 <div class="input-wrapper">
                     <div class="input-controls-left">
                         <button id="options-button" type="button" aria-label="选项设置" class="options-button">
                             +
                         </button>
                     </div>
-                    <textarea id="user-input" placeholder="询问任何问题，创造任何事物"></textarea>
+                    <!-- 技能标签容器 - 放在输入框内部左上角 -->
+                    <div id="skills-tags-container" class="skills-tags-container">
+                        <!-- 已选中的技能标签将在这里显示 -->
+                    </div>
+                    <textarea id="user-input" placeholder="输入/可选择技能..."></textarea>
 
                     <div class="input-controls" style="display:flex;gap:8px;align-items:center;">
                         <input type="file" id="file-upload" style="display: none;" multiple>
@@ -281,7 +536,7 @@
                             </div>
                             <div class="memory-wrapper">
                                 <label for="sop-memory-toggle">
-                                    <span>🔧技能调用</span>
+                                    <span>🔧 技能调用</span>
                                 </label>
                                 <input type="checkbox" id="sop-memory-toggle" class="memory-toggle">
                             </div>

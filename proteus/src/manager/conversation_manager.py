@@ -67,15 +67,15 @@ class ConversationManager:
             return None
 
     def load_conversation_history(
-        self, conversation_id: str, max_messages: int = 30, expire_hours: int = 0
+        self, conversation_id: str, max_messages: int = 0, expire_hours: int = -1
     ) -> List[Dict[str, Any]]:
         """
         加载对话历史
 
         Args:
             conversation_id: 会话ID
-            max_messages: 最大消息数量
-            expire_hours: 过期时间（小时）
+            max_messages: 最大消息数量（默认0表示不限制，获取所有数据）
+            expire_hours: 过期时间（小时，默认-1表示不检查过期）
 
         Returns:
             List[Dict[str, Any]]: 对话历史列表
@@ -88,30 +88,25 @@ class ConversationManager:
                 return []
 
             total_count = self.redis_conn.llen(redis_key)
-            records_to_get = min(max_messages, total_count)
+            
+            # 如果 max_messages > 0，则限制获取数量；否则获取所有数据
+            if max_messages > 0:
+                records_to_get = min(max_messages, total_count)
+                start_index = max(0, total_count - records_to_get)
+                history_data = self.redis_conn.lrange(redis_key, start_index, -1)
+            else:
+                # 获取所有历史记录
+                history_data = self.redis_conn.lrange(redis_key, 0, -1)
 
-            # 获取最近的记录
-            start_index = max(0, total_count - records_to_get)
-            history_data = self.redis_conn.lrange(redis_key, start_index, -1)
-
-            # 解析并过滤过期数据
+            # 解析记录，不检查过期
             conversation_history: List[Dict[str, Any]] = []
-            current_time = time.time()
-            expire_seconds = expire_hours * 3600
 
             for record_json in history_data:
                 try:
                     record = json.loads(record_json)
-                    record_timestamp = record.get("timestamp", 0)
-
-                    if expire_seconds <= 0:
-                        # 优先使用完整的message对象
-                        message = record.get("message")
-                        conversation_history.append(message)
-                    # 检查是否过期
-                    elif current_time - record_timestamp <= expire_seconds:
-                        # 优先使用完整的message对象
-                        message = record.get("message")
+                    # 优先使用完整的message对象
+                    message = record.get("message")
+                    if message:
                         conversation_history.append(message)
                 except (json.JSONDecodeError, Exception) as e:
                     self.logger.warning(f"解析对话记录失败: {str(e)}")

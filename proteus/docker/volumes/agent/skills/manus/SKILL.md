@@ -1,50 +1,63 @@
 ---
 name: manus
-version: "2.0.1"
-description: Implements Manus-style file-based planning for complex tasks. Creates task_plan.md, findings.md, and progress.md. Use when starting complex multi-step tasks, research projects, or any task requiring >5 tool calls.
-allowed-tools: serper_search,web_crawler,python_execute
+version: "2.3.0"
+description: Implements Manus-style file-based planning for complex tasks. Creates task_plan.md, findings.md, and progress.md. Use when starting complex multi-step tasks, research projects, or any task requiring >5 tool calls. Now with automatic session recovery after /clear.
+user-invocable: true
+allowed-tools:
+  - serper_search
+  - web_crawler
+  - python_execute
 hooks:
-  PreToolUse:
-    - matcher: "python_execute"
-      hooks:
-        - type: command
-          command: "cat task_plan.md 2>/dev/null | head -30 || true"
   Stop:
     - hooks:
         - type: command
-          command: "/app/.proteus/manus/scripts/check-complete.sh"
+          command: |
+            if command -v pwsh &> /dev/null && [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OS" == "Windows_NT" ]]; then
+              pwsh -ExecutionPolicy Bypass -File "/app/.proteus/skills/manus/scripts/check-complete.ps1" 2>/dev/null || powershell -ExecutionPolicy Bypass -File "/app/.proteus/skills/manus/scripts/check-complete.ps1" 2>/dev/null || bash "/app/.proteus/skills/manus/scripts/check-complete.sh"
+            else
+              bash "/app/.proteus/skills/manus/scripts/check-complete.sh"
+            fi
 ---
 
-# Planning with Files
+# manus
 
-Work like Manus: Use persistent markdown files as your "working memory on disk."
+Use persistent markdown files as your "working memory on disk."
+
+## FIRST: Check for Previous Session (v2.2.0)
+
+**Before starting work**, check for unsynced context from a previous session:
+
+```bash
+python3 /app/.proteus/skills/manus/scripts/session-catchup.py "$(pwd)"
+```
+
+If catchup report shows unsynced context:
+1. Run `git diff --stat` to see actual code changes
+2. Read current planning files
+3. Update planning files based on catchup + git diff
+4. Then proceed with task
 
 ## Important: Where Files Go
 
-When using this skill:
-
-- **Templates** are stored in the skill directory at `/app/.proteus/skills/manus/templates/`
-- **Your planning files** (`task_plan.md`, `findings.md`, `progress.md`) should be created in **your project directory** — the folder where you're working
+- **Templates** are in `/app/.proteus/skills/manus/templates/`
+- **Your planning files** go in **your project directory**
 
 | Location | What Goes There |
 |----------|-----------------|
-| Skill directory (`/app/.proteus/skills/manus`) | Templates, scripts, reference docs |
+| Skill directory (`/app/.proteus/skills/manus/`) | Templates, scripts, reference docs |
 | Your project directory | `task_plan.md`, `findings.md`, `progress.md` |
-
-This ensures your planning files live alongside your code, not buried in the skill installation folder.
 
 ## Quick Start
 
 Before ANY complex task:
 
-1. **Create `task_plan.md`** in your project — Use [templates/task_plan.md](templates/task_plan.md) as reference
-2. **Create `findings.md`** in your project — Use [templates/findings.md](templates/findings.md) as reference
-3. **Create `progress.md`** in your project — Use [templates/progress.md](templates/progress.md) as reference
+1. **Create `task_plan.md`** — Use [templates/task_plan.md](templates/task_plan.md) as reference
+2. **Create `findings.md`** — Use [templates/findings.md](templates/findings.md) as reference
+3. **Create `progress.md`** — Use [templates/progress.md](templates/progress.md) as reference
 4. **Re-read plan before decisions** — Refreshes goals in attention window
 5. **Update after each phase** — Mark complete, log errors
 
-> **Note:** All three planning files should be created in your current working directory (your project root), not in the skill's installation folder.
-> **Note:** your project directory is `/var/data/sandbox/manus/<project-name>` 
+> **Note:** Planning files go in your project root, not the skill installation folder.
 
 ## The Core Pattern
 
@@ -175,6 +188,7 @@ Helper scripts for automation:
 
 - `scripts/init-session.sh` — Initialize all planning files
 - `scripts/check-complete.sh` — Verify all phases complete
+- `scripts/session-catchup.py` — Recover context from previous session (v2.2.0)
 
 ## Advanced Topics
 

@@ -532,6 +532,7 @@ async def create_chat(
     sop_memory_enabled: bool = Body(False, embed=True),  # 新增工具记忆参数
     enable_tools: bool = Body(False, embed=True),  # 新增工具调用开关
     tool_choices: Optional[List[str]] = Body(None, embed=True),  # 新增工具选择参数
+    selected_skills: Optional[List[str]] = Body(None, embed=True),  # 用户选中的技能列表
 ):
     """创建新的聊天会话
 
@@ -598,6 +599,7 @@ async def create_chat(
                 sop_memory_enabled=sop_memory_enabled,  # 传递SOP记忆参数
                 enable_tools=enable_tools,  # 传递工具调用开关
                 tool_choices=tool_choices,  # 传递工具选择参数
+                selected_skills=selected_skills,  # 传递用户选中的技能列表
             )
         )
     else:
@@ -1015,6 +1017,7 @@ async def process_agent(
     sop_memory_enabled: bool = False,  # 新增 SOP 记忆参数
     enable_tools: bool = False,  # 新增工具调用开关
     tool_choices: Optional[List[str]] = None,  # 新增工具选择参数
+    selected_skills: Optional[List[str]] = None,  # 用户选中的技能列表
 ):
     """处理Agent请求的异步函数
 
@@ -1027,7 +1030,7 @@ async def process_agent(
         user_name: 用户名(可选)，用于工具记忆隔离
     """
     logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name})"
+        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name}, selected_skills={selected_skills})"
     )
     team = None
     agent = None
@@ -1078,6 +1081,7 @@ async def process_agent(
                 user_name=user_name,
                 enable_skills_memory=sop_memory_enabled,
                 enable_tool_memory=tool_memory_enabled,
+                selected_skills=selected_skills,
             )
 
             # 运行 ChatAgent
@@ -2539,3 +2543,42 @@ def _generate_content_preview(
         preview = preview + "..."
 
     return preview
+
+
+# ===== 技能列表接口 =====
+@app.get("/skills/list")
+async def list_skills():
+    """获取可用技能列表
+
+    返回所有配置的技能目录中扫描到的技能列表。
+    技能目录包括：
+    - 用户目录 ~/.proteus/skills
+    - 应用目录 ./proteus/.proteus/skills
+    - 项目目录 ./skills
+    - 环境变量 PROTEUS_SKILLS_DIR 配置的目录
+    """
+    try:
+        from src.nodes.skills_extract import (
+            get_default_skills_dirs,
+            scan_multiple_skills_directories,
+        )
+
+        skills_dirs = get_default_skills_dirs()
+        if not skills_dirs:
+            return {
+                "success": True,
+                "skills": [],
+                "count": 0,
+                "message": "未配置技能目录",
+            }
+
+        skills = scan_multiple_skills_directories(skills_dirs)
+        return {
+            "success": True,
+            "skills": skills,
+            "count": len(skills),
+            "message": f"成功扫描 {len(skills_dirs)} 个技能目录",
+        }
+    except Exception as e:
+        logger.error(f"获取技能列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取技能列表失败: {str(e)}")

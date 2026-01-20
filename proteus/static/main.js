@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const leftCollapsed = localStorage.getItem('leftSidebarCollapsed') === 'true';
             const rightCollapsed = localStorage.getItem('rightSidebarCollapsed') === 'true';
-            
+
             if (leftCollapsed) {
                 leftSidebar.classList.add('collapsed');
             }
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 初始化侧边栏拖拽功能
     initSidebarResizer();
-    
+
     // 初始化侧边栏切换功能
     initSidebarToggle();
 });
@@ -796,15 +796,15 @@ async function loadConversationList() {
                     if (e.target.closest('.conversation-buttons')) {
                         return;
                     }
-                    
+
                     // 移除所有其他会话项的选中状态
                     document.querySelectorAll('.conversation-item').forEach(item => {
                         item.classList.remove('active');
                     });
-                    
+
                     // 为当前点击的会话项添加选中状态
                     convItem.classList.add('active');
-                    
+
                     // 加载会话内容
                     loadConversation(conv.conversation_id);
                 };
@@ -823,7 +823,7 @@ async function loadConversationList() {
 // 启用标题编辑功能
 function enableTitleEditing(titleElement, conversationId) {
     const originalTitle = titleElement.textContent;
-    
+
     // 创建输入框
     const input = document.createElement('input');
     input.type = 'text';
@@ -837,15 +837,15 @@ function enableTitleEditing(titleElement, conversationId) {
     input.style.fontFamily = 'inherit';
     input.style.background = 'white';
     input.style.color = 'inherit';
-    
+
     // 替换标题为输入框
     titleElement.style.display = 'none';
     titleElement.parentNode.insertBefore(input, titleElement);
-    
+
     // 自动聚焦并选中所有文本
     input.focus();
     input.select();
-    
+
     // 处理回车提交
     input.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
@@ -856,7 +856,7 @@ function enableTitleEditing(titleElement, conversationId) {
             cancelTitleEdit(input, titleElement);
         }
     });
-    
+
     // 处理失去焦点
     input.addEventListener('blur', async () => {
         await submitTitleEdit(input, titleElement, conversationId);
@@ -866,19 +866,19 @@ function enableTitleEditing(titleElement, conversationId) {
 // 提交标题编辑
 async function submitTitleEdit(input, titleElement, conversationId) {
     const newTitle = input.value.trim();
-    
+
     if (!newTitle) {
         // 如果标题为空，恢复原标题
         cancelTitleEdit(input, titleElement);
         return;
     }
-    
+
     if (newTitle === titleElement.textContent) {
         // 标题没有变化，直接恢复
         cancelTitleEdit(input, titleElement);
         return;
     }
-    
+
     try {
         // 发送更新请求
         const response = await fetch(`/conversations/${conversationId}/title`, {
@@ -888,16 +888,16 @@ async function submitTitleEdit(input, titleElement, conversationId) {
             },
             body: JSON.stringify({ title: newTitle })
         });
-        
+
         const result = await response.json();
-        
+
         if (result.success) {
             // 更新成功
             titleElement.textContent = newTitle;
             titleElement.title = newTitle;
             input.remove();
             titleElement.style.display = '';
-            
+
             // 显示成功提示
             showToast('标题已更新', 'success');
         } else {
@@ -934,7 +934,7 @@ function showToast(message, type = 'info') {
     toast.style.fontSize = '14px';
     toast.style.maxWidth = '300px';
     toast.style.wordBreak = 'break-word';
-    
+
     // 设置背景色
     if (type === 'success') {
         toast.style.background = '#28a745';
@@ -943,10 +943,10 @@ function showToast(message, type = 'info') {
     } else {
         toast.style.background = '#17a2b8';
     }
-    
+
     // 添加到页面
     document.body.appendChild(toast);
-    
+
     // 3秒后自动移除
     setTimeout(() => {
         if (toast.parentNode) {
@@ -1874,6 +1874,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 发送消息
     async function sendMessage() {
+        // 将 sendMessage 挂载到 window，以便技能选择功能可以访问
+        // window.sendMessage = sendMessage;
         if (isProcessing) {
             // 如果正在处理中，则调用停止功能
             stopExecution();
@@ -1952,6 +1954,9 @@ document.addEventListener('DOMContentLoaded', () => {
             let response;
 
             // 其他模式使用 /chat 接口
+            // 获取已选中的技能列表
+            const selectedSkills = window.selectedSkills || [];
+
             const requestBody = {
                 query,
                 modul: selectedModul,
@@ -1961,7 +1966,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 conversation_round: parseInt(document.getElementById('conversation_count').value),
                 file_ids: uploadedFiles.filter(file => !file.sent).map(file => file.id), // 只发送未发送过的文件
                 tool_memory_enabled: document.getElementById('tool-memory-toggle').checked, // 工具洞察开关（会话级）
-                sop_memory_enabled: document.getElementById('sop-memory-toggle').checked
+                sop_memory_enabled: document.getElementById('sop-memory-toggle').checked,
+                selected_skills: selectedSkills // 用户选中的技能列表
             };
 
             // 如果是智能助手模式，添加工具调用参数
@@ -2029,7 +2035,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     scheduleConversationListUpdate: scheduleConversationListUpdate, // 传递延迟更新会话列表函数
                     scrollToBottom: scrollToBottom, // 传递滚动到底部函数
                     saveToKnowledgeBase: saveToKnowledgeBase, // 传递保存到知识库函数
-                    onComplete: () => { resetUI(); },
+                    onComplete: () => {
+                        // 发送成功后清空已选中的技能
+                        window.selectedSkills = [];
+                        const skillsTagsContainer = document.getElementById('skills-tags-container');
+                        if (skillsTagsContainer) {
+                            skillsTagsContainer.style.display = 'none';
+                        }
+                        resetUI();
+                    },
                     onError: () => { /* 全局错误处理（保留空实现） */ }
                 });
 
@@ -2226,6 +2240,212 @@ document.addEventListener('DOMContentLoaded', () => {
         // 初始化工具调用选项显示状态
         updateToolCallDisplay(modelSelect.value);
     }
+});
+
+// ===== 技能选择功能 =====
+document.addEventListener('DOMContentLoaded', () => {
+    // 获取技能选择相关的DOM元素
+    const userInput = document.getElementById('user-input');
+    const skillsTagsContainer = document.getElementById('skills-tags-container');
+    const skillsDropdown = document.getElementById('skills-dropdown');
+    const skillsList = document.getElementById('skills-list');
+    const closeSkillsDropdown = document.getElementById('close-skills-dropdown');
+
+    // 已选中的技能列表（挂载到 window 上供 sendMessage 访问）
+    window.selectedSkills = [];
+    // 技能列表缓存
+    let skillsCache = null;
+    // 是否正在加载技能
+    let isLoadingSkills = false;
+
+    // 显示技能下拉列表
+    async function showSkillsDropdown() {
+        if (!skillsDropdown || !skillsList) return;
+
+        skillsDropdown.style.display = 'block';
+
+        // 如果有缓存，直接使用缓存
+        if (skillsCache) {
+            renderSkillsList(skillsCache);
+            return;
+        }
+
+        // 加载技能列表
+        if (!isLoadingSkills) {
+            isLoadingSkills = true;
+            skillsList.innerHTML = '<div class="skills-loading">加载中...</div>';
+
+            try {
+                const response = await fetch('/skills/list');
+                const data = await response.json();
+
+                if (data.success && data.skills) {
+                    skillsCache = data.skills; // 缓存技能列表
+                    renderSkillsList(data.skills);
+                } else {
+                    skillsList.innerHTML = '<div class="skills-empty">暂无可用技能</div>';
+                }
+            } catch (error) {
+                console.error('获取技能列表失败:', error);
+                skillsList.innerHTML = '<div class="skills-error">加载技能列表失败</div>';
+            } finally {
+                isLoadingSkills = false;
+            }
+        }
+    }
+
+    // 隐藏技能下拉列表
+    function hideSkillsDropdown() {
+        if (skillsDropdown) {
+            skillsDropdown.style.display = 'none';
+        }
+    }
+
+    // 渲染技能列表
+    function renderSkillsList(skills) {
+        if (!skillsList) return;
+
+        if (!skills || skills.length === 0) {
+            skillsList.innerHTML = '<div class="skills-empty">暂无可用技能</div>';
+            return;
+        }
+
+        skillsList.innerHTML = skills.map(skill => `
+            <div class="skill-item ${window.selectedSkills.includes(skill.name) ? 'selected' : ''}"
+                 data-skill-name="${skill.name}">
+                <div class="skill-item-info">
+                    <span class="skill-item-name">${escapeHtml(skill.name)}</span>
+                    <span class="skill-item-description">${escapeHtml(skill.description || '暂无描述')}</span>
+                </div>
+                <div class="skill-item-check"></div>
+            </div>
+        `).join('');
+
+        // 添加点击事件
+        skillsList.querySelectorAll('.skill-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const skillName = item.dataset.skillName;
+                toggleSkill(skillName);
+            });
+        });
+    }
+
+    // 切换技能选中状态
+    function toggleSkill(skillName) {
+        const index = window.selectedSkills.indexOf(skillName);
+        if (index === -1) {
+            // 选中技能
+            window.selectedSkills.push(skillName);
+        } else {
+            // 取消选中
+            window.selectedSkills.splice(index, 1);
+        }
+
+        // 更新标签显示
+        renderSkillsTags();
+
+        // 更新下拉列表中的选中状态
+        if (skillsList) {
+            skillsList.querySelectorAll('.skill-item').forEach(item => {
+                const name = item.dataset.skillName;
+                item.classList.toggle('selected', window.selectedSkills.includes(name));
+            });
+        }
+    }
+
+    // 渲染已选中的技能标签
+    function renderSkillsTags() {
+        if (!skillsTagsContainer) return;
+
+        if (window.selectedSkills.length === 0) {
+            skillsTagsContainer.style.display = 'none';
+            return;
+        }
+
+        skillsTagsContainer.style.display = 'flex';
+        skillsTagsContainer.innerHTML = window.selectedSkills.map(skillName => `
+            <div class="skill-tag" data-skill-name="${escapeHtml(skillName)}">
+                <span class="skill-name">${escapeHtml(skillName)}</span>
+                <button class="skill-remove" title="移除">&times;</button>
+            </div>
+        `).join('');
+
+        // 添加删除按钮事件
+        skillsTagsContainer.querySelectorAll('.skill-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const skillTag = btn.closest('.skill-tag');
+                const skillName = skillTag.dataset.skillName;
+                removeSkill(skillName);
+            });
+        });
+    }
+
+    // 移除技能
+    function removeSkill(skillName) {
+        const index = window.selectedSkills.indexOf(skillName);
+        if (index !== -1) {
+            window.selectedSkills.splice(index, 1);
+            renderSkillsTags();
+
+            // 更新下拉列表中的选中状态
+            if (skillsList) {
+                skillsList.querySelectorAll('.skill-item').forEach(item => {
+                    if (item.dataset.skillName === skillName) {
+                        item.classList.remove('selected');
+                    }
+                });
+            }
+        }
+    }
+
+    // HTML转义，防止XSS
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // 监听用户输入框的输入事件
+    if (userInput) {
+        userInput.addEventListener('input', (e) => {
+            const value = e.target.value;
+            // 检查是否以 '/' 开头
+            if (value.endsWith('/')) {
+                showSkillsDropdown();
+            } else if (skillsDropdown && skillsDropdown.style.display === 'block') {
+                // 如果下拉列表显示且用户删除了 '/'，则隐藏下拉列表
+                hideSkillsDropdown();
+            }
+        });
+
+        // 按 Escape 键关闭下拉列表
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideSkillsDropdown();
+            }
+        });
+    }
+
+    // 点击关闭按钮关闭下拉列表
+    if (closeSkillsDropdown) {
+        closeSkillsDropdown.addEventListener('click', hideSkillsDropdown);
+    }
+
+    // 点击下拉列表外部关闭
+    document.addEventListener('click', (e) => {
+        if (skillsDropdown && skillsDropdown.style.display === 'block') {
+            const isClickInside = skillsDropdown.contains(e.target) ||
+                (userInput && userInput.contains(e.target));
+            if (!isClickInside) {
+                hideSkillsDropdown();
+            }
+        }
+    });
+
+    // sendMessage 函数已经能通过 window.selectedSkills 访问技能列表
+    // 不需要额外的 wrapper
 });
 
 // ===== Memory option for options-panel (persist selections locally, add help tooltip) =====

@@ -62,6 +62,7 @@ RUN apt-get update && apt-get install -y \
     # 沙箱执行需要的系统工具
     procps \
     psmisc \
+    git \
     # 数据科学库的运行时依赖
     libblas3 \
     liblapack3 \

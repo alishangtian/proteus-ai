@@ -7,7 +7,8 @@ WORKDIR /app
 # 复制依赖文件
 COPY requirements.txt .
 
-# 安装依赖
+# 安装git和依赖
+RUN apt-get update && apt-get install -y git && apt-get clean && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制应用代码

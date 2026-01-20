@@ -18,6 +18,11 @@ from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
 from src.agent.prompt.chat_agent_system_prompt_v2 import CHAT_AGENT_SYSTEM_PROMPT_V2
 from src.utils.redis_cache import get_redis_connection
+from src.nodes.skills_extract import (
+    get_default_skills_dirs,
+    scan_multiple_skills_directories,
+    get_skill_content,
+)
 from src.manager.tool_memory_manager import ToolMemoryManager
 from src.manager.conversation_manager import conversation_manager
 import uuid
@@ -60,6 +65,7 @@ class ChatAgent:
         enable_skills_memory: bool = True,
         user_name: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        selected_skills: Optional[List[str]] = None,
     ):
         """初始化 ChatAgent
 
@@ -87,6 +93,7 @@ class ChatAgent:
         # 初始化skills记忆管理器
         self.user_name = user_name
         self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_PROMPT_V2
+        self.selected_skills = selected_skills
 
     @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
     async def run(
@@ -119,13 +126,17 @@ class ChatAgent:
             # 构建消息列表
             messages = []
 
-            # 1. 先加载历史会话
+            # 1. 先加载历史会话（加载所有历史，不限制条数）
             if self.conversation_id:
+                # 加载完整的对话历史，不限制消息数量，确保工具调用链完整
                 conversation_history = conversation_manager.load_conversation_history(
-                    self.conversation_id, max_messages=self.conversation_round * 3
+                    self.conversation_id
                 )
-                # conversation_history = self._load_conversation_history()
                 if conversation_history:
+                    # 验证消息链完整性
+                    conversation_history = self._validate_and_fix_message_chain(
+                        conversation_history, chat_id
+                    )
                     messages.extend(conversation_history)
 
             # 2. 检索相关skills记忆（如果启用）
@@ -142,6 +153,12 @@ class ChatAgent:
             )
             all_values["SKILLS_MEMORIES"] = skills_memories_content
             all_values["LANGUAGE"] = os.getenv("LANGUAGE", "中文")
+
+            # 如何选中的技能不为none且不为空，就将选中的技能拼接一下加到all_values中
+            if self.selected_skills:
+                all_values["SELECTED_SKILLS"] = self._build_selected_skills_content(
+                    self.selected_skills
+                )
 
             if not messages:
                 system_message = {
@@ -225,9 +242,10 @@ class ChatAgent:
                         need_compress,
                     ) = await self._execute_llm_generation(
                         chat_id=chat_id,
-                        messages=self._filter_messages(
-                            messages
-                        ),  # 过滤消息，只保留最新的思考消息
+                        messages=messages,
+                        # messages=self._filter_messages(
+                        #     messages
+                        # ),  # 过滤消息，只保留最新的思考消息
                         tools=tools,
                         enable_thinking=enable_thinking,
                         tool_iteration=tool_iteration,
@@ -960,6 +978,62 @@ class ChatAgent:
 
         return processed_messages
 
+    def _validate_and_fix_message_chain(
+        self, messages: List[Dict[str, Any]], chat_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        验证并修复消息链的完整性，确保 tool 消息前面有对应的 assistant 消息（包含 tool_calls）
+
+        Args:
+            messages: 消息列表
+            chat_id: 聊天会话ID
+
+        Returns:
+            List[Dict[str, Any]]: 修复后的消息列表
+        """
+        if not messages:
+            return messages
+
+        valid_messages = []
+        i = 0
+        while i < len(messages):
+            msg = messages[i]
+            role = msg.get("role")
+
+            if role == "tool":
+                # tool 消息前面必须有 assistant 消息（包含 tool_calls）
+                if not valid_messages or valid_messages[-1].get("role") != "assistant":
+                    # 检查前面是否有缺失的 assistant 消息
+                    # 如果前一条不是 assistant，则这条 tool 消息可能是孤立的消息，跳过它
+                    logger.warning(
+                        f"[{chat_id}] 发现孤立的 tool 消息，缺少前置的 assistant 消息，将被跳过"
+                    )
+                    i += 1
+                    continue
+                # 检查前置的 assistant 消息是否包含 tool_calls
+                if not valid_messages[-1].get("tool_calls"):
+                    logger.warning(
+                        f"[{chat_id}] 发现 tool 消息但前置 assistant 没有 tool_calls，将被跳过"
+                    )
+                    i += 1
+                    continue
+
+            elif role == "assistant" and msg.get("tool_calls"):
+                # assistant 消息包含 tool_calls，它后面应该有 tool 结果消息
+                # 如果没有后续的 tool 消息，这是正常的（可能是未完成的调用）
+                pass
+
+            valid_messages.append(msg)
+            i += 1
+
+        if len(valid_messages) < len(messages):
+            logger.warning(
+                f"[{chat_id}] 消息链修复完成: {len(messages)} -> {len(valid_messages)} 条消息，"
+                f"移除了 {len(messages) - len(valid_messages)} 条不完整的消息"
+            )
+
+        return valid_messages
+
     async def _get_current_user_query(self) -> Optional[str]:
         """获取当前用户查询
 
@@ -1206,6 +1280,56 @@ class ChatAgent:
 
         return skills_content
 
+    def _build_selected_skills_content(self, selected_skills: List[str]) -> str:
+        """构建用户选中的技能列表内容，用于模板替换
+
+        根据 selected_skills 列表，加载对应的技能信息，
+        提取 name 和 description 拼接为纯文本格式。
+
+        Args:
+            selected_skills: 用户选中的技能名称列表
+
+        Returns:
+            str: 格式化的选中技能内容
+        """
+        if not selected_skills:
+            return "暂无选中的技能。"
+
+        # 获取所有技能目录
+        skills_dirs = get_default_skills_dirs()
+        if not skills_dirs:
+            return "技能目录不存在，无法加载选中技能。"
+
+        # 扫描所有技能目录获取完整列表
+        all_skills = scan_multiple_skills_directories(skills_dirs)
+
+        # 构建技能名称到技能信息的映射
+        skills_map = {skill["name"]: skill for skill in all_skills}
+
+        # 构建选中技能的内容
+        skills_content = "\n"
+
+        found_count = 0
+        not_found_count = 0
+
+        for i, skill_name in enumerate(selected_skills, 1):
+            if skill_name in skills_map:
+                skill_info = skills_map[skill_name]
+                name = skill_info.get("name", skill_name)
+                description = skill_info.get("description", "")
+
+                skills_content += f"### {i}. {name}\n"
+                if description:
+                    skills_content += f"{description}\n"
+                skills_content += "\n"
+                found_count += 1
+            else:
+                skills_content += f"### {i}. {skill_name}\n"
+                skills_content += "（技能未找到）\n\n"
+                not_found_count += 1
+
+        return skills_content
+
     @langfuse_wrapper.dynamic_observe()
     async def _retrieve_skills_memories(
         self, chat_id: str, user_query: str
@@ -1357,8 +1481,8 @@ class ChatAgent:
         for i, msg in enumerate(messages):
             role = msg.get("role")
 
-            # system 消息和最后一条消息不压缩
-            if role == "system" or i == len(messages) - 1:
+            # system 消息不压缩
+            if role == "system":
                 compressed_messages.append(msg)
                 continue
 
@@ -1369,6 +1493,7 @@ class ChatAgent:
                     summary = await self._get_llm_summary(
                         chat_id,
                         f"请对以下工具执行结果origin_content进行总结，最终结果长度控制在 1000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        content,
                     )
                     new_msg = msg.copy()
                     new_msg["content"] = f"{summary}"
@@ -1391,6 +1516,7 @@ class ChatAgent:
                     summary = await self._get_llm_summary(
                         chat_id,
                         f"请对以下助手回答内容origin_content进行总结，最终结果长度控制在 2000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        content,
                     )
                     new_msg["content"] = f"{summary}"
                     trigger_compress = True
@@ -1401,6 +1527,7 @@ class ChatAgent:
                     summary = await self._get_llm_summary(
                         chat_id,
                         f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning_content}\n</origin_content>",
+                        reasoning_content,
                     )
                     # 确定使用哪个字段名
                     new_msg["reasoning_content"] = f"{summary}"
@@ -1411,6 +1538,7 @@ class ChatAgent:
                     summary = await self._get_llm_summary(
                         chat_id,
                         f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning}\n</origin_content>",
+                        reasoning,
                     )
                     # 确定使用哪个字段名
                     new_msg["reasoning"] = f"{summary}"
@@ -1429,6 +1557,7 @@ class ChatAgent:
                     summary = await self._get_llm_summary(
                         chat_id,
                         f"请对以下用户提问内容origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        content,
                     )
                     new_msg = msg.copy()
                     new_msg["content"] = f"{summary}"
@@ -1459,7 +1588,9 @@ class ChatAgent:
 
         return compressed_messages
 
-    async def _get_llm_summary(self, chat_id: str, prompt: str) -> str:
+    async def _get_llm_summary(
+        self, chat_id: str, prompt: str, origin_content: str
+    ) -> str:
         """调用 LLM 获取摘要"""
         try:
             messages = [{"role": "user", "content": prompt}]
@@ -1473,7 +1604,8 @@ class ChatAgent:
             return summary.strip()
         except Exception as e:
             logger.error(f"[{chat_id}] 获取 LLM 摘要失败: {str(e)}")
-            return "压缩失败"
+            input_max_length = int(os.getenv("INPUT_MAX_LENGTH", 5000))
+            return origin_content[:input_max_length]
 
 
 from src.utils.dynamic_observer import auto_apply_here

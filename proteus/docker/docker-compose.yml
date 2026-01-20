@@ -73,6 +73,7 @@ services:
       - ./volumes/sandbox/logs:/var/logs/sandbox
       - ./volumes/agent/data:/var/data/sandbox
       - ./volumes/agent/skills:/app/.proteus/skills
+      - ~/.ssh:/home/sandbox/.ssh
 
     environment:
       - PYTHONUNBUFFERED=1

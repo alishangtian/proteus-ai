@@ -1202,6 +1202,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_error', event => {
         try {
             const data = JSON.parse(event.data);
+            
+            // 检查是否存在压缩事件执行中，如果有则移除压缩状态指示器
+            const compressIndicator = document.getElementById('compress-status-indicator');
+            if (compressIndicator) {
+                compressIndicator.remove();
+                console.log('已移除压缩事件状态指示器');
+            }
+            
             const errorDiv = document.createElement('div');
             errorDiv.className = 'agent-error';
             errorDiv.innerHTML = `
@@ -1212,6 +1220,18 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 </div>
             `;
             if (answerElement) answerElement.appendChild(errorDiv);
+            
+            // 重置发送按钮为可发送状态
+            const sendButton = document.getElementById('send-button');
+            const userInput = document.getElementById('user-input');
+            if (sendButton) {
+                sendButton.disabled = false;
+                sendButton.textContent = '发送';
+                sendButton.classList.remove('stop');
+            }
+            if (userInput) {
+                userInput.disabled = false;
+            }
         } catch (error) {
             console.error('解析agent错误事件失败:', error);
         }

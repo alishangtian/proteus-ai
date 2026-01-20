@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     procps \
     psmisc \
     sudo \
+    git \
     # 数据科学库的系统依赖
     libblas3 \
     liblapack3 \
