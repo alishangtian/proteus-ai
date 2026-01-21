@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +13,7 @@
             box-sizing: border-box;
             font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
         }
-        
+
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -21,12 +22,12 @@
             align-items: center;
             padding: 20px;
         }
-        
+
         .login-container {
             width: 100%;
             max-width: 450px;
         }
-        
+
         .login-box {
             background: white;
             border-radius: 10px;
@@ -34,25 +35,25 @@
             padding: 40px;
             text-align: center;
         }
-        
+
         .login-box h2 {
             color: #333;
             margin-bottom: 30px;
             font-weight: 600;
         }
-        
+
         .form-group {
             margin-bottom: 20px;
             text-align: left;
         }
-        
+
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 500;
             color: #555;
         }
-        
+
         .form-group input {
             width: 100%;
             padding: 12px 15px;
@@ -61,13 +62,13 @@
             font-size: 16px;
             transition: all 0.3s;
         }
-        
+
         .form-group input:focus {
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
             outline: none;
         }
-        
+
         .btn-login {
             width: 100%;
             padding: 12px;
@@ -81,28 +82,28 @@
             transition: all 0.3s;
             margin-top: 10px;
         }
-        
+
         .btn-login:hover {
             transform: translateY(-2px);
             box-shadow: 0 7px 14px rgba(0, 0, 0, 0.1);
         }
-        
+
         .login-footer {
             margin-top: 20px;
             color: #666;
             font-size: 14px;
         }
-        
+
         .login-footer a {
             color: #667eea;
             text-decoration: none;
             font-weight: 500;
         }
-        
+
         .login-footer a:hover {
             text-decoration: underline;
         }
-        
+
         @media (max-width: 480px) {
             .login-box {
                 padding: 30px 20px;
@@ -110,6 +111,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <div class="login-box">
@@ -152,7 +154,7 @@
                 nick_name: formData.get('nick_name'),
                 email: formData.get('email'),
                 password: formData.get('password'),
-                confirm_password: formData.get('confirmPassword')
+                confirm_password: formData.get('confirm_password')
             };
 
             try {
@@ -183,4 +185,5 @@
         }
     </script>
 </body>
+
 </html>
