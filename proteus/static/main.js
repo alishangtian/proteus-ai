@@ -2263,6 +2263,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!skillsDropdown || !skillsList) return;
 
         skillsDropdown.style.display = 'block';
+        skillsDropdown.classList.add('show');
 
         // 如果有缓存，直接使用缓存
         if (skillsCache) {
@@ -2297,6 +2298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 隐藏技能下拉列表
     function hideSkillsDropdown() {
         if (skillsDropdown) {
+            skillsDropdown.classList.remove('show');
             skillsDropdown.style.display = 'none';
         }
     }
@@ -2315,7 +2317,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  data-skill-name="${skill.name}">
                 <div class="skill-item-info">
                     <span class="skill-item-name">${escapeHtml(skill.name)}</span>
-                    <span class="skill-item-description">${escapeHtml(skill.description || '暂无描述')}</span>
                 </div>
                 <div class="skill-item-check"></div>
             </div>
@@ -2358,11 +2359,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!skillsTagsContainer) return;
 
         if (window.selectedSkills.length === 0) {
+            skillsTagsContainer.classList.remove('visible');
             skillsTagsContainer.style.display = 'none';
+            if (userInput) userInput.placeholder = '输入/可选择技能...';
             return;
         }
 
-        skillsTagsContainer.style.display = 'flex';
+        skillsTagsContainer.classList.add('visible');
+        skillsTagsContainer.style.display = 'inline-flex';
+
+        // 当选中技能时，更新输入框占位符
+        if (userInput) {
+            userInput.placeholder = '说说想要这个技能帮你做什么';
+        }
+
         skillsTagsContainer.innerHTML = window.selectedSkills.map(skillName => `
             <div class="skill-tag" data-skill-name="${escapeHtml(skillName)}">
                 <span class="skill-name">${escapeHtml(skillName)}</span>
@@ -2412,7 +2422,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userInput.addEventListener('input', (e) => {
             const value = e.target.value;
             // 检查是否以 '/' 开头
-            if (value.endsWith('/')) {
+            if (value.startsWith('/')) {
                 showSkillsDropdown();
             } else if (skillsDropdown && skillsDropdown.style.display === 'block') {
                 // 如果下拉列表显示且用户删除了 '/'，则隐藏下拉列表

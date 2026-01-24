@@ -886,13 +886,18 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
             if (data.action === 'python_execute' && data.input && data.input.code) {
                 // 对于 python_execute 工具，如果有 code 参数，单独渲染代码
                 formattedInput = '<div class="python-code-section">';
-                formattedInput += '<div class="code-label">Python 代码:</div>';
 
                 // 使用 highlight.js 直接高亮代码并添加行号
                 let highlightedCode = data.input.code;
+                let input_language = data.input.language || 'python';
+                if (input_language === 'shell') {
+                    formattedInput += '<div class="code-label">Shell 脚本:</div>';
+                } else if (input_language === 'python') {
+                    formattedInput += '<div class="code-label">Python 代码:</div>';
+                }
                 if (typeof hljs !== 'undefined') {
                     try {
-                        highlightedCode = hljs.highlight(data.input.code, { language: 'python' }).value;
+                        highlightedCode = hljs.highlight(data.input.code, { language: input_language }).value;
                     } catch (e) {
                         console.warn('代码高亮失败，使用原始代码', e);
                     }
@@ -905,7 +910,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                     return `<span class="code-line"><span class="line-number">${lineNumber}</span>${line}</span>`;
                 }).join('\n');
 
-                formattedInput += `<pre><code class="hljs language-python code-with-line-numbers">${numberedCode}</code></pre>`;
+                formattedInput += `<pre><code class="hljs language-${input_language} code-with-line-numbers">${numberedCode}</code></pre>`;
 
                 // 如果还有其他参数，也显示出来
                 const otherParams = Object.keys(data.input).filter(key => key !== 'code');
@@ -1202,14 +1207,14 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
     eventSource.addEventListener('agent_error', event => {
         try {
             const data = JSON.parse(event.data);
-            
+
             // 检查是否存在压缩事件执行中，如果有则移除压缩状态指示器
             const compressIndicator = document.getElementById('compress-status-indicator');
             if (compressIndicator) {
                 compressIndicator.remove();
                 console.log('已移除压缩事件状态指示器');
             }
-            
+
             const errorDiv = document.createElement('div');
             errorDiv.className = 'agent-error';
             errorDiv.innerHTML = `
@@ -1220,7 +1225,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                 </div>
             `;
             if (answerElement) answerElement.appendChild(errorDiv);
-            
+
             // 重置发送按钮为可发送状态
             const sendButton = document.getElementById('send-button');
             const userInput = document.getElementById('user-input');
@@ -1545,6 +1550,13 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                             </svg>
                         </button>
+                        <button class="action-btn download-md-btn" title="下载为 Markdown">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                        </button>
                         <button class="action-btn screenshot-btn" title="截图">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
@@ -1588,6 +1600,7 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
 
                 // 添加按钮事件监听器
                 const copyBtn = actionsDiv.querySelector('.copy-result-btn');
+                const downloadMdBtn = actionsDiv.querySelector('.download-md-btn');
                 const screenshotBtn = actionsDiv.querySelector('.screenshot-btn');
                 const likeBtn = actionsDiv.querySelector('.like-btn');
                 const dislikeBtn = actionsDiv.querySelector('.dislike-btn');
@@ -1604,6 +1617,40 @@ export function registerSSEHandlers(eventSource, ctx = {}) {
                         }).catch(err => {
                             console.error('复制失败:', err);
                         });
+                    });
+                }
+
+                // 下载 Markdown 功能
+                if (downloadMdBtn) {
+                    downloadMdBtn.addEventListener('click', async () => {
+                        const content = accumulatedContent;
+                        const filename = `answer-${Date.now()}.md`;
+
+                        if ('showSaveFilePicker' in window) {
+                            try {
+                                const handle = await window.showSaveFilePicker({
+                                    suggestedName: filename,
+                                    types: [{
+                                        description: 'Markdown File',
+                                        accept: { 'text/markdown': ['.md'] },
+                                    }],
+                                });
+                                const writable = await handle.createWritable();
+                                await writable.write(content);
+                                await writable.close();
+                                downloadMdBtn.classList.add('success');
+                                setTimeout(() => downloadMdBtn.classList.remove('success'), 2000);
+                            } catch (err) {
+                                if (err.name !== 'AbortError') {
+                                    console.error('下载失败:', err);
+                                }
+                            }
+                        } else {
+                            // 降级方案：直接下载
+                            downloadFileFromContent(content, filename, 'text/markdown');
+                            downloadMdBtn.classList.add('success');
+                            setTimeout(() => downloadMdBtn.classList.remove('success'), 2000);
+                        }
                     });
                 }
 

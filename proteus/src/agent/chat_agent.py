@@ -4,6 +4,7 @@ import logging
 import json
 import time
 import os
+import threading
 from string import Template
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -17,6 +18,9 @@ from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
 from src.agent.prompt.chat_agent_system_prompt_v2 import CHAT_AGENT_SYSTEM_PROMPT_V2
+
+# IMPORT SKILLS_PROMPT_TEMPLATES
+from src.agent.prompt.skills_prompt import SKILLS_PROMPT_TEMPLATES
 from src.utils.redis_cache import get_redis_connection
 from src.nodes.skills_extract import (
     get_default_skills_dirs,
@@ -52,6 +56,50 @@ class ChatAgent:
     - 对话历史管理
     """
 
+    _agent_cache: Dict[str, List["ChatAgent"]] = {}
+    _cache_lock = threading.Lock()
+
+    @classmethod
+    def get_agents(cls, chat_id: str) -> List["ChatAgent"]:
+        """获取指定chat_id下的agent列表副本
+
+        参数:
+            chat_id: 聊天会话ID
+
+        返回:
+            该chat_id下的agent列表副本(浅拷贝)
+        """
+        with cls._cache_lock:
+            agents = cls._agent_cache.get(chat_id, [])
+            logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
+            return list(agents)
+
+    @classmethod
+    def set_agents(cls, chat_id: str, agents: List["ChatAgent"]) -> None:
+        """设置指定chat_id下的agent列表"""
+        with cls._cache_lock:
+            cls._agent_cache[chat_id] = agents.copy()
+
+    @classmethod
+    def clear_agents(cls, chat_id: str) -> None:
+        """清除指定chat_id的agent缓存"""
+        with cls._cache_lock:
+            cls._agent_cache.pop(chat_id, None)
+
+    async def stop(self) -> None:
+        """停止 agent：设置停止标志、取消监听任务并从 role_agents 列表移除自身"""
+        self.stopped = True
+
+    async def _register_agent(self, chat_id: str) -> None:
+        """注册当前agent到缓存"""
+        with ChatAgent._cache_lock:
+            if chat_id not in ChatAgent._agent_cache:
+                ChatAgent._agent_cache[chat_id] = []
+            if not any(
+                a.agentid == self.agentid for a in ChatAgent._agent_cache[chat_id]
+            ):
+                ChatAgent._agent_cache[chat_id].append(self)
+
     def __init__(
         self,
         stream_manager: StreamManager,
@@ -66,6 +114,7 @@ class ChatAgent:
         user_name: Optional[str] = None,
         system_prompt: Optional[str] = None,
         selected_skills: Optional[List[str]] = None,
+        agentid: str = None,
     ):
         """初始化 ChatAgent
 
@@ -94,6 +143,8 @@ class ChatAgent:
         self.user_name = user_name
         self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_PROMPT_V2
         self.selected_skills = selected_skills
+        self.agentid = agentid or str(uuid.uuid4())
+        self.stopped = False
 
     @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
     async def run(
@@ -116,6 +167,7 @@ class ChatAgent:
         logger.info(
             f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {self.enable_tools}"
         )
+        await self._register_agent(chat_id)
 
         try:
             # 发送 agent_start 事件
@@ -139,26 +191,24 @@ class ChatAgent:
                     )
                     messages.extend(conversation_history)
 
-            # 2. 检索相关skills记忆（如果启用）
-            skills_memories = []
-            if self.enable_skills_memory:
-                skills_memories = await self._retrieve_skills_memories(chat_id, text)
             file_added = False
             # 如果messages为空就添加到第一条角色为 system
             all_values = {"CURRENT_TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-            # 构建skills记忆内容
-            skills_memories_content = self._build_skills_memories_content(
-                skills_memories
-            )
-            all_values["SKILLS_MEMORIES"] = skills_memories_content
             all_values["LANGUAGE"] = os.getenv("LANGUAGE", "中文")
 
-            # 如何选中的技能不为none且不为空，就将选中的技能拼接一下加到all_values中
-            if self.selected_skills:
-                all_values["SELECTED_SKILLS"] = self._build_selected_skills_content(
-                    self.selected_skills
+            skills_prompt = ""
+            skills_values = {}
+            if self.enable_skills_memory:
+                skills_values["SELECTED_SKILLS"] = ""
+                if self.selected_skills:
+                    skills_values["SELECTED_SKILLS"] = (
+                        self._build_selected_skills_content(self.selected_skills)
+                    )
+                skills_prompt = Template(SKILLS_PROMPT_TEMPLATES).safe_substitute(
+                    skills_values
                 )
+            all_values["SKILLS_PROMPT"] = skills_prompt
 
             if not messages:
                 system_message = {
@@ -230,6 +280,9 @@ class ChatAgent:
             )
             tool_iteration = 0
             while tool_iteration < max_iterations:
+                if self.stopped:
+                    logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
+                    break
                 try:
                     # 执行一次 LLM 生成迭代
                     (
@@ -324,7 +377,6 @@ class ChatAgent:
                             conversation_id=self.conversation_id,
                             message=assistant_message,
                         )
-                        # self._save_conversation_to_redis(message=assistant_message)
                         logger.info(
                             f"[{chat_id}] 已保存助手消息（包含 {len(tool_calls)} 个工具调用）到 Redis"
                         )
@@ -337,7 +389,6 @@ class ChatAgent:
                             conversation_manager.save_message(
                                 conversation_id=self.conversation_id, message=tool_msg
                             )
-                            # self._save_conversation_to_redis(message=tool_msg)
 
                     if self.conversation_id and tool_messages:
                         logger.info(
@@ -1307,7 +1358,7 @@ class ChatAgent:
         skills_map = {skill["name"]: skill for skill in all_skills}
 
         # 构建选中技能的内容
-        skills_content = "\n"
+        skills_content = "**请使用如下技能列表中的技能来辅助完成任务**\n"
 
         found_count = 0
         not_found_count = 0

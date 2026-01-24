@@ -9,8 +9,8 @@ services:
       - "8000:8000"
     volumes:
       - ./sandbox/.env:/app/.env
-      - ./sandbox/logs:/var/log/sandbox
-      - ./agent/data:/var/data/sandbox
+      - ./sandbox/logs:/app/logs
+      - ./agent/data:/app/data
       - ./agent/skills:/app/.proteus/skills
     environment:
       - PYTHONUNBUFFERED=1

@@ -59,6 +59,9 @@ Before ANY complex task:
 
 > **Note:** Planning files go in your project root, not the skill installation folder.
 
+> **project directory** `/var/data/sandbox/manus/{project_name}`
+
+
 ## The Core Pattern
 
 ```

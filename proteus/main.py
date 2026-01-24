@@ -261,7 +261,7 @@ static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 # 文件上传目录
-UPLOAD_DIRECTORY = os.path.join(os.path.dirname(__file__), "uploads")
+UPLOAD_DIRECTORY = os.getenv("UPLOAD_DIRECTORY", "/var/data/uploads")
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)  # 确保目录存在
 
 
@@ -614,12 +614,17 @@ async def stop_chat(model: str, chat_id: str):
         # 优化后的 deep-research 停止逻辑
         await _stop_deep_research_team(chat_id)
         await stream_manager.send_message(chat_id, await create_complete_event())
+    elif model == "chat":
+        agents = ChatAgent.get_agents(chat_id)
+        if agents:
+            for agent in agents:
+                await agent.stop()
     elif model in agent_model_list:
         # 其他模型的停止逻辑保持不变
         agents = ReactAgent.get_agents(chat_id)
         if agents:
-            await agents[0].stop()
-        await stream_manager.send_message(chat_id, await create_complete_event())
+            for agent in agents:
+                await agent.stop()
     else:
         raise HTTPException(status_code=400, detail="Invalid model type")
 

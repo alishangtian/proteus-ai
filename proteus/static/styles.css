@@ -1503,6 +1503,13 @@ body {
     border-color: var(--green);
 }
 
+/* 下载按钮成功状态 */
+.action-btn.download-md-btn.success {
+    background: var(--bg-color-success);
+    color: var(--green-dark);
+    border-color: var(--green);
+}
+
 /* 点赞按钮激活状态 */
 .action-btn.like-btn.active {
     background: var(--primary-blue);
