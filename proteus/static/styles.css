@@ -2832,33 +2832,6 @@ body {
     border-radius: 0 24px 24px 0;
 }
 
-/* 右侧边栏 */
-.right-sidebar {
-    width: 300px;
-    flex-shrink: 0;
-    margin-left: 20px;
-    border-radius: 24px 0 0 24px;
-    box-shadow:
-        0 35px 100px rgba(15, 23, 42, 0.18),
-        0 20px 60px rgba(15, 23, 42, 0.08),
-        0 8px 24px rgba(0, 0, 0, 0.06),
-        0 2px 8px rgba(0, 0, 0, 0.03),
-        inset 0 1px 0 rgba(255, 255, 255, 0.8);
-    transform: translateZ(0);
-    will-change: transform, box-shadow;
-}
-
-/* 右侧边栏悬浮效果 */
-.right-sidebar:hover {
-    box-shadow:
-        0 45px 120px rgba(15, 23, 42, 0.22),
-        0 25px 80px rgba(15, 23, 42, 0.08),
-        0 12px 32px rgba(0, 0, 0, 0.06),
-        0 4px 12px rgba(0, 0, 0, 0.03),
-        inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    transform: translateY(-2px) translateZ(0);
-}
-
 /* 侧边栏切换按钮 - 优化过渡效果 */
 .sidebar-toggle {
     position: absolute;
@@ -2925,11 +2898,6 @@ body {
     right: -50px;
 }
 
-/* 右侧边栏切换按钮位置 */
-.right-sidebar .sidebar-toggle {
-    left: -50px;
-}
-
 /* 侧边栏收起状态 - 优化过渡效果 */
 .sidebar.collapsed {
     width: 0 !important;
@@ -2940,10 +2908,6 @@ body {
     transform: translateX(-30px) scale(0.95);
     pointer-events: none;
     transition: all 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.right-sidebar.collapsed {
-    transform: translateX(30px) scale(0.95);
 }
 
 /* 侧边栏展开状态 - 优化过渡效果 */
@@ -3071,11 +3035,6 @@ body {
     right: calc(300px - 4px);
 }
 
-.sidebar-resizer:hover,
-.sidebar-resizer.dragging {
-    /* background-color: rgba(15, 23, 42, 0.1); */
-}
-
 /* 当侧边栏收起时，隐藏对应的拖拽条 */
 .left-sidebar.collapsed+.left-resizer {
     opacity: 0;
@@ -3084,12 +3043,6 @@ body {
     /* 稍微移出视线 */
 }
 
-.right-sidebar.collapsed~.right-resizer {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateX(10px);
-    /* 稍微移出视线 */
-}
 
 .sidebar-resizer::before {
     content: '';
@@ -3121,20 +3074,6 @@ body {
     transition: left 0.3s ease, right 0.3s ease;
 }
 
-/* 右侧边栏中的 playbook 容器 */
-.right-sidebar .playbook-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: var(--spacing-xl);
-    overflow-y: auto;
-    height: 100%;
-}
-
-.right-sidebar.collapsed .playbook-container {
-    display: none;
-}
-
 /* 侧边栏切换按钮样式 */
 .toggle-sidebar {
     cursor: pointer;
@@ -3164,21 +3103,11 @@ body {
     display: none;
 }
 
-/* 右侧边栏的底部按钮位置调整 */
-.right-sidebar .sidebar-footer {
-    display: none;
-}
-
 /* 响应式设计 */
 @media (max-width: 1024px) {
     .left-sidebar {
         width: 280px;
         margin-right: 12px;
-    }
-
-    .right-sidebar {
-        width: 280px;
-        margin-left: 12px;
     }
 
     .sidebar-toggle {
@@ -3190,44 +3119,15 @@ body {
     .left-sidebar .sidebar-toggle {
         right: -44px;
     }
-
-    .right-sidebar .sidebar-toggle {
-        left: -44px;
-    }
 }
 
 @media (max-width: 768px) {
 
     .left-sidebar:not(.collapsed),
-    .right-sidebar:not(.collapsed) {
-        position: absolute;
-        z-index: 1000;
-        height: calc(100vh - 40px);
-        box-shadow:
-            0 20px 60px rgba(15, 23, 42, 0.15),
-            0 8px 32px rgba(15, 23, 42, 0.06),
-            0 2px 8px rgba(0, 0, 0, 0.06);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.8);
-        background: linear-gradient(135deg,
-                rgba(255, 255, 255, 0.98) 0%,
-                rgba(248, 250, 252, 0.98) 100%);
-        margin: 20px 0;
-    }
 
     .left-sidebar:not(.collapsed) {
         left: 0;
         border-radius: 0 20px 20px 0;
-    }
-
-    .right-sidebar:not(.collapsed) {
-        right: 0;
-        border-radius: 20px 0 0 20px;
-        box-shadow:
-            -20px 20px 60px rgba(15, 23, 42, 0.15),
-            -8px 8px 32px rgba(15, 23, 42, 0.06),
-            -2px 2px 8px rgba(0, 0, 0, 0.06);
     }
 
     .sidebar-toggle {
@@ -3239,10 +3139,6 @@ body {
 
     .left-sidebar .sidebar-toggle {
         right: -40px;
-    }
-
-    .right-sidebar .sidebar-toggle {
-        left: -40px;
     }
 
     .sidebar.collapsed .sidebar-toggle {
@@ -3260,9 +3156,6 @@ body {
         pointer-events: none;
     }
 
-    .right-sidebar.collapsed {
-        transform: translateX(20px);
-    }
 }
 
 @media (max-width: 480px) {
@@ -3285,9 +3178,6 @@ body {
         right: -36px;
     }
 
-    .right-sidebar .sidebar-toggle {
-        left: -36px;
-    }
 }
 
 /* 移除侧边栏收起状态相关样式 */
@@ -3500,7 +3390,8 @@ body {
     cursor: pointer;
     transition: all 0.2s ease;
     min-height: 200px;
-    max-height: 600px;  /* 限制高度，避免纵向图表过大 */
+    max-height: 600px;
+    /* 限制高度，避免纵向图表过大 */
     width: 100%;
     text-align: center;
 }

@@ -6,6 +6,7 @@ services:
     volumes:
       - ./volumes/agent/logs:/app/logs
       - ./volumes/agent/data:/app/data
+      - ./volumes/agent/data/uploads:/app/data/uploads
       - ./volumes/agent/.env:/app/.env
       - ./volumes/agent/conf:/app/conf
       - ./volumes/agent/skills:/app/.proteus/skills

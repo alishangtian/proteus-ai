@@ -11,3 +11,4 @@ pydantic_settings
 RestrictedPython
 akshare
 matplotlib
+yaml

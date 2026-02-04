@@ -3,7 +3,6 @@
 import json
 import time
 from typing import Any, Dict, Optional
-from src.utils.extract_playbook import PlaybookExtractor
 
 
 class EventType:
@@ -344,28 +343,6 @@ async def create_agent_stream_thinking_event(thinking: str) -> Dict:
     return await create_event(
         EventType.AGENT_STREAM_THINKING,
         {"thinking": thinking, "timestamp": time.time()},
-    )
-
-
-async def create_playbook_update_event(playbook_content: str) -> Dict:
-    """创建 playbook 更新事件
-
-    Args:
-        playbook_content: playbook 内容
-
-    Returns:
-        Dict: 事件字典
-    """
-    # 使用 PlaybookExtractor 提取任务规划和完成度
-    extracted_tasks = PlaybookExtractor.extract_tasks_and_completion(playbook_content)
-
-    return await create_event(
-        EventType.PLAYBOOK_UPDATE,
-        {
-            "playbook": playbook_content,
-            "tasks": extracted_tasks,  # 添加提取的任务列表
-            "timestamp": time.time(),
-        },
     )
 
 

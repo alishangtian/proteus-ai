@@ -87,13 +87,16 @@ def scan_skills_directory(skills_dir: str) -> List[Dict[str, Any]]:
                     frontmatter = parse_frontmatter(content)
                     name = frontmatter.get("name", item.name)
                     description = frontmatter.get("description", "")
+                    allow_tools = frontmatter.get("allow_tools", [])
                     skills.append(
                         {
                             "name": name,
                             "description": description,
+                            "allow_tools": allow_tools,
                             "path": str(item.relative_to(skills_path)),
                             "full_path": str(item),
                             "file_path": str(skill_md),
+                            "root_dir": str(skills_path),
                         }
                     )
                 except Exception as e:
@@ -111,6 +114,7 @@ def get_skill_content(skills_dir: str, skill_name: str) -> Optional[Dict[str, An
                 return {
                     "name": skill["name"],
                     "description": skill["description"],
+                    "allow_tools": skill.get("allow_tools", []),
                     "content": content,
                     "path": skill["path"],
                     "file_path": skill["file_path"],
@@ -119,8 +123,6 @@ def get_skill_content(skills_dir: str, skill_name: str) -> Optional[Dict[str, An
                 logger.error(f"读取技能内容失败 {skill['file_path']}: {e}")
                 return None
     return None
-
-
 
 
 class SkillsExtractNode(BaseNode):
@@ -167,10 +169,21 @@ class SkillsExtractNode(BaseNode):
         try:
             if action == "list":
                 skills = scan_multiple_skills_directories(existing_dirs)
+                # 按目录分组
+                by_directory = {}
+                for skill in skills:
+                    root = skill.get("root_dir")
+                    if root not in by_directory:
+                        by_directory[root] = []
+                    by_directory[root].append(skill)
                 return {
                     "success": True,
                     "error": None,
-                    "data": {"skills": skills, "count": len(skills)},
+                    "data": {
+                        "skills": skills,
+                        "count": len(skills),
+                        "by_directory": by_directory,
+                    },
                 }
             elif action == "get":
                 skill_name = params.get("skill_name")
@@ -205,6 +218,7 @@ class SkillsExtractNode(BaseNode):
                             "data": {
                                 "name": target_skill["name"],
                                 "description": target_skill["description"],
+                                "allowed_tools": target_skill.get("allowed_tools", []),
                                 "content": content,
                                 "path": target_skill["path"],
                                 "file_path": target_skill["file_path"],
@@ -310,23 +324,54 @@ class SkillsExtractNode(BaseNode):
             action = params.get("action", "list")
 
             if action == "list":
-                skills = data.get("skills", [])
-                if not skills:
+                by_directory = data.get("by_directory", {})
+                if not by_directory:
                     result_text = "技能目录为空。"
                 else:
-                    skill_items = []
-                    for i, skill in enumerate(skills, 1):
-                        skill_items.append(
-                            f"{i}. {skill['name']}: {skill['description']}"
-                        )
-                    result_text = "技能列表:\n" + "\n".join(skill_items)
+                    result_text = "技能目录结构:\n\n"
+                    for dir_idx, (directory, skills_in_dir) in enumerate(
+                        by_directory.items(), 1
+                    ):
+                        # 提取目录名（使用相对路径或最后一部分）
+                        dir_name = directory
+                        if "/" in directory:
+                            dir_name = directory.split("/")[-1]
+                        elif "\\" in directory:
+                            dir_name = directory.split("\\")[-1]
+
+                        result_text += f"目录 {dir_idx}: {dir_name}\n"
+                        result_text += f"  路径: {directory}\n"
+                        result_text += f"  技能数量: {len(skills_in_dir)}\n"
+
+                        for skill_idx, skill in enumerate(skills_in_dir, 1):
+                            allow_tools = skill.get("allow_tools", [])
+                            tools_text = (
+                                f"允许工具: {', '.join(allow_tools)}"
+                                if allow_tools
+                                else "允许工具: 无"
+                            )
+                            result_text += f"    {skill_idx}. {skill['name']}: {skill['description']} ({tools_text})\n"
+                        result_text += "\n"
+
+                    # 也显示总技能数
+                    total_skills = data.get("count", 0)
+                    result_text += f"总计: {total_skills} 个技能，分布在 {len(by_directory)} 个目录中\n"
             elif action == "get":
                 result_text = f"技能名称: {data.get('name', '未知')}\n"
                 result_text += f"描述: {data.get('description', '')}\n"
+                allowed_tools = data.get("allowed-tools", [])
+                if allowed_tools:
+                    result_text += f"允许使用的工具: {', '.join(allowed_tools)}\n"
+                else:
+                    result_text += "允许使用的工具: 无\n"
                 result_text += f"文件路径: {data.get('file_path', '')}\n"
-                files = data.get('files', [])
+                files = data.get("files", [])
                 if files:
-                    result_text += f"技能目录下文件 ({len(files)}):\n" + "\n".join(f"  - {f}" for f in files) + "\n"
+                    result_text += (
+                        f"技能目录下文件 ({len(files)}):\n"
+                        + "\n".join(f"  - {f}" for f in files)
+                        + "\n"
+                    )
                 else:
                     result_text += "技能目录下无其他文件。\n"
                 result_text += "内容:\n"

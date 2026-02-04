@@ -1,9 +1,14 @@
 ---
 name: skill-creator
-description: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.
+description: Guide for creating effective skills. This skill should be used when users
+  want to create a new skill (or update an existing skill) that extends Claude's capabilities
+  with specialized knowledge, workflows, or tool integrations.
 license: Complete terms in LICENSE.txt
+allowed-tools:
+  - python_execute
+  - serper_search
+  - web_crawler
 ---
-
 # Skill Creator
 
 This skill provides guidance for creating effective skills.
@@ -286,6 +291,7 @@ Consult these helpful guides based on your skill's needs:
 
 - **Multi-step processes**: See references/workflows.md for sequential workflows and conditional logic
 - **Specific output formats or quality standards**: See references/output-patterns.md for template and example patterns
+- **Test file management**: See references/test-management.md for guidelines on creating, keeping, and removing test files
 
 These files contain established best practices for effective skill design.
 
@@ -294,6 +300,7 @@ These files contain established best practices for effective skill design.
 To begin implementation, start with the reusable resources identified above: `scripts/`, `references/`, and `assets/` files. Note that this step may require user input. For example, when implementing a `brand-guidelines` skill, the user may need to provide brand assets or templates to store in `assets/`, or documentation to store in `references/`.
 
 Added scripts must be tested by actually running them to ensure there are no bugs and that the output matches what is expected. If there are many similar scripts, only a representative sample needs to be tested to ensure confidence that they all work while balancing time to completion.
+**Test file management**: After testing is complete, evaluate whether test files should be kept in the skill. Development validation tests and temporary debugging scripts should generally be removed. For guidance on managing test files, see [references/test-management.md](references/test-management.md).
 
 Any example files and directories not needed for the skill should be deleted. The initialization script creates example files in `scripts/`, `references/`, and `assets/` to demonstrate structure, but most skills won't need all of them.
 

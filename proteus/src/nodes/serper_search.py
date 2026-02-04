@@ -3,7 +3,6 @@
 from typing import Dict, Any, Optional
 import aiohttp
 from .base import BaseNode
-from ..api.config import API_CONFIG
 import os, time, json
 import logging
 from threading import Lock
@@ -70,9 +69,9 @@ class SerperSearchNode(BaseNode):
             raise ValueError("query参数不能为空")
 
         # 获取API密钥
-        api_key = os.getenv("SERPER_API_KEY", "")
+        api_key = os.getenv("SERPER_SEARCH_API_KEY", "")
         if not api_key:
-            raise ValueError("未设置SERPER_API_KEY环境变量")
+            raise ValueError("未设置SERPER_SEARCH_API_KEY环境变量")
 
         # 获取可选参数
         country = str(params.get("country", "cn"))

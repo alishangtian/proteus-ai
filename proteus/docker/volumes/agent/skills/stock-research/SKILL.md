@@ -1,9 +1,14 @@
 ---
 name: stock-research
-description: Comprehensive toolkit for stock analysis, research, and trading recommendations. Provides data acquisition, technical analysis, fundamental analysis, risk assessment, and professional reporting for stocks.
+description: Comprehensive toolkit for stock analysis, research, and trading recommendations.
+  Provides data acquisition, technical analysis, fundamental analysis, risk assessment,
+  and professional reporting for stocks.
 license: MIT
+allowed-tools:
+  - python_execute
+  - serper_search
+  - web_crawler
 ---
-
 # Stock Research Skill
 
 This skill provides a comprehensive framework for conducting in-depth stock analysis and generating trading recommendations. It integrates data acquisition, technical analysis, fundamental analysis, risk assessment, and professional reporting to support investment decision-making.

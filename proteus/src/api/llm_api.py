@@ -5,15 +5,12 @@ import json
 import asyncio
 import aiohttp
 import base64
-import os
 import threading
 import time
 from pathlib import Path
 from typing import List, Dict, Union, AsyncGenerator, Tuple
-from datetime import timedelta
 
-from .config import API_CONFIG, retry_on_error
-from .model_manager import ModelManager
+from src.api.model_manager import ModelManager
 from src.utils.langfuse_wrapper import langfuse_wrapper
 
 
@@ -158,61 +155,6 @@ def calculate_messages_length(messages: List[Dict[str, str]]) -> int:
                     # 图片URL的长度可以忽略，或者根据实际情况估算
                     total_length += 0  # 暂时忽略图片长度
     return total_length
-
-
-def generate_long_message(target_tokens: int, model: str = "gpt-3.5-turbo-0613") -> str:
-    """
-    生成一个大约包含 target_tokens 个 token 的文本消息。
-
-    Args:
-        target_tokens: 目标 token 数量
-        model: 用于 token 计数的模型名称
-
-    Returns:
-        生成的文本内容
-    """
-    try:
-        import tiktoken
-
-        try:
-            encoding = tiktoken.encoding_for_model(model)
-        except KeyError:
-            encoding = tiktoken.get_encoding("cl100k_base")
-    except ImportError:
-        # 如果 tiktoken 不可用，则使用简单估算（1 token ≈ 4 个字符）
-        avg_chars_per_token = 4
-        num_chars = target_tokens * avg_chars_per_token
-        return "x" * num_chars
-
-    # 使用一个基础字符串，计算其 token 数量
-    base_string = "这是一个测试文本，用于生成长消息。"
-    base_tokens = len(encoding.encode(base_string))
-    if base_tokens == 0:
-        base_string = "test "
-        base_tokens = len(encoding.encode(base_string))
-
-    # 计算需要重复的次数
-    repeats = max(1, target_tokens // base_tokens)
-    # 生成文本
-    generated = base_string * repeats
-    # 计算实际 token 数量
-    actual_tokens = len(encoding.encode(generated))
-    # 如果不足，添加一些填充
-    if actual_tokens < target_tokens:
-        # 添加单个字符直到达到目标
-        padding = " "
-        padding_tokens = len(encoding.encode(padding))
-        if padding_tokens > 0:
-            while actual_tokens < target_tokens:
-                generated += padding
-                actual_tokens += padding_tokens
-    # 如果超出，截断（简单处理，移除最后一个重复）
-    if actual_tokens > target_tokens:
-        # 逐步移除字符直到接近目标
-        while actual_tokens > target_tokens and len(generated) > 0:
-            generated = generated[:-1]
-            actual_tokens = len(encoding.encode(generated))
-    return generated
 
 
 def encode_image_to_base64(image_path: Union[str, Path]) -> str:

@@ -1,5 +1,10 @@
 """API主模块"""
 
+# 加载环境变量
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import os
 import logging
 import json
@@ -18,35 +23,22 @@ from src.utils.file_parser import parse_file  # 导入文件解析函数
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-# 导入extract_tasks_and_completion
-from src.utils.extract_playbook import PlaybookExtractor
-
 from fastapi.responses import HTMLResponse
 import shutil
 from sse_starlette.sse import EventSourceResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
-from src.agent.terminition import ToolTerminationCondition
 from src.utils.logger import setup_logger
 from src.agent.prompt.react_playbook_prompt_v3 import REACT_PLAYBOOK_PROMPT_v3
 from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
 from src.agent.prompt.code_agent_system_prompt import CODE_AGENT_SYSTEM_PROMPT
 from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
-from src.agent.pagentic_team import PagenticTeam, TeamRole
-from src.agent.agent import Agent
-from src.agent.react_agent import ReactAgent
 from src.agent.chat_agent import ChatAgent
 from src.utils.langfuse_wrapper import langfuse_wrapper
-from src.agent.common.configuration import AgentConfiguration
-from src.manager.multi_agent_manager import get_multi_agent_manager
 from src.api.events import (
     create_complete_event,
 )
 
-# 加载环境变量
-from dotenv import load_dotenv
-
-load_dotenv()
 language = os.getenv("LANGUAGE", "中文")
 # 设置MCP配置文件路径
 os.environ["MCP_CONFIG_PATH"] = os.path.join(
@@ -96,14 +88,6 @@ def get_workflow_engine():
     return workflow_engine
 
 
-# 延迟初始化工作流服务
-def get_workflow_service():
-    """延迟初始化工作流服务"""
-    from src.api.workflow_service import WorkflowService
-
-    return WorkflowService(get_workflow_engine())
-
-
 # 在启动时注册工作流节点类型 - 改为按需加载
 def register_workflow_nodes(workflow_engine, node_manager):
     """注册所有可用的节点类型"""
@@ -142,24 +126,7 @@ def register_workflow_nodes(workflow_engine, node_manager):
     logger.info("工作流节点类型注册完成")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 启动逻辑
-    from src.agent.task_manager import task_manager
-
-    await task_manager.start()
-    try:
-        yield
-    finally:
-        # 关闭逻辑：取消除当前任务之外的所有任务，并等待它们完成（忽略异常）
-        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-
-app = FastAPI(title="Workflow Engine API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Porteus Agent Engine API", version="1.0.0")
 
 
 class AuthMiddleware:
@@ -234,17 +201,8 @@ async def auth_middleware(request: Request, call_next):
 
 # 注册路由
 from src.auth.router import router as l_router
-from src.api.history.history_router import router as h_router
-from src.agent.agent_router import router as a_router
-import src.agent.agent_router as agent_router
 
-app.include_router(a_router)
 app.include_router(l_router)
-app.include_router(h_router)
-
-# 初始化agent路由，注入stream_manager，但不立即注入node_manager
-# 这样可以避免在应用启动时就加载node_manager
-agent_router.init_router(smanager=stream_manager, nmanager=None)
 
 # Add CORS middleware
 app.add_middleware(
@@ -261,7 +219,7 @@ static_path = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 # 文件上传目录
-UPLOAD_DIRECTORY = os.getenv("UPLOAD_DIRECTORY", "/var/data/uploads")
+UPLOAD_DIRECTORY = os.getenv("UPLOAD_DIRECTORY", "/app/data/uploads")
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)  # 确保目录存在
 
 
@@ -610,98 +568,12 @@ async def create_chat(
 
 @app.get("/stop/{model}/{chat_id}")
 async def stop_chat(model: str, chat_id: str):
-    if model == "deep-research":
-        # 优化后的 deep-research 停止逻辑
-        await _stop_deep_research_team(chat_id)
-        await stream_manager.send_message(chat_id, await create_complete_event())
-    elif model == "chat":
-        agents = ChatAgent.get_agents(chat_id)
-        if agents:
-            for agent in agents:
-                await agent.stop()
-    elif model in agent_model_list:
-        # 其他模型的停止逻辑保持不变
-        agents = ReactAgent.get_agents(chat_id)
-        if agents:
-            for agent in agents:
-                await agent.stop()
-    else:
-        raise HTTPException(status_code=400, detail="Invalid model type")
-
-    # 清理 agent 缓存
-    ReactAgent.clear_agents(chat_id)
-
+    agents = ChatAgent.get_agents(chat_id)
+    if agents:
+        for agent in agents:
+            await agent.stop()
     logger.info(f"[{chat_id}] 已经停止")
     return {"success": True, "chat_id": chat_id}
-
-
-async def _stop_deep_research_team(chat_id: str):
-    """停止 deep-research team 下的所有 agents
-
-    Args:
-        chat_id: 聊天会话ID
-    """
-    try:
-        # 1. 从 Redis 获取 team 中的所有 agents
-        team_agents = await _get_team_agents(chat_id)
-
-        # 2. 从内存缓存获取 agents（作为备用）
-        cached_agents = Agent.get_agents(chat_id)
-        cached_react_agents = ReactAgent.get_agents(chat_id)
-
-        # 3. 合并所有需要停止的 agents
-        agents_to_stop = []
-
-        # 添加缓存中的 agents
-        agents_to_stop.extend(cached_agents)
-        agents_to_stop.extend(cached_react_agents)
-
-        # 4. 停止所有 agents
-        multi_agent_manager = get_multi_agent_manager()
-        stopped_agent_ids = set()
-
-        for agent in agents_to_stop:
-            if (
-                hasattr(agent, "agentcard")
-                and agent.agentcard.agentid not in stopped_agent_ids
-            ):
-                try:
-                    await agent.stop()
-                    multi_agent_manager.unregister_agent(agent.agentcard.agentid)
-                    stopped_agent_ids.add(agent.agentcard.agentid)
-                    logger.info(f"[{chat_id}] 已停止 agent: {agent.agentcard.agentid}")
-                except Exception as e:
-                    logger.error(
-                        f"[{chat_id}] 停止 agent {agent.agentcard.agentid} 失败: {e}"
-                    )
-
-        # 5. 根据 Redis 中的 team agents 信息，尝试停止可能遗漏的 agents
-        for team_agent_info in team_agents:
-            agent_id = team_agent_info.get("agent_id")
-            if agent_id and agent_id not in stopped_agent_ids:
-                try:
-                    # 尝试从 multi_agent_manager 注销
-                    multi_agent_manager.unregister_agent(agent_id)
-                    logger.info(f"[{chat_id}] 从 Redis 信息注销 agent: {agent_id}")
-                except Exception as e:
-                    logger.warning(f"[{chat_id}] 注销 agent {agent_id} 失败: {e}")
-
-        # 6. 清理 team 绑定关系
-        await _cleanup_team_binding(chat_id)
-
-        logger.info(
-            f"[{chat_id}] deep-research team 停止完成，共停止 {len(stopped_agent_ids)} 个 agents"
-        )
-
-    except Exception as e:
-        logger.error(
-            f"[{chat_id}] 停止 deep-research team 失败: {str(e)}", exc_info=True
-        )
-        # 即使出错也要尝试清理
-        try:
-            await _cleanup_team_binding(chat_id)
-        except Exception:
-            pass
 
 
 @app.get("/stream/{chat_id}")
@@ -724,7 +596,16 @@ async def stream_request(chat_id: str):
 
             yield await create_error_event(f"Stream not found: {str(e)}")
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
+            "Access-Control-Allow-Origin": "*",  # 如果是跨域
+        },
+    )
 
 
 @app.get("/replay/stream/{chat_id}")
@@ -744,138 +625,22 @@ async def replay_stream_request(chat_id: str):
         try:
             async for message in stream_manager.get_messages(chat_id):
                 yield message
+                # await asyncio.sleep(0.1)  # 小延迟减少CPU使用
         except ValueError as e:
             from src.api.events import create_error_event
 
             yield await create_error_event(f"Stream not found: {str(e)}")
 
-    return EventSourceResponse(event_generator())
-
-
-async def _register_team_binding(chat_id: str, team_name: str, agentmodel: str):
-    """注册 team 和 chatid 的绑定关系到 Redis
-
-    Args:
-        chat_id: 聊天会话ID
-        team_name: 团队名称
-        agentmodel: 代理模型类型
-    """
-    try:
-        from src.utils.redis_cache import RedisCache, get_redis_connection
-
-        redis_cache = get_redis_connection()
-
-        # 存储 team 绑定信息
-        team_info = {
-            "team_name": team_name,
-            "agentmodel": agentmodel,
-            "created_at": datetime.now().isoformat(),
-            "status": "active",
-        }
-
-        # 设置 team 绑定关系，过期时间 24 小时
-        team_binding_key = f"team_binding:{chat_id}"
-        redis_cache.setex(
-            team_binding_key, 24 * 3600, json.dumps(team_info, ensure_ascii=False)
-        )
-
-        # 初始化 team agents 列表
-        team_agents_key = f"team_agents:{chat_id}"
-        redis_cache.delete(team_agents_key)  # 清空可能存在的旧数据
-
-        logger.info(f"[{chat_id}] 已注册 team 绑定关系: {team_name} ({agentmodel})")
-
-    except Exception as e:
-        logger.error(f"[{chat_id}] 注册 team 绑定关系失败: {str(e)}", exc_info=True)
-
-
-async def _register_team_agent(chat_id: str, agent_id: str, role_type: str):
-    """注册 team 中的 agent 到 Redis
-
-    Args:
-        chat_id: 聊天会话ID
-        agent_id: agent ID
-        role_type: agent 角色类型
-    """
-    try:
-        from src.utils.redis_cache import RedisCache, get_redis_connection
-
-        redis_cache = get_redis_connection()
-
-        # 添加 agent 到 team agents 列表
-        team_agents_key = f"team_agents:{chat_id}"
-        agent_info = {
-            "agent_id": agent_id,
-            "role_type": role_type,
-            "registered_at": datetime.now().isoformat(),
-        }
-        redis_cache.rpush(team_agents_key, json.dumps(agent_info, ensure_ascii=False))
-
-        # 设置过期时间 24 小时
-        redis_cache.expire(team_agents_key, 24 * 3600)
-
-        logger.info(f"[{chat_id}] 已注册 team agent: {agent_id} ({role_type})")
-
-    except Exception as e:
-        logger.error(f"[{chat_id}] 注册 team agent 失败: {str(e)}", exc_info=True)
-
-
-async def _get_team_agents(chat_id: str):
-    """获取 team 中的所有 agents
-
-    Args:
-        chat_id: 聊天会话ID
-
-    Returns:
-        List[Dict]: agent 信息列表
-    """
-    try:
-        from src.utils.redis_cache import RedisCache, get_redis_connection
-
-        redis_cache = get_redis_connection()
-
-        team_agents_key = f"team_agents:{chat_id}"
-        agent_data_list = redis_cache.lrange(team_agents_key, 0, -1)
-
-        agents = []
-        for agent_data in agent_data_list:
-            try:
-                agent_info = json.loads(agent_data)
-                agents.append(agent_info)
-            except json.JSONDecodeError as e:
-                logger.warning(f"[{chat_id}] 解析 agent 信息失败: {e}")
-                continue
-
-        logger.info(f"[{chat_id}] 获取到 {len(agents)} 个 team agents")
-        return agents
-
-    except Exception as e:
-        logger.error(f"[{chat_id}] 获取 team agents 失败: {str(e)}", exc_info=True)
-        return []
-
-
-async def _cleanup_team_binding(chat_id: str):
-    """清理 team 绑定关系
-
-    Args:
-        chat_id: 聊天会话ID
-    """
-    try:
-        from src.utils.redis_cache import RedisCache, get_redis_connection
-
-        redis_cache = get_redis_connection()
-
-        # 删除 team 绑定信息
-        team_binding_key = f"team_binding:{chat_id}"
-        team_agents_key = f"team_agents:{chat_id}"
-
-        redis_cache.delete(team_binding_key)
-        redis_cache.delete(team_agents_key)
-
-        logger.info(f"[{chat_id}] 已清理 team 绑定关系")
-
-    except Exception as e:
-        logger.error(f"[{chat_id}] 清理 team 绑定关系失败: {str(e)}", exc_info=True)
+    return EventSourceResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
+            "Access-Control-Allow-Origin": "*",  # 如果是跨域
+        },
+    )
 
 
 from src.utils.md_title_extractor import (
@@ -1095,190 +860,6 @@ async def process_agent(
                 text=query,
                 file_analysis_context=file_analysis_context,
             )
-        elif agentmodul == "deep-research-multi":
-            # 建立 team 和 chatid 的绑定关系
-            await _register_team_binding(
-                chat_id, team_name or "deep_research", agentmodul
-            )
-
-            # 递归查找配置文件
-            def find_config_dir(filename):
-                """递归查找配置文件目录"""
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                while True:
-                    conf_path = os.path.join(current_dir, "conf", filename)
-                    if os.path.exists(conf_path):
-                        return conf_path
-                    parent_dir = os.path.dirname(current_dir)
-                    if parent_dir == current_dir:  # 到达根目录
-                        break
-                    current_dir = parent_dir
-                return None
-
-            # 查找配置文件
-            # 确定团队名称，如果未提供则使用默认值
-            final_team_name = team_name or "deep_research"
-            config_file = f"{final_team_name}_team.yaml"
-            config_path = find_config_dir(config_file)
-            if not config_path:
-                raise FileNotFoundError(f"找不到配置文件: {config_file}")
-
-            logger.info(
-                f"[{chat_id}] 团队: {final_team_name}, 找到配置文件: {config_path}"
-            )
-
-            # 加载YAML配置
-            with open(config_path, "r", encoding="utf-8") as f:
-                team_config = yaml.safe_load(f)
-
-            # 构建tools_config字典
-            tools_config = {}
-            termination_map = {"ToolTerminationCondition": ToolTerminationCondition}
-
-            for role_name, config in team_config["roles"].items():
-                termination_conditions = []
-                for tc in config["termination_conditions"]:
-                    tc_class = termination_map[tc["type"]]
-                    termination_conditions.append(
-                        tc_class(**{k: v for k, v in tc.items() if k != "type"})
-                    )
-
-                tools_config[getattr(TeamRole, role_name)] = AgentConfiguration(
-                    tools=config["tools"],
-                    prompt_template=globals()[config["prompt_template"]],
-                    agent_description=config["agent_description"],
-                    agent_instruction=globals()[config["agent_instruction"]],
-                    termination_conditions=termination_conditions,
-                    model_name=config["model_name"],
-                    max_iterations=itecount,
-                    llm_timeout=config.get("llm_timeout", None),
-                    conversation_id=conversation_id,
-                    conversation_round=conversation_round,
-                    tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                    sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
-                )
-
-            # 创建团队实例
-            team = PagenticTeam(
-                team_rules=team_config["team_rules"],
-                tools_config=tools_config,
-                start_role=getattr(TeamRole, team_config["start_role"]),
-                conversation_round=conversation_round,
-                user_name=user_name,
-                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
-            )
-            logger.info(f"[{chat_id}] 配置PagenticTeam角色工具")
-            await team.register_agents(chat_id)
-            logger.info(f"[{chat_id}] PagenticTeam开始运行")
-            final_result = await team.run(query, chat_id)
-        elif agentmodul == "super-agent":
-            # 超级智能体，智能组建team并完成任务
-            logger.info(f"[{chat_id}] 开始超级智能体请求")
-            prompt_template = COT_TEAM_PROMPT_TEMPLATES
-            agent = ReactAgent(
-                tools=["team_generator", "team_runner", "user_input"],
-                instruction="",
-                stream_manager=stream_manager,
-                max_iterations=itecount,
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name=model_name,
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
-            )
-
-            # 调用Agent的run方法，启用stream功能
-            result = await agent.run(query, chat_id)
-            await stream_manager.send_message(chat_id, await create_complete_event())
-        elif agentmodul == "codeact-agent":
-
-            # chat 模式：使用 ChatAgent 类处理
-            logger.info(
-                f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {enable_tools}"
-            )
-
-            # 创建 ChatAgent 实例
-            chat_agent = ChatAgent(
-                stream_manager=stream_manager,
-                model_name=model_name,
-                enable_tools=True,
-                tool_choices=["python_execute"],
-                max_tool_iterations=itecount,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                enable_sop_memory=sop_memory_enabled,
-                enable_tool_memory=tool_memory_enabled,
-                system_prompt=CODE_AGENT_SYSTEM_PROMPT,
-            )
-
-            # 运行 ChatAgent
-            final_result = await chat_agent.run(
-                chat_id=chat_id,
-                text=query,
-                file_analysis_context=file_analysis_context,
-            )
-        elif agentmodul == "browser-agent":
-            prompt_template = COT_BROWSER_USE_PROMPT_TEMPLATES
-            agent = ReactAgent(
-                tools=[
-                    "browser_agent",
-                    "python_execute",
-                    "user_input",
-                    "serper_search",
-                    "web_crawler",
-                ],
-                instruction="",
-                stream_manager=stream_manager,
-                max_iterations=itecount,
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name=model_name,
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
-            )
-            # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(query, chat_id)
-            await stream_manager.send_message(chat_id, await create_complete_event())
-        elif agentmodul == "deep-research":
-            all_tools = [
-                "python_execute",
-                "serper_search",
-                "web_crawler",
-                "user_input",
-            ]
-            prompt_template = REACT_PLAYBOOK_PROMPT_v3
-            # 获取基础工具集合 - 延迟初始化node_manager
-            agent = ReactAgent(
-                tools=all_tools,
-                instruction="",
-                stream_manager=stream_manager,
-                max_iterations=itecount,
-                iteration_retry_delay=int(os.getenv("ITERATION_RETRY_DELAY", 30)),
-                model_name=model_name,
-                prompt_template=prompt_template,
-                role_type=TeamRole.GENERAL_AGENT,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                tool_memory_enabled=tool_memory_enabled,  # 传递工具记忆参数
-                sop_memory_enabled=sop_memory_enabled,  # 传递 SOP 记忆参数
-            )
-
-            # 调用Agent的run方法，启用stream功能
-            final_result = await agent.run(
-                query, chat_id, context=file_analysis_context
-            )
-            await stream_manager.send_message(chat_id, await create_complete_event())
         else:
             await stream_manager.send_message(
                 chat_id, await create_error_event("工作模式未定义")
@@ -1305,159 +886,6 @@ async def process_agent(
                 )
             )
         return {"status": "success", "final_result": final_result, "text": query}
-
-
-@app.post("/user_input")
-async def handle_user_input(
-    node_id: str = Body(...),
-    value: Any = Body(...),
-    chat_id: str = Body(...),
-    agent_id: str = Body(...),
-):
-    """处理用户输入（使用 agent_id 进行过滤，优先精确匹配）
-
-    行为：
-    - 从 ReactAgent 缓存中获取 chat_id 对应的 agent 列表
-    - 使用 agent_id 精确匹配目标 agent；若找到则向该 agent 发送输入
-    - 如果未找到匹配且仅存在一个 agent，则回退到该唯一 agent（向后兼容）
-    - 否则返回 400 错误提示未找到匹配 agent
-    """
-    try:
-        agents = ReactAgent.get_agents(chat_id)
-        if not agents:
-            raise HTTPException(
-                status_code=400, detail=f"No agents found for chat_id {chat_id}"
-            )
-
-        target_agent = None
-        # 尝试使用 agent_id 精确匹配
-        if agent_id:
-            for a in agents:
-                try:
-                    if (
-                        getattr(a, "agentcard", None)
-                        and getattr(a.agentcard, "agentid", None) == agent_id
-                    ):
-                        target_agent = a
-                        break
-                except Exception:
-                    continue
-
-        # 回退策略：若没有匹配且只有一个 agent，则使用该 agent（兼容旧行为）
-        if target_agent is None:
-            if len(agents) == 1:
-                target_agent = agents[0]
-                logger.info(
-                    f"[{chat_id}] agent_id {agent_id} 未命中，回退到唯一 agent {getattr(target_agent.agentcard, 'agentid', 'unknown')}"
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"No matching agent for agent_id {agent_id} in chat {chat_id}",
-                )
-
-        await target_agent.set_user_input(node_id, value)
-        return {"success": True, "message": "User input processed successfully"}
-    except ValueError as ve:
-        # 处理输入验证错误（例如没有等待的 user input）
-        raise HTTPException(status_code=400, detail=str(ve))
-    except HTTPException:
-        # 重新抛出已知的 HTTPException
-        raise
-    except Exception as e:
-        logger.error(f"处理用户输入失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/execute_workflow", response_model=ApiResponse)
-async def execute_workflow(request: WorkflowRequest):
-    """
-    执行工作流
-
-    根据提供的工作流定义执行工作流，返回统一的事件格式
-
-    Args:
-        request: 包含工作流定义的请求
-
-    Returns:
-        ApiResponse: 包含工作流执行结果的统一响应
-    """
-    request_id = f"req-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    logger.info(f"[{request_id}] 收到执行工作流请求")
-    try:
-        workflow_id = f"workflow-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-        # 记录工作流定义
-        workflow_json = json.dumps(request.workflow, indent=2)
-        logger.info(f"[{request_id}] 工作流定义:\n{workflow_json}")
-
-        # 发送工作流事件
-        workflow_event = await create_workflow_event(request.workflow)
-
-        # 使用流式执行工作流
-        events = []
-        # 获取工作流引擎（延迟初始化）
-        workflow_engine = get_workflow_engine()
-        from src.api.events import (
-            create_workflow_event,
-            create_result_event,
-            create_complete_event,
-        )
-        from src.api.utils import convert_node_result
-
-        async for node_id, result in workflow_engine.execute_workflow_stream(
-            json.dumps(request.workflow), workflow_id, request.global_params or {}
-        ):
-            # 使用工具函数转换结果为可序列化的字典
-            result_dict = convert_node_result(node_id, result)
-            node_event = await create_result_event(node_id, result_dict)
-            events.append(node_event)
-
-        # 生成完成事件
-        complete_event = await create_complete_event()
-        events.append(complete_event)
-
-        logger.info(f"[{request_id}] 工作流执行完成")
-        return ApiResponse(
-            event="workflow_execution",
-            success=True,
-            data={
-                "workflow": workflow_event["data"],
-                "events": [event["data"] for event in events],
-            },
-        )
-    except Exception as e:
-        error_msg = f"执行工作流失败: {str(e)}"
-        logger.error(f"[{request_id}] {error_msg}", exc_info=True)
-        return ApiResponse(event="workflow_execution", success=False, error=error_msg)
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    logger.info("尝试启动 Uvicorn 服务器...")
-
-    ssl_certfile = os.getenv("SSL_CERTFILE")
-    ssl_keyfile = os.getenv("SSL_KEYFILE")
-    http_port = int(os.getenv("HTTP_PORT", 80))  # 允许从环境变量配置端口
-    https_port = int(os.getenv("HTTPSPORT", 443))  # 允许从环境变量配置端口
-
-    if ssl_certfile and ssl_keyfile:
-        logger.info(
-            f"检测到 SSL 证书和私钥，将在 HTTPS 模式下启动 Uvicorn 服务器，端口: {https_port}..."
-        )
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=https_port,
-            ssl_certfile=ssl_certfile,
-            ssl_keyfile=ssl_keyfile,
-        )
-    else:
-        logger.info(
-            f"未检测到 SSL 证书和私钥，将在 HTTP 模式下启动 Uvicorn 服务器，端口: {http_port}..."
-        )
-        uvicorn.run(app, host="0.0.0.0", port=http_port)
 
 
 # 提供模型配置列表接口，供前端下拉使用
@@ -1495,42 +923,6 @@ async def list_models():
         logger.error(f"读取模型配置失败: {e}", exc_info=True)
         # 发生不可预期错误时返回 500
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/playbook/{chat_id}")
-async def get_playbook(chat_id: str):
-    """
-    根据 chat_id 获取剧本，并只提取规划和完成部分的内容。
-    """
-    try:
-        redis_conn = get_redis_connection()
-        playbook_key = f"playbook:{chat_id}"
-        playbook_content = redis_conn.get(playbook_key)
-
-        if not playbook_content:
-            return {"success": True, "chat_id": chat_id, "playbook": ""}
-
-        # 提取任务规划与完成度部分
-        extracted_tasks = PlaybookExtractor.extract_tasks_and_completion(
-            playbook_content
-        )
-
-        # 将提取到的任务转换为更友好的格式
-        formatted_tasks = []
-        for task in extracted_tasks:
-            formatted_tasks.append(f"- [状态: {task['status']}] {task['description']}")
-
-        extracted_content = {
-            "tasks_and_completion": formatted_tasks if formatted_tasks else "无"
-        }
-
-        return {"success": True, "chat_id": chat_id, "playbook": extracted_content}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取剧本失败 (chat_id: {chat_id}): {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"获取剧本失败: {str(e)}")
 
 
 @app.post("/feedback/{conversation_id}/{chat_id}/{feedback_type}")
@@ -1790,13 +1182,13 @@ async def delete_conversation(conversation_id: str, request: Request):
         raise HTTPException(status_code=500, detail=f"删除会话失败: {str(e)}")
 
 
-@app.get("/var/data/sandbox/{file_path:path}")
+@app.get("/app/data/{file_path:path}")
 async def get_sandbox_file(file_path: str, request: Request):
     """
     获取 sandbox 目录下的静态页面文件
 
     Args:
-        file_path: 文件路径，相对于 /var/data/sandbox 目录
+        file_path: 文件路径，相对于 /app/data/ 目录
         request: 请求对象
 
     Returns:
@@ -1979,17 +1371,6 @@ async def save_to_knowledge_base(request: Request, kb_content: KnowledgeBaseCont
     except Exception as e:
         logger.error(f"保存知识库失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"保存知识库失败: {str(e)}")
-
-
-from src.utils.dynamic_observer import auto_apply_here
-
-auto_apply_here(
-    globals(),
-    include=None,
-    exclude=[],
-    only_in_module=True,
-    verbose=False,
-)
 
 
 @app.get("/knowledge_base/list")
@@ -2578,6 +1959,8 @@ async def list_skills():
             }
 
         skills = scan_multiple_skills_directories(skills_dirs)
+        # 按技能名称字母降序排列
+        skills.sort(key=lambda x: x["name"].lower(), reverse=False)
         return {
             "success": True,
             "skills": skills,

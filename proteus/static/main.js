@@ -2258,6 +2258,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // 是否正在加载技能
     let isLoadingSkills = false;
 
+    // 根据查询字符串筛选技能列表
+    function filterSkillsByQuery(query) {
+        if (!skillsCache) return [];
+        const normalizedQuery = query.trim().toLowerCase();
+        if (!normalizedQuery) return skillsCache;
+        return skillsCache.filter(skill =>
+            skill.name.toLowerCase().includes(normalizedQuery)
+        );
+    }
+
+    // 应用当前筛选条件并更新技能列表
+    function applyCurrentFilter() {
+        if (!skillsDropdown || skillsDropdown.style.display !== 'block') return;
+        const userInput = document.getElementById('user-input');
+        if (!userInput) return;
+        const value = userInput.value;
+        let filteredSkills = [];
+        if (value.startsWith('/')) {
+            const query = value.slice(1);
+            filteredSkills = filterSkillsByQuery(query);
+        } else {
+            filteredSkills = skillsCache || [];
+        }
+        renderSkillsList(filteredSkills);
+    }
+
     // 显示技能下拉列表
     async function showSkillsDropdown() {
         if (!skillsDropdown || !skillsList) return;
@@ -2267,7 +2293,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 如果有缓存，直接使用缓存
         if (skillsCache) {
-            renderSkillsList(skillsCache);
+            applyCurrentFilter();
             return;
         }
 
@@ -2282,7 +2308,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (data.success && data.skills) {
                     skillsCache = data.skills; // 缓存技能列表
-                    renderSkillsList(data.skills);
+                    applyCurrentFilter();
                 } else {
                     skillsList.innerHTML = '<div class="skills-empty">暂无可用技能</div>';
                 }
@@ -2351,6 +2377,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const name = item.dataset.skillName;
                 item.classList.toggle('selected', window.selectedSkills.includes(name));
             });
+        }
+
+        // 选中技能后隐藏下拉列表
+        hideSkillsDropdown();
+        
+        // 清除输入框中的/和后边的内容
+        if (userInput) {
+            const value = userInput.value;
+            if (value.startsWith('/')) {
+                userInput.value = '';
+            }
         }
     }
 
@@ -2424,6 +2461,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // 检查是否以 '/' 开头
             if (value.startsWith('/')) {
                 showSkillsDropdown();
+                // 如果下拉列表已显示，根据输入内容筛选技能
+                if (skillsDropdown && skillsDropdown.style.display === 'block') {
+                    applyCurrentFilter();
+                }
             } else if (skillsDropdown && skillsDropdown.style.display === 'block') {
                 // 如果下拉列表显示且用户删除了 '/'，则隐藏下拉列表
                 hideSkillsDropdown();
@@ -2434,6 +2475,28 @@ document.addEventListener('DOMContentLoaded', () => {
         userInput.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 hideSkillsDropdown();
+            }
+        });
+
+        // 点击输入框时，如果技能下拉列表正在显示，则隐藏它
+        userInput.addEventListener('click', () => {
+            if (skillsDropdown && skillsDropdown.style.display === 'block') {
+                hideSkillsDropdown();
+                // 如果输入框以/开头，清除/和后边的内容
+                if (userInput.value.startsWith('/')) {
+                    userInput.value = '';
+                }
+            }
+        });
+
+        // 当输入框获得焦点时，如果技能下拉列表正在显示，则隐藏它
+        userInput.addEventListener('focus', () => {
+            if (skillsDropdown && skillsDropdown.style.display === 'block') {
+                hideSkillsDropdown();
+                // 如果输入框以/开头，清除/和后边的内容
+                if (userInput.value.startsWith('/')) {
+                    userInput.value = '';
+                }
             }
         });
     }

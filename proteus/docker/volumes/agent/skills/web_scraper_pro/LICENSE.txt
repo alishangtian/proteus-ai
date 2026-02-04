@@ -1,0 +1,4 @@
+Web Scraper Pro Skill License
+
+This skill is provided under the terms of the skill creator's license.
+Use of this skill is permitted for web scraping and content extraction purposes.

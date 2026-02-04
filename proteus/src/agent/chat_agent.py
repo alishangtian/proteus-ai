@@ -16,18 +16,15 @@ from src.api.llm_api import (
 )
 from src.utils.tool_converter import load_tools_from_yaml
 from src.utils.langfuse_wrapper import langfuse_wrapper
-from src.agent.prompt.chat_agent_system_prompt import CHAT_AGENT_SYSTEM_PROMPT
 from src.agent.prompt.chat_agent_system_prompt_v2 import CHAT_AGENT_SYSTEM_PROMPT_V2
+from src.agent.prompt.chat_agent_mermaid import CHAT_AGENT_SYSTEM_MERMAID
 
 # IMPORT SKILLS_PROMPT_TEMPLATES
 from src.agent.prompt.skills_prompt import SKILLS_PROMPT_TEMPLATES
-from src.utils.redis_cache import get_redis_connection
 from src.nodes.skills_extract import (
     get_default_skills_dirs,
     scan_multiple_skills_directories,
-    get_skill_content,
 )
-from src.manager.tool_memory_manager import ToolMemoryManager
 from src.manager.conversation_manager import conversation_manager
 import uuid
 from src.api.events import (
@@ -135,13 +132,9 @@ class ChatAgent:
         self.conversation_round = conversation_round
         self.enable_tool_memory = enable_tool_memory
         self.enable_skills_memory = enable_skills_memory
-
-        # 初始化工具记忆管理器
-        self.tool_memory_manager = ToolMemoryManager()
-
         # 初始化skills记忆管理器
         self.user_name = user_name
-        self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_PROMPT_V2
+        self.system_prompt = system_prompt or CHAT_AGENT_SYSTEM_MERMAID
         self.selected_skills = selected_skills
         self.agentid = agentid or str(uuid.uuid4())
         self.stopped = False
@@ -213,7 +206,7 @@ class ChatAgent:
             if not messages:
                 system_message = {
                     "role": "system",
-                    "content": CHAT_AGENT_SYSTEM_PROMPT_V2,
+                    "content": self.system_prompt,
                 }
                 if file_analysis_context:
                     system_message["content"] = (
@@ -422,20 +415,9 @@ class ChatAgent:
                 conversation_manager.save_message(
                     self.conversation_id, final_assistant_message
                 )
-                # self._save_conversation_to_redis(message=final_assistant_message)
                 logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
 
             logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
-
-            # 异步处理skills记忆生成（如果启用且成功解决问题）
-            if self.enable_skills_memory and final_response_text:
-                await self._async_process_skills_memory(
-                    chat_id=chat_id,
-                    user_query=text,
-                    final_result=final_response_text,
-                    tool_calls_history=self._get_tool_calls_from_messages(messages),
-                    is_success=True,
-                )
 
             return final_response_text
 
@@ -473,24 +455,6 @@ class ChatAgent:
                 # 加载所有工具
                 tools = load_tools_from_yaml()
                 logger.info(f"[{chat_id}] 加载所有可用工具")
-
-            # 如果启用了工具记忆，为每个工具附加记忆信息
-            if self.enable_tool_memory and tools:
-                for tool in tools:
-                    tool_name = tool["function"]["name"]
-                    # 异步加载工具记忆
-                    tool_memory = await self.tool_memory_manager.load_tool_memory(
-                        tool_name=tool_name, user_name=self.user_name
-                    )
-                    if tool_memory:
-                        # 将工具记忆附加到工具描述中
-                        original_description = tool["function"]["description"]
-                        enhanced_description = (
-                            f"{original_description}\n\n"
-                            f"【工具使用经验】{tool_memory}"
-                        )
-                        tool["function"]["description"] = enhanced_description
-                        logger.info(f"[{chat_id}] 为工具 '{tool_name}' 附加了使用经验")
 
             # 构建工具映射
             for tool in tools:
@@ -868,172 +832,14 @@ class ChatAgent:
             f"[{chat_id}] 工具执行完成 (iteration {tool_iteration}, 耗时: {execution_time:.2f}s)"
         )
 
-        # 异步处理工具记忆更新（不阻塞主流程）
-        if self.enable_tool_memory:
-            await self._async_process_tool_memory(
-                chat_id=chat_id,
-                tool_calls=tool_calls,
-                tool_messages=tool_messages,
-                tool_iteration=tool_iteration,
-                user_name=self.user_name,
-            )
-
         return tool_messages
-
-    @langfuse_wrapper.dynamic_observe()
-    async def _async_process_tool_memory(
-        self,
-        chat_id: str,
-        tool_calls: List[Dict],
-        tool_messages: List[Dict[str, Any]],
-        tool_iteration: int,
-        user_name: str,
-    ) -> None:
-        """异步处理工具记忆更新
-
-        Args:
-            chat_id: 聊天会话ID
-            tool_calls: 工具调用列表
-            tool_messages: 工具执行结果消息列表
-            tool_iteration: 当前迭代次数
-        """
-        try:
-            # 构建工具调用和结果的映射
-            tool_results = {}
-            for tool_msg in tool_messages:
-                if tool_msg.get("role") == "tool":
-                    tool_call_id = tool_msg.get("tool_call_id")
-                    tool_results[tool_call_id] = {
-                        "content": tool_msg.get("content", ""),
-                        "name": tool_msg.get("name", ""),
-                    }
-
-            # 为每个工具调用异步处理记忆
-            for tool_call in tool_calls:
-                tool_call_id = tool_call.get("id")
-                tool_name = tool_call.get("function", {}).get("name")
-                action_input = tool_call.get("function", {}).get("arguments", {})
-
-                # 解析参数
-                try:
-                    if isinstance(action_input, str):
-                        action_input = json.loads(action_input)
-                except (json.JSONDecodeError, TypeError):
-                    action_input = {}
-
-                # 获取工具执行结果
-                tool_result = tool_results.get(tool_call_id, {})
-                observation = tool_result.get("content", "")
-
-                # 异步调用工具记忆处理（不阻塞主流程）
-                import asyncio
-
-                asyncio.create_task(
-                    self._process_single_tool_memory(
-                        chat_id=chat_id,
-                        tool_name=tool_name,
-                        action_input=action_input,
-                        observation=observation,
-                        tool_iteration=tool_iteration,
-                    )
-                )
-
-            logger.info(f"[{chat_id}] 已启动 {len(tool_calls)} 个工具的记忆异步处理")
-
-        except Exception as e:
-            logger.error(f"[{chat_id}] 异步处理工具记忆失败: {str(e)}", exc_info=True)
-
-    @langfuse_wrapper.dynamic_observe()
-    async def _process_single_tool_memory(
-        self,
-        chat_id: str,
-        tool_name: str,
-        action_input: Dict[str, Any],
-        observation: str,
-        is_error: bool = False,
-        error_message: str = None,
-        tool_iteration: int = 25,
-    ) -> str:
-        """处理单个工具的记忆更新
-
-        Args:
-            chat_id: 聊天会话ID
-            tool_name: 工具名称
-            action_input: 工具输入参数
-            observation: 工具执行结果
-            is_error: 是否为错误执行
-            error_message: 错误信息
-            tool_iteration: 当前迭代次数
-        """
-        try:
-            # 获取当前用户输入（从对话历史中获取）
-            user_query = await self._get_current_user_query()
-
-            # 调用工具记忆管理器处理记忆
-            result = await self.tool_memory_manager.process_tool_memory(
-                tool_name=tool_name,
-                action_input=action_input,
-                observation=observation,
-                chat_id=chat_id,
-                is_error=is_error,
-                error_message=error_message,
-                user_query=user_query,
-                model_name=self.model_name,
-                conversation_id=self.conversation_id,
-                user_name=self.user_name,
-            )
-
-            logger.info(
-                f"[{chat_id}] 工具 '{tool_name}' 的记忆处理完成 (iteration {tool_iteration})"
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(
-                f"[{chat_id}] 处理工具 '{tool_name}' 记忆失败: {str(e)}", exc_info=True
-            )
-
-    def _filter_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        过滤 messages 列表，只保留最新的一个包含 'reasoning' 或 'reasoning_content' 字段的消息。
-        如果原始 messages 列表不包含这些字段的消息，则返回原始列表。
-        """
-        # 创建可修改的副本
-        processed_messages = messages[:]
-
-        # 找到所有包含 'reasoning' 或 'reasoning_content' 字段，且不包含 'tool_calls' 字段的消息的索引
-        removable_thinking_message_indices = []
-        for i, message in enumerate(processed_messages):
-            is_thinking_message = isinstance(message, dict) and any(
-                key in message for key in ["reasoning", "reasoning_content"]
-            )
-            has_tool_calls = (
-                isinstance(message, dict)
-                and "tool_calls" in message
-                and message["tool_calls"] is not None
-            )
-
-            if is_thinking_message and not has_tool_calls:
-                removable_thinking_message_indices.append(i)
-
-        # 如果可移除的思考消息的数量大于1，则移除最靠前的那个
-        if len(removable_thinking_message_indices) > 1:
-            first_removable_thinking_message_index = removable_thinking_message_indices[
-                0
-            ]
-            del processed_messages[first_removable_thinking_message_index]
-            logger.info(
-                f"移除了最靠前的思考消息（不含tool_calls），原索引: {first_removable_thinking_message_index}"
-            )
-
-        return processed_messages
 
     def _validate_and_fix_message_chain(
         self, messages: List[Dict[str, Any]], chat_id: str
     ) -> List[Dict[str, Any]]:
         """
         验证并修复消息链的完整性，确保 tool 消息前面有对应的 assistant 消息（包含 tool_calls）
+        支持连续的 tool 消息（工具调用可能一次返回多个工具调用）
 
         Args:
             messages: 消息列表
@@ -1053,27 +859,41 @@ class ChatAgent:
 
             if role == "tool":
                 # tool 消息前面必须有 assistant 消息（包含 tool_calls）
-                if not valid_messages or valid_messages[-1].get("role") != "assistant":
-                    # 检查前面是否有缺失的 assistant 消息
-                    # 如果前一条不是 assistant，则这条 tool 消息可能是孤立的消息，跳过它
+                # 但是可能存在连续的 tool 消息（多个工具调用结果），
+                # 因此需要向前查找最近的 assistant 消息，检查其是否包含 tool_calls
+                assistant_found = False
+                has_tool_calls = False
+                # 从 valid_messages 末尾向前搜索
+                for prev_msg in reversed(valid_messages):
+                    if prev_msg.get("role") == "assistant":
+                        assistant_found = True
+                        if prev_msg.get("tool_calls"):
+                            has_tool_calls = True
+                        break
+                    # 如果遇到其他 role（如 user、system）则停止搜索？
+                    # 实际上中间可能有其他消息，但工具调用链应该是连续的。
+                    # 为了简单，我们只检查最近的 assistant 消息。
+                    # 如果中间有非 assistant 消息，则说明工具调用链可能被中断，视为无效。
+                    if prev_msg.get("role") not in ("tool", "assistant"):
+                        break
+
+                if not assistant_found or not has_tool_calls:
                     logger.warning(
-                        f"[{chat_id}] 发现孤立的 tool 消息，缺少前置的 assistant 消息，将被跳过"
+                        f"[{chat_id}] 发现孤立的 tool 消息，缺少前置的 assistant 消息或 assistant 没有 tool_calls，将被跳过"
                     )
                     i += 1
                     continue
-                # 检查前置的 assistant 消息是否包含 tool_calls
-                if not valid_messages[-1].get("tool_calls"):
-                    logger.warning(
-                        f"[{chat_id}] 发现 tool 消息但前置 assistant 没有 tool_calls，将被跳过"
-                    )
-                    i += 1
-                    continue
+                # 通过检查，添加该 tool 消息
+                valid_messages.append(msg)
+                i += 1
+                continue
 
             elif role == "assistant" and msg.get("tool_calls"):
                 # assistant 消息包含 tool_calls，它后面应该有 tool 结果消息
                 # 如果没有后续的 tool 消息，这是正常的（可能是未完成的调用）
                 pass
 
+            # 其他消息（user, system, assistant 无 tool_calls）直接添加
             valid_messages.append(msg)
             i += 1
 
@@ -1112,224 +932,6 @@ class ChatAgent:
         except Exception as e:
             logger.warning(f"获取当前用户查询失败: {str(e)}")
             return None
-
-    @langfuse_wrapper.dynamic_observe()
-    def _save_conversation_to_redis(
-        self,
-        message: Dict[str, Any],
-        expire_hours: int = 12,
-        max_retries: int = 3,
-        retry_delay: float = 0.1,
-    ):
-        """将完整的 message 对象保存到 Redis list 中，保持与运行时 messages 结构严格一致
-
-        Args:
-            message: 完整的消息对象，格式与 messages 列表中的元素完全一致
-                    例如: {"role": "user", "content": "..."}
-                         {"role": "assistant", "content": "...", "tool_calls": [...]}
-                         {"role": "tool", "content": "...", "tool_call_id": "...", "name": "..."}
-            expire_hours: 过期时间（小时），默认12小时
-            max_retries: 最大重试次数，默认3次
-            retry_delay: 重试延迟时间（秒），默认0.1秒
-        """
-        retry_count = 0
-        last_exception = None
-
-        while retry_count <= max_retries:
-            try:
-                redis_cache = get_redis_connection()
-                redis_key = f"conversation:{self.conversation_id}"
-                current_timestamp = time.time()
-
-                # 构造记录：保存完整的 message 对象 + 时间戳
-                record = {
-                    "timestamp": current_timestamp,
-                    "message": message,  # 直接保存完整的 message 对象
-                }
-
-                # 转换为JSON字符串并添加到list右端
-                record_json = json.dumps(record, ensure_ascii=False)
-                redis_cache.rpush(redis_key, record_json)
-
-                # 设置过期时间
-                redis_cache.expire(redis_key, expire_hours * 3600)
-
-                # 获取当前数量并限制总数量：保留最新的100条
-                total_count = redis_cache.llen(redis_key)
-                if total_count > 100:
-                    # 从左端删除多余的旧记录
-                    excess_count = total_count - 100
-                    for _ in range(excess_count):
-                        redis_cache.lpop(redis_key)
-
-                logger.info(
-                    f"成功保存消息到 Redis (conversation_id: {self.conversation_id}, "
-                    f"role: {message.get('role')}, timestamp: {current_timestamp}, total_items: {min(total_count, 100)})"
-                )
-                return {"result": "success"}  # 成功则直接返回
-
-            except Exception as e:
-                last_exception = e
-                retry_count += 1
-                logger.warning(
-                    f"保存到Redis失败 (尝试 {retry_count}/{max_retries}): {str(e)}"
-                )
-                if retry_count <= max_retries:
-                    time.sleep(retry_delay)
-
-        # 所有重试都失败
-        logger.error(
-            f"保存消息到 Redis 失败 (conversation_id: {self.conversation_id}): {str(last_exception)}"
-        )
-        raise last_exception
-
-    @langfuse_wrapper.dynamic_observe()
-    def _load_conversation_history(
-        self, expire_hours: int = 12
-    ) -> List[Dict[str, Any]]:
-        """从 Redis list 中加载完整的对话历史记录，返回与运行时 messages 结构完全一致的数据
-
-        Args:
-            expire_hours: 过期时间（小时），默认12小时
-
-        Returns:
-            List[Dict[str, Any]]: 对话历史列表，格式与 messages 完全一致
-        """
-        try:
-            redis_cache = get_redis_connection()
-            redis_key = f"conversation:{self.conversation_id}"
-
-            # 检查key是否存在
-            if not redis_cache.exists(redis_key):
-                logger.info(f"未找到对话历史 (conversation_id: {self.conversation_id})")
-                return []
-
-            # 获取list长度
-            total_count = redis_cache.llen(redis_key)
-            if total_count == 0:
-                return []
-
-            # 计算要获取的记录数量：获取最近的所有记录（包括工具调用）
-            # 由于工具调用会增加额外的记录，这里获取更多的记录
-            records_to_get = min(
-                self.conversation_round * 6, total_count
-            )  # 每轮可能包含多个工具调用
-
-            # 从list右端获取最新的records_to_get条记录
-            start_index = max(0, total_count - records_to_get)
-            end_index = total_count - 1
-
-            # 获取历史记录
-            history_data = redis_cache.lrange(redis_key, start_index, end_index)
-
-            # 解析并过滤过期数据，直接返回完整的 message 对象
-            conversation_history: List[Dict[str, Any]] = []
-            current_time = time.time()
-            expire_timestamp = current_time - (expire_hours * 3600)
-
-            for item_json in history_data:
-                try:
-                    record = json.loads(item_json)
-                    # 检查是否过期
-                    record_timestamp = record.get("timestamp", current_time)
-                    if record_timestamp < expire_timestamp:
-                        continue
-
-                    # 直接获取完整的 message 对象
-                    message = record.get("message")
-                    if message:
-                        conversation_history.append(message)
-                except (json.JSONDecodeError, Exception) as e:
-                    logger.warning(f"解析对话历史失败: {e}")
-                    continue
-
-            if conversation_history:
-                logger.info(
-                    f"成功加载 {len(conversation_history)} 条对话历史记录 (conversation_id: {self.conversation_id})"
-                )
-            return conversation_history
-
-        except Exception as e:
-            logger.error(f"加载对话历史失败: {e}")
-            return []
-
-    @langfuse_wrapper.dynamic_observe()
-    def _build_skills_memories_content(
-        self, skills_memories: List[Dict[str, Any]]
-    ) -> str:
-        """构建skills记忆内容，用于模板替换
-
-        根据 skills_manager 的两级召回结构，从返回的 skill 详情中提取：
-        - skill_description: 技能描述（简洁说明）
-        - skill_detail: 技能详情（详细步骤和注意事项）
-        - user_query: 原始用户问题
-        - tool_count: 工具调用数量
-        - similarity_score: 相似度分数（如果有）
-
-        Args:
-            skills_memories: 相关skills记忆列表，来自两级召回的结果
-
-        Returns:
-            str: 格式化的skills记忆内容
-        """
-        if not skills_memories or not self.enable_skills_memory:
-            return "暂无相关经验可供参考。"
-
-        # 构建skills记忆标题
-        skills_content = ""
-
-        for i, memory in enumerate(skills_memories, 1):
-            metadata = memory.get("metadata", {})
-
-            # 提取核心字段
-            skill_description = metadata.get("skill_description", "")
-            skill_detail = metadata.get("skill_detail", "")
-            user_query = metadata.get("user_query", "")
-            tool_count = metadata.get("tool_count", 0)
-
-            # 提取相似度分数（两级召回的综合分数）
-            similarity_score = memory.get("similarity_score", 0.0)
-            first_stage_score = memory.get("first_stage_score", 0.0)
-            second_stage_score = memory.get("second_stage_score", 0.0)
-
-            # 跳过无效的记忆
-            if not skill_description and not skill_detail:
-                continue
-
-            # 构建标题（包含相似度信息）
-            skills_content += f"## 技能 {i}: {skill_description}\n"
-            skills_content += f"**相似度**: {similarity_score:.2%}"
-            if first_stage_score > 0 or second_stage_score > 0:
-                skills_content += f" (描述匹配: {first_stage_score:.2%}, 详情匹配: {second_stage_score:.2%})"
-            skills_content += "\n\n"
-
-            # 添加原始问题（提供上下文）
-            if user_query:
-                skills_content += f"**原始问题**: {user_query}\n\n"
-
-            # 添加技能详情（包含具体步骤和注意事项）
-            if skill_detail:
-                skills_content += f"**执行步骤与要点**:\n{skill_detail}\n\n"
-            elif skill_description:
-                # 如果没有详情，至少显示描述
-                skills_content += f"**技能说明**: {skill_description}\n\n"
-
-            # 添加工具数量信息
-            if tool_count > 0:
-                skills_content += f"**工具使用**: 涉及 {tool_count} 个工具调用\n\n"
-
-            skills_content += "---\n\n"
-
-        # 添加使用指导
-        skills_content += (
-            "**💡 使用建议**:\n"
-            "1. 参考上述经验中的解决思路和步骤\n"
-            "2. 根据当前问题的具体情况灵活调整工具调用链路\n"
-            "3. 注意经验中提到的关键参数和注意事项\n"
-            "4. 优先考虑相似度较高的经验\n"
-        )
-
-        return skills_content
 
     def _build_selected_skills_content(self, selected_skills: List[str]) -> str:
         """构建用户选中的技能列表内容，用于模板替换
@@ -1382,150 +984,55 @@ class ChatAgent:
         return skills_content
 
     @langfuse_wrapper.dynamic_observe()
-    async def _retrieve_skills_memories(
-        self, chat_id: str, user_query: str
-    ) -> List[Dict[str, Any]]:
-        """检索与用户查询相关的skills记忆
-
-        Args:
-            chat_id: 聊天会话ID
-            user_query: 用户查询文本
-
-        Returns:
-            List[Dict]: 相关skills记忆列表
-        """
-        try:
-            # 使用用户查询作为搜索条件检索相关skills记忆
-            skills_memories = await self.skills_manager.search_skills(
-                query=user_query,
-                n_results=3,  # 返回最相关的3个skills记忆
-                user_name=None,  # 暂时使用全局记忆，后续可支持用户隔离
-            )
-
-            logger.info(f"[{chat_id}] 检索到 {len(skills_memories)} 个相关skills记忆")
-            return skills_memories
-
-        except Exception as e:
-            logger.error(f"[{chat_id}] 检索skills记忆失败: {str(e)}", exc_info=True)
-            return []
-
-    def _get_tool_calls_from_messages(
-        self, messages: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """从消息历史中提取工具调用链信息
-
-        Args:
-            messages: 消息历史列表
-
-        Returns:
-            List[Dict]: 工具调用链信息
-        """
-        tool_chain = []
-
-        for message in messages:
-            if message.get("role") == "assistant" and message.get("tool_calls"):
-                for tool_call in message["tool_calls"]:
-                    function = tool_call.get("function", {})
-                    tool_name = function.get("name", "")
-                    arguments = function.get("arguments", "{}")
-
-                    # 解析参数
-                    try:
-                        if isinstance(arguments, str):
-                            action_input = json.loads(arguments)
-                        else:
-                            action_input = arguments
-                    except (json.JSONDecodeError, TypeError):
-                        action_input = {}
-
-                    tool_chain.append(
-                        {"tool_name": tool_name, "action_input": action_input}
-                    )
-
-        return tool_chain
-
-    @langfuse_wrapper.dynamic_observe()
-    async def _async_process_skills_memory(
-        self,
-        chat_id: str,
-        user_query: str,
-        final_result: str,
-        tool_calls_history: List[Dict[str, Any]],
-        is_success: bool = True,
-    ) -> None:
-        """异步处理skills记忆生成和保存
-
-        Args:
-            chat_id: 聊天会话ID
-            user_query: 用户原始查询
-            final_result: 最终结果
-            tool_calls_history: 工具调用历史
-            is_success: 是否成功解决
-        """
-        try:
-            # 只在成功解决问题且有工具调用时生成skills记忆
-            if not is_success or not tool_calls_history:
-                return
-
-            # 异步调用skills记忆处理
-            import asyncio
-
-            asyncio.create_task(
-                self._process_single_skills_memory(
-                    chat_id=chat_id,
-                    user_query=user_query,
-                    tool_chain=tool_calls_history,
-                    final_result=final_result,
-                )
-            )
-
-            logger.info(f"[{chat_id}] 已启动skills记忆异步处理")
-
-        except Exception as e:
-            logger.error(f"[{chat_id}] 启动skills记忆处理失败: {str(e)}", exc_info=True)
-
-    @langfuse_wrapper.dynamic_observe()
-    async def _process_single_skills_memory(
-        self,
-        chat_id: str,
-        user_query: str,
-        tool_chain: List[Dict[str, Any]],
-        final_result: str,
-    ) -> None:
-        """处理单个skills记忆的生成和保存
-
-        Args:
-            chat_id: 聊天会话ID
-            user_query: 用户原始查询
-            tool_chain: 工具调用链
-            final_result: 最终结果
-            is_success: 是否成功解决
-        """
-        try:
-            # 调用skills记忆管理器处理记忆
-            skills_experience = await self.skills_manager.process_and_save_skill(
-                user_query=user_query,
-                tool_chain=tool_chain,
-                final_result=final_result,
-                user_name=self.user_name,
-                model_name=self.model_name,
-            )
-
-            if skills_experience:
-                logger.info(
-                    f"[{chat_id}] skills记忆生成成功: {skills_experience[:100]}..."
-                )
-            else:
-                logger.info(f"[{chat_id}] 未生成新的skills记忆")
-
-        except Exception as e:
-            logger.error(f"[{chat_id}] 处理skills记忆失败: {str(e)}", exc_info=True)
-
-    @langfuse_wrapper.dynamic_observe()
     async def _compress_messages(
         self, chat_id: str, messages: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """压缩消息列表"""
+        """压缩消息列表，采用智能摘要与逐条压缩结合的策略"""
+        # 如果消息数量较少，使用原有的逐条压缩逻辑
+        if len(messages) <= 4:
+            return await self._compress_messages_individual(chat_id, messages)
+
+        # 分离 system 消息（通常为第一条）
+        system_messages = [msg for msg in messages if msg.get("role") == "system"]
+        other_messages = [msg for msg in messages if msg.get("role") != "system"]
+
+        # 保留最近3条非system消息，确保当前上下文不丢失
+        keep_recent = 3
+        if len(other_messages) <= keep_recent:
+            # 消息数量本身就不多，直接使用逐条压缩
+            return await self._compress_messages_individual(chat_id, messages)
+
+        recent_messages = other_messages[-keep_recent:]
+        old_messages = other_messages[:-keep_recent]
+
+        # 如果旧消息为空，则无需压缩
+        if not old_messages:
+            return system_messages + recent_messages
+
+        # 生成旧消息的对话摘要
+        try:
+            summary_text = await self._generate_conversation_summary(
+                chat_id, old_messages
+            )
+            # 创建摘要消息，角色为 system，以区别于原始 system 提示
+            summary_message = {
+                "role": "system",
+                "content": f"## 对话摘要（压缩自 {len(old_messages)} 条历史消息）\n{summary_text}",
+            }
+            # 构建压缩后的消息列表：原有system消息 + 摘要消息 + 最近消息
+            compressed_messages = system_messages + [summary_message] + recent_messages
+            logger.info(
+                f"[{chat_id}] 已生成对话摘要，替换 {len(old_messages)} 条旧消息"
+            )
+            return compressed_messages
+        except Exception as e:
+            logger.error(f"[{chat_id}] 生成对话摘要失败，回退到逐条压缩: {str(e)}")
+            return await self._compress_messages_individual(chat_id, messages)
+
+    async def _compress_messages_individual(
+        self, chat_id: str, messages: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """原有的逐条消息压缩逻辑（作为回退方案）"""
         compressed_messages = []
         trigger_compress = False
 
@@ -1543,7 +1050,7 @@ class ChatAgent:
                 if len(content) > 1000:
                     summary = await self._get_llm_summary(
                         chat_id,
-                        f"请对以下工具执行结果origin_content进行总结，最终结果长度控制在 1000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        f"你是一个摘要助手。请对以下工具执行结果进行总结，保留以下关键信息：\n- 工具名称\n- 执行状态（成功/失败）\n- 关键输出数据或错误信息\n- 对后续对话有重要影响的任何发现或结果\n\n请用简洁的语言总结，确保核心内容完整，长度控制在1000字符以内。\n\n原始内容：\n{content}",
                         content,
                     )
                     new_msg = msg.copy()
@@ -1566,7 +1073,7 @@ class ChatAgent:
                 if len(content) > 2000:
                     summary = await self._get_llm_summary(
                         chat_id,
-                        f"请对以下助手回答内容origin_content进行总结，最终结果长度控制在 2000 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        f"你是一个摘要助手。请对以下助手回答进行总结，保留以下关键信息：\n- 主要答案或建议\n- 关键代码片段或技术细节（如有）\n- 重要步骤或推理过程\n- 对用户问题的直接回应\n\n请用简洁的语言总结，确保核心内容完整，长度控制在2000字符以内。\n\n原始内容：\n{content}",
                         content,
                     )
                     new_msg["content"] = f"{summary}"
@@ -1577,7 +1084,7 @@ class ChatAgent:
                 if len(reasoning_content) > 500:
                     summary = await self._get_llm_summary(
                         chat_id,
-                        f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning_content}\n</origin_content>",
+                        f"你是一个摘要助手。请对以下助手思考过程进行总结，保留以下关键信息：\n- 主要推理步骤\n- 关键决策或假设\n- 遇到的问题及解决方案\n- 最终结论或方向\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{reasoning_content}",
                         reasoning_content,
                     )
                     # 确定使用哪个字段名
@@ -1588,7 +1095,7 @@ class ChatAgent:
                 if len(reasoning) > 500:
                     summary = await self._get_llm_summary(
                         chat_id,
-                        f"请对以下助手思考过程origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{reasoning}\n</origin_content>",
+                        f"你是一个摘要助手。请对以下助手思考过程进行总结，保留以下关键信息：\n- 主要推理步骤\n- 关键决策或假设\n- 遇到的问题及解决方案\n- 最终结论或方向\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{reasoning}",
                         reasoning,
                     )
                     # 确定使用哪个字段名
@@ -1607,7 +1114,7 @@ class ChatAgent:
                 if len(content) > 500:
                     summary = await self._get_llm_summary(
                         chat_id,
-                        f"请对以下用户提问内容origin_content进行总结，最终结果长度控制在 500 字符以内：\n\n<origin_content>\n{content}\n</origin_content>",
+                        f"你是一个摘要助手。请对以下用户提问进行总结，保留以下关键信息：\n- 用户的核心问题或请求\n- 任何约束条件或特殊要求\n- 提到的文件、代码或相关上下文\n- 对后续对话重要的背景信息\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{content}",
                         content,
                     )
                     new_msg = msg.copy()
@@ -1657,6 +1164,82 @@ class ChatAgent:
             logger.error(f"[{chat_id}] 获取 LLM 摘要失败: {str(e)}")
             input_max_length = int(os.getenv("INPUT_MAX_LENGTH", 5000))
             return origin_content[:input_max_length]
+
+    async def _generate_conversation_summary(
+        self, chat_id: str, messages: List[Dict[str, Any]]
+    ) -> str:
+        """生成对话摘要，使用提供的结构化提示词"""
+        # 将消息列表格式化为文本
+        formatted_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            # 处理可能的思考内容
+            thinking = (
+                msg.get("thinking", "")
+                or msg.get("reasoning", "")
+                or msg.get("reasoning_content", "")
+            )
+            if thinking:
+                content = f"{content}\n（思考：{thinking}）"
+            formatted_messages.append(f"{role}: {content}")
+        conversation_text = "\n\n".join(formatted_messages)
+
+        # 使用用户提供的提示词模板
+        prompt = f"""Your task is to create a detailed summary of the
+conversation so far, paying close attention to the user's
+explicit requests and your previous actions.
+This summary should be thorough in capturing technical
+details, code patterns, and architectural decisions that
+would be essential for continuing with the conversation and
+supporting any continuing tasks.
+Your summary should be structured as follows:
+Context: The context to continue the conversation with. If
+applicable based on the current task, this should include:
+1. Previous Conversation: High level details about what was
+discussed throughout the entire conversation with the user.
+This should be written to allow someone to be able to follow
+the general overarching conversation flow.
+2. Current Work: Describe in detail what was being worked on
+prior to this request to summarize the conversation. Pay
+special attention to the more recent messages in the
+conversation.
+3. Key Technical Concepts: List all important technical
+concepts, technologies, coding conventions, and frameworks
+discussed, which might be relevant for continuing with this
+work.
+4. Relevant Files and Code: If applicable, enumerate
+specific files and code sections examined, modified, or
+created for the task continuation. Pay special attention to
+the most recent messages and changes.
+5. Problem Solving: Document problems solved thus far and
+any ongoing troubleshooting efforts.
+6. Pending Tasks and Next Steps: Outline all pending tasks
+that you have explicitly been asked to work on, as well as
+list the next steps you will take for all outstanding work,
+if applicable. Include code snippets where they add clarity.
+For any next steps, include direct quotes from the most
+recent conversation showing exactly what task you were
+working on and where you left off. This should be verbatim
+to ensure there's no information loss in context between
+tasks.
+
+以下是对话历史：
+{conversation_text}
+
+请根据上述要求生成结构化摘要。"""
+        try:
+            summary, _ = await call_llm_api(
+                messages=[{"role": "user", "content": prompt}],
+                model_name=self.model_name,
+                request_id=f"conversation-summary-{chat_id}-{int(time.time())}",
+                temperature=0.3,
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.error(f"[{chat_id}] 生成对话摘要失败: {str(e)}")
+            # 回退到简单摘要
+            return f"对话摘要（{len(messages)}条消息）: " + conversation_text[:1000]
 
 
 from src.utils.dynamic_observer import auto_apply_here

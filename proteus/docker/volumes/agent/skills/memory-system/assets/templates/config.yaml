@@ -1,0 +1,71 @@
+_notes: '重点配置说明：
+
+  1. LLM配置：必须配置至少一个LLM提供商，推荐使用Ollama
+
+  2. 嵌入配置：必须配置嵌入模型，推荐使用Ollama的bge-m3
+
+
+  快速开始：
+
+  1. 安装并启动Ollama服务
+
+  2. 运行初始化脚本：python scripts/init_memory_system.py
+
+  3. 通过CLI使用记忆系统：python scripts/memory_cli.py store --content "测试"
+
+
+  环境变量：
+
+  - OPENAI_API_KEY: 如需使用OpenAI
+
+  - MEMORY_CONFIG_PATH: 指定配置文件路径
+
+
+  CLI专用：
+
+  本系统为CLI专用，所有操作通过memory_cli.py脚本完成。
+
+  '
+chroma:
+  collection_name: memories
+  persist_directory: /app/data/memory/chroma
+embedding:
+  default_provider: ollama
+  enabled: true
+  providers:
+    ollama:
+      base_url: http://host.docker.internal:11434
+      default_model: bge-m3
+      timeout: 30
+llm:
+  default_provider: ollama
+  enabled: true
+  providers:
+    ollama:
+      base_url: http://host.docker.internal:11434
+      default_model: llama2
+      max_tokens: 1000
+      temperature: 0.3
+      timeout: 60
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      base_url: https://api.openai.com/v1
+      default_model: gpt-3.5-turbo
+      max_tokens: 1000
+      temperature: 0.3
+      timeout: 30
+logging:
+  file_enabled: true
+  file_path: /app/data/memory/logs/memory_system.log
+  level: INFO
+memory:
+  long_term:
+    database_path: /app/data/memory/long/memory.db
+    use_chroma: true
+  medium_term:
+    retention_days: 30
+  short_term:
+    max_items: 20
+performance:
+  cache_enabled: true
+  cache_size_mb: 100

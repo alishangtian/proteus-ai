@@ -5,6 +5,7 @@ import asyncio
 import uuid
 import json
 import importlib
+import ast
 from typing import Dict, Any, Optional, List
 from src.nodes.node_config import NodeConfigManager
 from src.api.stream_manager import StreamManager
@@ -225,6 +226,8 @@ class ToolExecutor:
                 tool_args = json.loads(tool_call["function"]["arguments"])
             except json.JSONDecodeError:
                 tool_args = tool_call["function"]["arguments"]
+                if isinstance(tool_args, str):
+                    tool_args = ast.literal_eval(tool_args)
 
             # 执行工具
             tool_result = await self.execute_tool(

@@ -207,7 +207,7 @@
             color: #333;
             border: 1px solid #e0e0e0;
             transition: all 0.2s ease;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             margin: 2px 0;
         }
 
@@ -249,6 +249,10 @@
             width: 320px;
             max-height: 400px;
             overflow-y: auto;
+            scrollbar-width: none;
+            /* Firefox */
+            -ms-overflow-style: none;
+            /* IE and Edge */
             background: #ffffff;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 2px 10px rgba(0, 0, 0, 0.08);
@@ -259,6 +263,11 @@
             transform: translateX(-50%) translateY(10px);
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             visibility: hidden;
+        }
+
+        .skills-dropdown::-webkit-scrollbar {
+            display: none;
+            /* Chrome, Safari, Edge */
         }
 
         .skills-dropdown.show {
@@ -658,20 +667,6 @@
         </div>
     </div>
 
-    <!-- 右侧分隔线 -->
-    <div class="sidebar-resizer right-resizer" id="rightResizer"></div>
-
-    <!-- 右侧边栏 -->
-    <div class="sidebar right-sidebar" id="rightSidebar">
-        <button class="sidebar-toggle" title="收起侧边栏">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M9 18l6-6-6-6" />
-            </svg>
-        </button>
-        <div class="playbook-container">
-            <div id="playbook-content"></div>
-        </div>
-    </div>
 
     <!-- 工具结果弹框 -->
     <div id="toolResultModal" class="modal">

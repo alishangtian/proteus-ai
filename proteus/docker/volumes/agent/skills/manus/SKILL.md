@@ -1,71 +1,81 @@
 ---
 name: manus
-version: "2.3.0"
-description: Implements Manus-style file-based planning for complex tasks. Creates task_plan.md, findings.md, and progress.md. Use when starting complex multi-step tasks, research projects, or any task requiring >5 tool calls. Now with automatic session recovery after /clear.
+version: 2.5.0
+description: Implements Manus-style file-based planning for complex tasks. Creates
+  task_plan.md, findings.md, and progress.md. Use when starting complex multi-step
+  tasks, research projects, or any task requiring >5 tool calls. Now with automatic
+  session recovery after /clear.
 user-invocable: true
-allowed-tools:
-  - serper_search
-  - web_crawler
-  - python_execute
 hooks:
   Stop:
-    - hooks:
-        - type: command
-          command: |
-            if command -v pwsh &> /dev/null && [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OS" == "Windows_NT" ]]; then
-              pwsh -ExecutionPolicy Bypass -File "/app/.proteus/skills/manus/scripts/check-complete.ps1" 2>/dev/null || powershell -ExecutionPolicy Bypass -File "/app/.proteus/skills/manus/scripts/check-complete.ps1" 2>/dev/null || bash "/app/.proteus/skills/manus/scripts/check-complete.sh"
-            else
-              bash "/app/.proteus/skills/manus/scripts/check-complete.sh"
-            fi
----
+  - hooks:
+    - command: 'if command -v pwsh &> /dev/null && [[ "$OSTYPE" == "msys" || "$OSTYPE"
+        == "win32" || "$OS" == "Windows_NT" ]]; then pwsh -ExecutionPolicy Bypass
+        -File "/app/.proteus/skills/manus/scripts/check-complete.ps1" 2>/dev/null
+        || powershell -ExecutionPolicy Bypass -File "/app/.proteus/skills/manus/scripts/check-complete.ps1"
+        2>/dev/null || bash "/app/.proteus/skills/manus/scripts/check-complete.sh"
 
+        else bash "/app/.proteus/skills/manus/scripts/check-complete.sh" fi'
+      type: command
+allowed-tools:
+  - python_execute
+  - serper_search
+  - web_crawler
+---
 # manus
 
 Use persistent markdown files as your "working memory on disk."
 
-## FIRST: Check for Previous Session (v2.2.0)
+## FIRST: Check for Previous Session & Project Directory (v2.5.0)
 
-**Before starting work**, check for unsynced context from a previous session:
+**Enhanced Project Discovery:** Before starting work, check for existing projects to avoid duplication and leverage previous work. 
+
+### Step 1: Scan Existing Projects
+Scan the `/app/data/manus/` directory to see all existing projects.
+
+**Option A: Run the list-projects script (recommended):**
+```bash
+python3 /app/.proteus/skills/manus/scripts/list-projects.py "$(basename $(pwd))"
+```
+
+**Option B: Use Python code directly:**
+```python
+import os
+
+manus_dir = "/app/data/manus"
+if os.path.exists(manus_dir):
+    projects = [d for d in os.listdir(manus_dir) if os.path.isdir(os.path.join(manus_dir, d))]
+    print(f"Existing projects in {manus_dir}:")
+    for project in sorted(projects):
+        print(f"  - {project}")
+else:
+    print(f"Directory does not exist: {manus_dir}")
+```
+
+### Step 2: Check for Previous Session Context
+If you decide to use the current directory (new or existing project), check for unsynced context from previous sessions:
 
 ```bash
 python3 /app/.proteus/skills/manus/scripts/session-catchup.py "$(pwd)"
 ```
 
-If catchup report shows unsynced context:
+**If catchup report shows unsynced context:**
 1. Run `git diff --stat` to see actual code changes
-2. Read current planning files
-3. Update planning files based on catchup + git diff
+2. Read current planning files (`task_plan.md`, `findings.md`, `progress.md`)
+3. Update planning files based on catchup report + git diff
 4. Then proceed with task
 
-## Important: Where Files Go
+### Decision Guidelines
 
-- **Templates** are in `/app/.proteus/skills/manus/templates/`
-- **Your planning files** go in **your project directory**
+| Situation | Model Action |
+|-----------|--------------|
+| Existing project name matches or is very similar to current task | Consider using existing project |
+| Existing project has some relevance but not exact match | Evaluate based on task context |
+| No relevant existing projects found | Create new project |
+| Unsynced context detected | Review and integrate before proceeding |
 
-| Location | What Goes There |
-|----------|-----------------|
-| Skill directory (`/app/.proteus/skills/manus/`) | Templates, scripts, reference docs |
-| Your project directory | `task_plan.md`, `findings.md`, `progress.md` |
-
-## Quick Start
-
-Before ANY complex task:
-
-1. **Create `task_plan.md`** — Use [templates/task_plan.md](templates/task_plan.md) as reference
-2. **Create `findings.md`** — Use [templates/findings.md](templates/findings.md) as reference
-3. **Create `progress.md`** — Use [templates/progress.md](templates/progress.md) as reference
-4. **Re-read plan before decisions** — Refreshes goals in attention window
-5. **Update after each phase** — Mark complete, log errors
-
-> **Note:** Planning files go in your project root, not the skill installation folder.
-
-> **project directory** `/var/data/sandbox/manus/{project_name}`
-
-
-## The Core Pattern
-
-```
-Context Window = RAM (volatile, limited)
+**Key Principle:** The model should use its judgment to determine project similarity, not rely on automated scoring.
+imited)
 Filesystem = Disk (persistent, unlimited)
 
 → Anything important gets written to disk.

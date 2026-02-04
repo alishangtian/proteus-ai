@@ -1,11 +1,11 @@
 from typing import Dict, Any
 import json
+import os
 import logging
 import time
 import requests
 from .base import BaseNode
 from ..api.llm_api import call_llm_api
-from ..api.config import API_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,8 @@ class WeatherForecastNode(BaseNode):
 
     def __init__(self):
         super().__init__()
-        self.api_version = API_CONFIG["caiyun_api_version"]
-        self.token = API_CONFIG["caiyun_token"]
+        self.api_version = os.getenv("caiyun_api_version")
+        self.token = os.getenv("caiyun_token")
 
     async def get_realtime_weather(
         self, longitude: float, latitude: float, version: str, token: str
