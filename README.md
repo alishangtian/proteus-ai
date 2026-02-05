@@ -324,16 +324,21 @@ proteus-ai/
 │   │   ├── agent/          # 智能体系统
 │   │   ├── nodes/          # 节点实现
 │   │   ├── api/            # API 接口
-│   │   ├── core/           # 核心引擎
+│   │   ├── manager/        # 管理器模块
 │   │   └── utils/          # 工具函数
 │   ├── static/             # 静态文件
 │   ├── conf/               # 配置文件
 │   ├── docker/             # Docker 配置
+│   ├── docs/               # 文档
+│   ├── bin/                # 脚本工具
+│   ├── scripts/            # 辅助脚本
 │   └── requirements.txt    # Python 依赖
 ├── sandbox/                # 沙箱环境
 ├── examples/               # 使用示例
-├── cli/                    # 命令行工具
-└── docs/                   # 文档
+│   ├── deep-research/      # 深度研究报告示例
+│   └── self_improving_agent/ # 自我改进智能体示例
+├── AGENTS.md               # 智能体详细文档
+└── README.md               # 项目说明
 ```
 
 ### 2. 添加新节点类型
@@ -423,14 +428,15 @@ python -m pytest tests/e2e/
 - [API 文档](http://localhost:8000/docs) (启动服务后访问)
 - [示例配置](proteus/conf/)
 - [Docker 部署指南](proteus/docker/)
-- [CLI 工具文档](cli/CLI_README.md)
+- [智能体详细文档](AGENTS.md)
+- [项目文档](proteus/docs/)
 
 ## 💬 支持与反馈
 
 如果您在使用过程中遇到问题或有改进建议，请通过以下方式联系我们：
 
 - 提交 [GitHub Issue](https://github.com/alishangtian/proteus-ai/issues)
-- 查看 [文档](docs/)
+- 查看 [项目文档](proteus/docs/)
 - 参与社区讨论
 
 ---
