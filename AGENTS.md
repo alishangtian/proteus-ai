@@ -1,21 +1,19 @@
 # Proteus AI 智能体系统详解
 
-Proteus AI 提供了多种强大的智能体模式，每种模式针对不同的应用场景设计，旨在满足从简单对话到复杂研究和自动化任务的各种需求。
+Proteus AI 提供了功能强大的 Chat 智能体，支持工具调用、上下文管理和技能系统，旨在满足从简单对话到复杂任务的各种需求。
 
 ## 目录
 
 - [🤖 Chat 智能体](#-chat-智能体)
-- [🔬 深度研究智能体 (Deep Research)](#-深度研究智能体-deep-research)
-- [💻 CodeAct 智能体](#-codeact-智能体)
-- [🌐 浏览器智能体 (Browser Agent)](#-浏览器智能体-browser-agent)
-- [🦸 超级智能体 (Super Agent)](#-超级智能体-super-agent)
-- [👥 多智能体团队协作 (Multi-Agent Team)](#-多智能体团队协作-multi-agent-team)
+- [🔧 工具系统](#-工具系统)
+- [📚 技能系统](#-技能系统)
+- [💾 记忆系统](#-记忆系统)
 
 ---
 
 ## 🤖 Chat 智能体
 
-基础的对话智能体，支持工具调用和上下文管理，是处理日常查询和交互的理想选择。
+Chat 智能体是 Proteus AI 的核心，支持工具调用和上下文管理，是处理日常查询和交互的理想选择。
 
 ### 配置示例
 
@@ -28,7 +26,11 @@ chat_agent = ChatAgent(
     tool_choices=["serper_search", "web_crawler", "python_execute"],
     max_tool_iterations=5,
     conversation_id=conversation_id,
-    user_name=user_name
+    conversation_round=5,
+    enable_tool_memory=True,
+    enable_skills_memory=True,
+    user_name=user_name,
+    selected_skills=selected_skills
 )
 
 # 运行智能体
@@ -40,178 +42,97 @@ result = await chat_agent.run(
 ```
 
 ### 核心特性
-- **多轮对话**：支持上下文记忆，能够理解对话历史。
-- **动态工具调用**：根据用户意图自动选择并调用合适的工具（如搜索、代码执行）。
+
+- **多轮对话**：支持上下文记忆，能够理解对话历史。智能体会自动加载和管理会话历史，确保对话连贯性。
+- **动态工具调用**：根据用户意图自动选择并调用合适的工具（如搜索、代码执行、网页爬取）。支持工具调用循环，可多次迭代执行工具。
 - **文件分析**：支持上传文件并基于文件内容进行问答和分析。
-- **流式响应**：实时输出思考过程和回复内容，提供更好的用户体验。
+- **流式响应**：通过 SSE (Server-Sent Events) 实时输出思考过程和回复内容，提供更好的用户体验。
+- **技能系统**：支持技能调用和技能记忆，可扩展智能体能力。
+- **工具记忆**：记录工具调用历史，优化后续交互。
+
+### 参数说明
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `stream_manager` | StreamManager | 流管理器实例，用于 SSE 通信 |
+| `model_name` | str | 模型名称，默认为 "deepseek-chat" |
+| `enable_tools` | bool | 是否启用工具调用 |
+| `tool_choices` | List[str] | 指定可用的工具列表 |
+| `max_tool_iterations` | int | 最大工具调用迭代次数 |
+| `conversation_id` | str | 会话 ID，用于保存对话历史 |
+| `conversation_round` | int | 会话轮次 |
+| `enable_tool_memory` | bool | 是否启用工具记忆功能 |
+| `enable_skills_memory` | bool | 是否启用技能记忆功能 |
+| `user_name` | str | 用户名，用于工具记忆隔离 |
+| `selected_skills` | List[str] | 用户选中的技能列表 |
 
 ---
 
-## 🔬 深度研究智能体 (Deep Research)
+## 🔧 工具系统
 
-专门用于复杂研究任务的智能体，能够像人类研究员一样进行多轮深度探索和分析。
+Chat 智能体可以动态调用多种工具来完成复杂任务。
 
-### 配置示例
+### 内置工具
 
-```python
-# 深度研究智能体配置
-deep_research_agent = ReactAgent(
-    tools=["python_execute", "serper_search", "web_crawler", "user_input"],
-    instruction="",
-    stream_manager=stream_manager,
-    max_iterations=10,
-    model_name="deepseek-chat",
-    prompt_template=REACT_PLAYBOOK_PROMPT_v3,
-    role_type=TeamRole.GENERAL_AGENT,
-    conversation_id=conversation_id,
-    user_name=user_name
-)
+| 工具名称 | 功能描述 |
+|----------|----------|
+| `serper_search` | Serper 搜索引擎，搜索最新信息 |
+| `web_crawler` | 网页爬虫，根据链接抓取网页内容 |
+| `python_execute` | Python/Shell 代码执行，在安全沙箱中运行 |
+| `arxiv_search` | Arxiv 论文搜索 |
+| `weather_forecast` | 天气预报查询 |
+| `api_call` | 通用 API 调用 |
+| `skills_extract` | 技能解析管理 |
 
-# 执行深度研究任务
-result = await deep_research_agent.run(
-    query="深入研究中美人工智能政策差异及其对产业发展的影响",
-    chat_id=chat_id
-)
-```
+### 工具调用流程
 
-### 研究能力
-- **多源信息收集**：自动利用搜索引擎、学术数据库和网页抓取获取信息。
-- **深度分析**：对收集到的信息进行综合分析、去重和验证。
-- **长篇报告生成**：能够生成结构严谨、内容详实的深度研究报告。
-- **自我反思**：在研究过程中不断评估信息充足度，自动补充缺失信息。
+1. 智能体分析用户请求，确定需要调用的工具
+2. 构造工具调用参数
+3. 执行工具并获取结果
+4. 将结果整合到响应中
+5. 如需继续调用其他工具，重复上述步骤
 
 ---
 
-## 💻 CodeAct 智能体
+## 📚 技能系统
 
-专注于代码执行的智能体，特别适合编程、数据分析和自动化任务。它通过编写和执行 Python 代码来解决问题。
+技能系统允许扩展智能体的能力，通过加载预定义的技能来处理特定类型的任务。
 
-### 配置示例
+### 技能结构
 
-```python
-# CodeAct 智能体配置
-codeact_agent = ReactAgent(
-    tools=["python_execute", "user_input"],
-    instruction="""
-    你是一个CodeAct Agent，主要使用Python代码执行工具来完成用户请求的任务。
-    你可以使用Python代码进行任何计算、数据获取和处理。
-    在编写代码时，请确保代码安全且只执行必要的操作。
-    """,
-    stream_manager=stream_manager,
-    max_iterations=8,
-    model_name="deepseek-chat",
-    prompt_template=REACT_PLAYBOOK_PROMPT_v2,
-    role_type=TeamRole.GENERAL_AGENT,
-    conversation_id=conversation_id,
-    user_name=user_name
-)
+技能存储在 `/app/.proteus/skills` 目录下，每个技能包含：
 
-# 执行代码任务
-result = await codeact_agent.run(
-    query="请编写一个Python脚本来分析这个数据集并生成可视化图表",
-    chat_id=chat_id,
-    context=dataset_context
-)
-```
+- `SKILL.md`：技能描述文件，包含技能的详细说明
+- 相关资源文件：模板、配置等
 
-### 编程能力
-- **代码编写与执行**：在安全沙箱中编写并运行 Python 代码。
-- **数据处理**：能够处理 CSV, Excel, JSON 等多种格式的数据。
-- **可视化生成**：使用 Matplotlib, Seaborn 等库生成图表。
-- **自动化脚本**：生成可复用的自动化脚本解决重复性任务。
+### 技能使用
+
+通过 `skills_extract` 工具可以：
+
+- **列出技能**：`action: "list"` - 获取所有可用技能
+- **获取详情**：`action: "get"` - 获取指定技能的详细信息
+- **获取文件**：`action: "getContent"` - 获取技能的特定文件内容
 
 ---
 
-## 🌐 浏览器智能体 (Browser Agent)
+## 💾 记忆系统
 
-集成浏览器自动化的智能体，能够像真实用户一样操作浏览器，支持网页交互和动态数据提取。
+### 对话历史管理
 
-### 配置示例
+智能体自动管理对话历史，支持：
 
-```python
-# 浏览器智能体配置
-browser_agent = ReactAgent(
-    tools=["browser_agent", "python_execute", "user_input", "serper_search", "web_crawler"],
-    instruction="",
-    stream_manager=stream_manager,
-    max_iterations=6,
-    model_name="deepseek-chat",
-    prompt_template=COT_BROWSER_USE_PROMPT_TEMPLATES,
-    role_type=TeamRole.GENERAL_AGENT,
-    conversation_id=conversation_id,
-    user_name=user_name
-)
+- 会话历史加载和恢复
+- 消息链完整性验证
+- 对话上下文压缩（当上下文过长时）
 
-# 执行浏览器任务
-result = await browser_agent.run(
-    query="请登录电商网站并搜索最新款手机的价格和评价",
-    chat_id=chat_id
-)
-```
+### 工具记忆
 
-### 浏览器能力
-- **网页自动化**：点击、输入、滚动、导航等操作。
-- **动态内容抓取**：处理 JavaScript 渲染的页面和动态加载的内容。
-- **视觉理解**：结合视觉模型理解页面布局和元素。
-- **交互模拟**：模拟用户登录、表单填写等复杂交互流程。
+启用工具记忆后，智能体会记录工具调用历史，用于：
 
----
+- 避免重复调用
+- 优化后续交互
+- 用户隔离（基于 user_name）
 
-## 🦸 超级智能体 (Super Agent)
+### 技能记忆
 
-基于真实代码实现的智能团队组建和协调系统，能够自动分析复杂任务需求并组建专业团队。这是 Proteus AI 最强大的模式之一。
-
-### 核心工作流程
-
-超级智能体遵循严格的 **问题评估 → 策略选择 → 团队组建 → 用户确认 → 团队执行** 的完整流程。
-
-#### 1. 问题复杂度评估
-- **简单问题**：直接回答，不使用团队，节省资源。
-- **复杂问题**：识别需要多步骤思考、专业知识、多领域结合或深度分析的问题，启动团队模式。
-
-#### 2. 团队组建流程
-
-1.  **生成团队配置**：根据任务需求，设计包含不同角色（如数据科学家、分析师、工程师）的团队结构。
-2.  **用户确认**：向用户展示生成的团队配置，征求用户同意或调整建议。
-3.  **团队运行**：用户确认后，实例化团队并开始协作执行任务。
-
-### 核心特性
-- **智能团队组建**：基于任务需求自动生成最优团队配置。
-- **用户确认机制**：确保团队配置符合用户预期，增加可控性。
-- **多角色协作**：支持协调员、研究员、分析师等多种角色分工协作。
-- **动态角色管理**：支持动态创建和配置团队角色。
-- **配置持久化**：支持将团队配置保存为 YAML 文件以便复用。
-
----
-
-## 👥 多智能体团队协作 (Multi-Agent Team)
-
-预配置的专业团队，针对特定类型的任务（如软件开发、市场调研）进行了优化。
-
-### 配置示例
-
-```python
-# 多智能体团队配置（基于YAML配置文件）
-team = PagenticTeam(
-    team_rules=team_config["team_rules"],
-    tools_config=tools_config,
-    start_role=getattr(TeamRole, team_config["start_role"]),
-    conversation_round=conversation_round,
-    user_name=user_name,
-    tool_memory_enabled=True,
-    sop_memory_enabled=True
-)
-
-# 注册并运行团队
-await team.register_agents(chat_id)
-result = await team.run(
-    query="完成一个完整的技术研究报告，包括市场分析、技术评估和未来趋势预测",
-    chat_id=chat_id
-)
-```
-
-### 团队特性
-- **预定义角色**：开箱即用的专业角色配置。
-- **SOP (标准作业程序)**：遵循最佳实践的工作流程。
-- **记忆共享**：团队成员之间共享关键信息和上下文。
-- **任务交接**：高效的任务流转和进度跟踪机制。
+启用技能记忆后，智能体会将选中的技能信息纳入上下文，帮助更好地理解和执行特定任务。
