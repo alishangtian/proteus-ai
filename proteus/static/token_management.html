@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token 管理 - Proteus AI</title>
+    <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        body {
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8f9ff;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            overflow-y: auto;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            font-size: 36px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .header p {
+            font-size: 18px;
+            color: #555;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+        }
+        .card-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-title svg {
+            width: 24px;
+            height: 24px;
+        }
+        .token-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            max-height: 500px;
+            overflow-y: auto;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .token-item {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+        .token-item:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            transform: translateY(-2px);
+        }
+        .token-info {
+            flex: 1;
+        }
+        .token-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .token-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #222;
+        }
+        .token-value {
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #444;
+            word-break: break-all;
+            margin-bottom: 10px;
+        }
+        .token-meta {
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+        .token-expiry {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .token-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        .btn-copy {
+            background: #4f46e5;
+            color: white;
+        }
+        .btn-copy:hover {
+            background: #4338ca;
+        }
+        .btn-revoke {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-revoke:hover {
+            background: #dc2626;
+        }
+        .btn-generate {
+            background: #10b981;
+            color: white;
+            padding: 12px 24px;
+            font-size: 16px;
+            margin-top: 20px;
+        }
+        .btn-generate:hover {
+            background: #0da271;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+            font-size: 16px;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #4f46e5;
+            text-decoration: none;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: #666;
+        }
+        .error {
+            background: #fee;
+            border: 1px solid #fbb;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            color: #4f46e5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            .card {
+                padding: 25px;
+            }
+            .token-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 15px;
+            }
+            .token-actions {
+                align-self: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← 返回主页</a>
+        <div class="header">
+            <h1>🔐 Token 管理</h1>
+            <p>管理您的 Bearer Token，用于 API 认证和程序化访问</p>
+        </div>
+
+        <div class="info-box">
+            <strong>提示：</strong> Token 用于替代 Cookie 会话进行 API 认证。Token 永不过期，与当前登录用户绑定。您可以为不同客户端生成多个 Token，并可以随时撤销。
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">📋 我的 Token 列表</h2>
+            <div id="token-list-container">
+                <div class="loading" id="loading">加载中...</div>
+                <ul class="token-list" id="token-list" style="display: none;"></ul>
+                <div class="empty-state" id="empty-state" style="display: none;">暂无 Token，点击下方按钮生成一个新 Token。</div>
+            </div>
+            <div id="error-container" style="display: none;"></div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">✨ 生成新 Token</h2>
+            <p>生成新的 Bearer Token 用于 API 调用。Token 永不过期，与当前登录用户绑定。生成后请妥善保存，Token 仅显示一次。</p>
+            <div style="margin-bottom: 20px;">
+                <p>您已登录，点击下方按钮即可生成新的 Token。</p>
+                <button id="generate-button" class="btn btn-generate">生成 Token</button>
+            </div>
+            <div id="generate-result" style="margin-top: 20px; display: none;">
+                <h3 style="color: #10b981;">✅ Token 生成成功</h3>
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                    <p><strong>Token：</strong><br>
+                    <code id="new-token-value" style="font-family: monospace; background: #fff; padding: 10px; display: block; word-break: break-all; margin: 10px 0;"></code></p>
+                    <p><strong>创建时间：</strong> <span id="new-token-created"></span></p>
+                    <p><strong>有效期：</strong> 永久有效</p>
+                    <p><strong>提示：</strong> 请立即复制并保存此 Token，页面刷新后将无法再次查看。</p>
+                    <button class="btn btn-copy" onclick="copyNewToken()">复制 Token</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-title">🛠️ 使用说明</h2>
+            <h3>API 调用示例</h3>
+            <pre style="background: #f5f5f5; padding: 15px; border-radius: 8px; overflow: auto;">
+# 使用 curl
+curl -X GET "http://localhost:8000/api/endpoint" \
+     -H "Authorization: Bearer YOUR_TOKEN_HERE"
+
+# 使用 Python requests
+import requests
+headers = {"Authorization": "Bearer YOUR_TOKEN_HERE"}
+response = requests.get("http://localhost:8000/api/endpoint", headers=headers)
+            </pre>
+            <h3>注意事项</h3>
+            <ul>
+                <li>Token 永不过期，与当前登录用户绑定。</li>
+                <li>每个 Token 只能使用一次认证，不支持刷新。</li>
+                <li>请勿将 Token 暴露在客户端代码或公开仓库中。</li>
+                <li>文件存储模式不支持 Token 功能（仅 Redis 模式可用）。</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // 加载现有 token 列表
+        async function loadTokens() {
+            const loadingEl = document.getElementById('loading');
+            const listEl = document.getElementById('token-list');
+            const emptyEl = document.getElementById('empty-state');
+            const errorContainer = document.getElementById('error-container');
+
+            try {
+                const response = await fetch('/user/tokens', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    const tokens = data.data.tokens || [];
+                    loadingEl.style.display = 'none';
+                    if (tokens.length === 0) {
+                        emptyEl.style.display = 'block';
+                        listEl.style.display = 'none';
+                    } else {
+                        emptyEl.style.display = 'none';
+                        listEl.style.display = 'block';
+                        renderTokens(tokens);
+                    }
+                    errorContainer.style.display = 'none';
+                } else {
+                    loadingEl.style.display = 'none';
+                    errorContainer.style.display = 'block';
+                    errorContainer.innerHTML = `<div class="error">加载失败：${data.error || '未知错误'}</div>`;
+                }
+            } catch (error) {
+                loadingEl.style.display = 'none';
+                errorContainer.style.display = 'block';
+                errorContainer.innerHTML = `<div class="error">网络错误：${error.message}</div>`;
+            }
+        }
+
+        function renderTokens(tokens) {
+            const listEl = document.getElementById('token-list');
+            listEl.innerHTML = tokens.map(token => `
+                <li class="token-item">
+                    <div class="token-info">
+                        <div class="token-header">
+                            <span class="token-name">Token</span>
+                        </div>
+                        <div class="token-value">${escapeHtml(token.token)}</div>
+                        <div class="token-meta">
+                            <span class="token-expiry">📅 创建时间：${formatDate(token.created_at)}</span>
+                            <span class="token-expiry">${token.expires ? '⏰ 有效期至：' + formatDate(token.expires) : '✅ 永久有效'}</span>
+                        </div>
+                    </div>
+                    <div class="token-actions">
+                        <button class="btn btn-copy" onclick="copyToken('${escapeHtml(token.token)}')">复制</button>
+                        <button class="btn btn-revoke" onclick="revokeToken('${escapeHtml(token.token)}')">撤销</button>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function copyToken(token) {
+            navigator.clipboard.writeText(token).then(() => {
+                alert('Token 已复制到剪贴板');
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动复制');
+            });
+        }
+
+        async function revokeToken(token) {
+            if (!confirm('确定要撤销此 Token 吗？撤销后该 Token 将立即失效。')) {
+                return;
+            }
+            try {
+                const response = await fetch(`/user/tokens/${encodeURIComponent(token)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (data.success) {
+                    alert('Token 已撤销');
+                    loadTokens();
+                } else {
+                    alert(`撤销失败：${data.error}`);
+                }
+            } catch (error) {
+                alert(`网络错误：${error.message}`);
+            }
+        }
+
+        // 生成新 token
+        document.getElementById('generate-button').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({})  // 发送空对象，后端会从当前会话获取用户
+                });
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('new-token-value').textContent = data.data.token;
+                    document.getElementById('new-token-created').textContent = formatDate(data.data.created_at);
+                    document.getElementById('generate-result').style.display = 'block';
+                    // 重新加载列表
+                    loadTokens();
+                } else {
+                    alert(`生成失败：${data.error}`);
+                }
+            } catch (error) {
+                alert(`网络错误：${error.message}`);
+            }
+        });
+
+        function copyNewToken() {
+            const token = document.getElementById('new-token-value').textContent;
+            navigator.clipboard.writeText(token).then(() => {
+                alert('Token 已复制到剪贴板');
+            });
+        }
+
+        // 工具函数
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(isoString) {
+            if (!isoString) return '未知';
+            const date = new Date(isoString);
+            return date.toLocaleString('zh-CN');
+        }
+
+        // 页面加载
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTokens();
+        });
+    </script>
+</body>
+</html>

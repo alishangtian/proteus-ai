@@ -359,7 +359,7 @@ async def call_multimodal_llm_api(
 
     current_logger.info(f"开始调用多模态llm API")
     if model_name is None:
-        model_name = "gemini-2.5-flash"
+        model_name = "gemini-3-flash-preview"
     messages_length = calculate_messages_length(
         messages
     )  # 仍然使用原有的长度计算，图片长度暂时忽略

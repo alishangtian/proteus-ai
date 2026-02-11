@@ -1,126 +1,118 @@
-# Research Report Template
-
-## Executive Summary
-[Provide 3-5 sentence overview of key findings, conclusions, and recommendations.]
-
-## 1. Introduction & Research Objectives
-### 1.1 Background
-[Context and importance of the research topic.]
-
-### 1.2 Research Questions
-1. [Primary research question 1]
-2. [Primary research question 2]
-3. [Primary research question 3]
-
-### 1.3 Scope & Limitations
-- **Scope**: [What is included in the research]
-- **Limitations**: [What is excluded or constrained]
-- **Timeframe**: [Research period covered]
-
-## 2. Methodology
-### 2.1 Research Approach
-[Description of research methodology and approach.]
-
-### 2.2 Data Sources
-| Source Type | Examples | Credibility Assessment |
-|-------------|----------|------------------------|
-| Academic Journals | [Journal names] | High - Peer reviewed |
-| Industry Reports | [Report names] | Medium - Industry standard |
-| News Media | [Outlet names] | Variable - Fact-checked |
-| Official Statistics | [Agency names] | High - Government sources |
-
-### 2.3 Search Strategy
-- **Keywords Used**: [List of search terms]
-- **Time Range**: [Start date] to [End date]
-- **Source Types**: [Types of sources consulted]
-
-## 3. Findings
-### 3.1 [Key Theme 1]
-[Detailed findings on first major theme.]
-
-#### Supporting Data
-- **Statistic 1**: [Value with source]
-- **Statistic 2**: [Value with source]
-- **Trend**: [Description of trend]
-
-#### Comparative Analysis
-| Aspect | Option A | Option B | Option C | Assessment |
-|--------|----------|----------|----------|------------|
-| Feature 1 | [Details] | [Details] | [Details] | [Assessment] |
-| Feature 2 | [Details] | [Details] | [Details] | [Assessment] |
-| Cost | [Details] | [Details] | [Details] | [Assessment] |
-
-### 3.2 [Key Theme 2]
-[Detailed findings on second major theme.]
-
-## 4. Analysis
-### 4.1 Trends & Patterns
-[Analysis of identified trends and patterns.]
-
-```mermaid
-graph TD
-    A[Current State] --> B{Key Decision}
-    B --> C[Path 1]
-    B --> D[Path 2]
-    C --> E[Outcome 1]
-    D --> F[Outcome 2]
-```
-
-### 4.2 Strengths, Weaknesses, Opportunities, Threats (SWOT)
-| | Internal | External |
-|-|----------|----------|
-| **Positive** | **Strengths**<br>- [Strength 1]<br>- [Strength 2] | **Opportunities**<br>- [Opportunity 1]<br>- [Opportunity 2] |
-| **Negative** | **Weaknesses**<br>- [Weakness 1]<br>- [Weakness 2] | **Threats**<br>- [Threat 1]<br>- [Threat 2] |
-
-### 4.3 Risk Assessment
-| Risk | Probability | Impact | Mitigation Strategy |
-|------|-------------|--------|---------------------|
-| [Risk 1] | High/Medium/Low | High/Medium/Low | [Mitigation approach] |
-| [Risk 2] | High/Medium/Low | High/Medium/Low | [Mitigation approach] |
-
-## 5. Conclusions
-### 5.1 Key Insights
-1. [Insight 1]
-2. [Insight 2]
-3. [Insight 3]
-
-### 5.2 Recommendations
-#### Short-term (0-6 months)
-- [Recommendation 1]
-- [Recommendation 2]
-
-#### Medium-term (6-18 months)
-- [Recommendation 3]
-- [Recommendation 4]
-
-#### Long-term (18+ months)
-- [Recommendation 5]
-- [Recommendation 6]
-
-## 6. Appendices
-### 6.1 Data Tables
-[Additional data tables if needed.]
-
-### 6.2 Methodology Details
-[Detailed methodological explanations.]
-
-### 6.3 Glossary
-- **Term 1**: [Definition]
-- **Term 2**: [Definition]
-
-## 7. References
-### 7.1 Academic Sources
-1. [Author]. (Year). [Title]. [Journal]. [DOI/Link]
-2. [Author]. (Year). [Title]. [Journal]. [DOI/Link]
-
-### 7.2 Industry Reports
-1. [Organization]. (Year). [Report Title]. [Link]
-2. [Organization]. (Year). [Report Title]. [Link]
-
-### 7.3 News & Media
-1. [Outlet]. (Date). [Article Title]. [Link]
-2. [Outlet]. (Date). [Article Title]. [Link]
+# 📋 基础研究报告 | Basic Research Report
+> **简洁版** · 标准结构 · 快速生成
 
 ---
 
-*Report generated using Deep Research Skill. Last updated: [Date]*
+## 🎯 执行摘要
+- **✅ 最重要发现**：[一句话概括]
+- **⚠️ 主要挑战**：[一句话概括]
+- **💡 核心建议**：[一句话概括]
+
+---
+
+## 1. 📖 研究目标
+
+### 1.1 研究问题
+1. [问题1]：[描述性问题]
+2. [问题2]：[解释性问题]
+3. [问题3]：[建议性问题]
+
+### 1.2 研究范围
+| 维度 | 内容 |
+|------|------|
+| 时间范围 | [期间，如：2023-2024] |
+| 地理范围 | [范围，如：中国市场] |
+| 主要限制 | [限制条件] |
+
+---
+
+## 2. 🔍 研究方法
+
+### 2.1 数据来源评估
+| 类型 | 示例 | 可信度 | 用途 |
+|------|------|--------|------|
+| 学术期刊 | [期刊] | ⭐⭐⭐⭐⭐ | 理论基础 |
+| 行业报告 | [报告] | ⭐⭐⭐⭐☆ | 市场数据 |
+| 新闻媒体 | [媒体] | ⭐⭐⭐☆☆ | 最新动态 |
+| 官方统计 | [机构] | ⭐⭐⭐⭐⭐ | 权威数据 |
+
+### 2.2 搜索策略
+- **关键词**：[搜索词]
+- **时间范围**：[开始] 至 [结束]
+- **证据权重**：一级(1.0) > 二级(0.7) > 三级(0.3)
+
+---
+
+## 3. 📊 研究发现
+
+### 3.1 [主题1]
+> **核心结论**：[一句话结论]
+
+**数据支持**:
+- [数据点1]：[数值/来源]
+- [数据点2]：[数值/来源]
+- **趋势**：[描述]
+
+**矛盾调解** (如有):
+| 冲突点 | 来源A | 来源B | 采信结论 | 理由 |
+|--------|-------|-------|----------|------|
+| [冲突] | [观点] | [观点] | **[结论]** | [权威性/时效性] |
+
+### 3.2 [主题2]
+> **核心结论**：[一句话结论]
+
+**对比分析**:
+| 维度 | 方案A | 方案B | 方案C | 评估 |
+|------|-------|-------|-------|------|
+| [维度] | [值] | [值] | [值] | [评估] |
+
+---
+
+## 4. 🧠 分析
+
+### 4.1 SWOT分析
+| | 积极因素 | 消极因素 |
+|-|----------|----------|
+| **内部** | **优势**：<br>- [S1]<br>- [S2] | **劣势**：<br>- [W1]<br>- [W2] |
+| **外部** | **机会**：<br>- [O1]<br>- [O2] | **威胁**：<br>- [T1]<br>- [T2] |
+
+### 4.2 风险评估
+| 风险 | 概率 | 影响 | 缓解策略 |
+|------|------|------|----------|
+| [风险1] | 高/中/低 | 高/中/低 | [方法] |
+| [风险2] | 高/中/低 | 高/中/低 | [方法] |
+
+---
+
+## 5. 💡 结论与建议
+
+### 5.1 核心洞察
+1. **[洞察1]**（⭐⭐⭐⭐⭐）：[发现] · 证据：[X]个来源
+2. **[洞察2]**（⭐⭐⭐⭐☆）：[发现] · 证据：[X]个来源
+3. **[洞察3]**（⭐⭐⭐☆☆）：[发现] · 证据：[X]个来源
+
+### 5.2 分层建议
+
+#### 短期（0-6个月）
+- **[建议1]**：[行动]
+  - 负责人：[角色] · 时间：[时限] · 成果：[KPI]
+
+#### 中期（6-18个月）
+- **[建议2]**：[行动]
+
+#### 长期（18个月+）
+- **[建议3]**：[行动]
+
+---
+
+## 6. 📚 参考文献
+
+### 学术文献
+1. [作者]. ([年份]). *[标题]*. [期刊]. [DOI/链接]
+
+### 行业报告
+1. [机构]. ([年份]). *[报告标题]*. [链接]
+
+---
+
+**报告生成**：YYYY-MM-DD | **模板版本**：基础版 v3.0

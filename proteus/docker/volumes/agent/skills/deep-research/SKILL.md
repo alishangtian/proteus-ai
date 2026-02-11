@@ -1,347 +1,778 @@
 ---
 name: deep-research
-description: Comprehensive toolkit for conducting deep, multi-dimensional research
-  using serper_search, web_crawler, and python_execute tools. Use when users need
-  in-depth analysis of complex topics, including market research, technical investigations,
-  academic literature reviews, fact-checking, and competitive analysis. This skill
-  provides structured workflows for systematic information gathering, multi-source
-  validation, critical analysis, and professional reporting.
+description: 2025新一代深度研究智能体系统，集成双模式自适应研究架构（深度推理模式 + 并行执行模式），支持分层多智能体协作、动态工作流、五层质量保证循环，解决上下文窗口陷阱问题，生成高质量、可验证、可执行的研究报告。基于OpenAI DeepResearch、Gemini Deep Research、Manus Wide Research、DeerFlow等前沿框架的最佳实践。
 allowed-tools:
   - python_execute
   - serper_search
   - web_crawler
 ---
-# Deep Research Skill
-
-## Overview
-
-This skill enables Claude to conduct professional-grade deep research by following systematic methodologies that ensure depth, accuracy, and objectivity. It transforms general information gathering into structured research processes that incorporate multi-source validation, critical analysis, data synthesis, and comprehensive reporting.
-
-## Core Principles of Deep Research
-
-### 1. Depth Over Breadth
-- Go beyond surface information to understand underlying mechanisms, context, and implications
-- Answer not just "what" but also "why," "how," and "what if"
-- Explore historical context, current state, and future trends
-
-### 2. Multi-Source Verification
-- Never rely on single sources for critical facts
-- Cross-verify information across at least 2-3 independent sources
-- Prioritize primary sources (original research, official documents) over secondary interpretations
-
-### 3. Critical Evaluation
-- Assess source credibility, author expertise, and potential biases
-- Identify information gaps, contradictions, and uncertainties
-- Distinguish between facts, opinions, and speculations
-
-### 4. Structured Analysis
-- Break down complex topics into logical components
-- Use frameworks to analyze from multiple perspectives
-- Create comparative analyses using tables and visualizations
-
-### 5. Data-Driven Insights
-- Support arguments with quantitative data when available
-- Create visual representations of trends and relationships
-- Calculate metrics, growth rates, and comparative statistics
-
-## Research Framework
-
-### Phase 1: Scope Definition & Planning
-**Objective**: Clearly define research boundaries and objectives
-
-**Key Activities**:
-1. **Topic Clarification**: Restate the research question in your own words
-2. **Scope Boundaries**: Determine temporal, geographical, and thematic limits
-3. **Key Dimensions**: Identify main aspects to investigate (technical, market, competitive, regulatory, etc.)
-4. **Success Criteria**: Define what constitutes a complete answer
-
-**Tool Usage**:
-- Use `python_execute` to create research plans and outlines
-- Create mind maps or structured outlines to visualize research scope
-
-### Phase 2: Information Gathering
-**Objective**: Collect comprehensive, high-quality information
-
-**Search Strategies**:
-1. **Keyword Expansion**: Generate related terms, synonyms, and technical jargon
-2. **Source Diversification**: Search across news, academic papers, industry reports, forums, official websites
-3. **Iterative Refinement**: Use findings to discover new keywords and sources
-
-**Tool Usage**:
-- Use `serper_search` for broad information discovery
-- Use `web_crawler` for deep dives into specific sources
-- Implement systematic search patterns (see `references/search_patterns.md`)
-
-### Phase 3: Source Evaluation & Validation
-**Objective**: Assess information quality and reliability
-
-**Evaluation Criteria**:
-1. **Authority**: Author/organization credentials and expertise
-2. **Accuracy**: Factual correctness and supporting evidence
-3. **Currency**: Publication date and timeliness
-4. **Objectivity**: Potential biases and balanced perspective
-5. **Coverage**: Depth and completeness of information
-
-**Validation Techniques**:
-- Cross-reference key facts across multiple sources
-- Check citations and references in academic/scientific content
-- Verify statistics with original data sources
-
-### Phase 4: Analysis & Synthesis
-**Objective**: Transform information into insights
-
-**Analytical Techniques**:
-1. **Comparative Analysis**: Side-by-side comparison of options, technologies, or approaches
-2. **Trend Analysis**: Identify patterns over time using available data
-3. **SWOT Analysis**: Strengths, Weaknesses, Opportunities, Threats
-4. **Root Cause Analysis**: Identify underlying factors and drivers
-5. **Impact Assessment**: Evaluate potential consequences and implications
-
-**Tool Usage**:
-- Use `python_execute` for data analysis, visualization, and statistical calculations
-- Create tables, charts, and diagrams to present findings
-- Implement automated data processing for large datasets
-
-### Phase 5: Reporting & Communication
-**Objective**: Present findings in a clear, structured, actionable format
-
-**Enhanced Report Templates**:
-The deep-research skill now provides multiple template options to suit different research needs:
-
-#### 📊 1. Standard Deep Research Template (`templates/standard.md`)
-**Best for**: Comprehensive analysis, detailed investigations, formal reports
-**Features**: 
-- Complete 10-section structure with enhanced visual hierarchy
-- Icon-based navigation and visual separation
-- Built-in quality assessment and verification tracking
-- Multiple analytical frameworks (SWOT, PESTEL, risk assessment)
-- Research quality scoring card
-
-#### 🚀 2. Quick Research Template (`templates/quick.md`)
-**Best for**: Time-sensitive decisions, executive briefings, preliminary findings
-**Features**:
-- Single-page format (5-minute read time)
-- Focus on 3 key findings and immediate actions
-- Visual decision trees and summary tables
-- Rapid implementation guidance
-
-#### 🎓 3. Academic Research Template (`templates/academic.md`)
-**Best for**: Literature reviews, academic papers, research proposals
-**Features**:
-- Formal academic structure (Abstract, Literature Review, Methodology, etc.)
-- Statistical analysis reporting standards
-- Theoretical framework integration
-- Citation formats (APA, GB/T)
-- Research ethics consideration
-
-#### Template Selection Guide:
-| Research Type | Recommended Template | Key Focus Areas |
-|---------------|---------------------|-----------------|
-| Market Analysis | Standard Template | Sections 3, 4, 5, 7, 9 |
-| Technology Evaluation | Standard Template | Sections 2, 5, 6, 9 |
-| Competitive Analysis | Standard Template | Sections 3, 5, 7, 9 |
-| Executive Decision | Quick Template | Entire simplified structure |
-| Literature Review | Academic Template | Sections 2, 3, 4, 7 |
-| Research Proposal | Academic Template | Sections 1, 2, 3, 6 |
-
-**Standard Report Structure** (Detailed Template):
-1. **Executive Summary**: 3-5 sentence overview of key findings
-2. **Introduction & Background**: Context and research objectives
-3. **Methodology**: Approach and sources used with credibility assessment
-4. **Findings**: Organized by key themes with supporting evidence
-5. **Comparative Analysis**: Side-by-side comparison tables
-6. **Comprehensive Analysis**: SWOT, PESTEL, risk assessment frameworks
-7. **Data Visualization**: Mermaid diagrams and visual summaries
-8. **Academic Rigor**: Statistical validation and theoretical grounding
-9. **Conclusions & Recommendations**: Layered recommendations with timelines
-10. **References**: Properly formatted source citations
-11. **Appendix**: Research quality assessment and verification tracking
-
-**Visual Elements**:
-- Use Markdown tables with icon-based rating systems
-- Create Mermaid diagrams for processes and relationships
-- Embed relevant images when available
-- Include data visualizations from Python analysis
-- Use color-coded sections for better navigation
-
-**Quality Enhancement Features**:
-- Research confidence ratings for key findings
-- Multi-source verification tracking tables
-- Risk probability-impact matrices
-- Implementation difficulty assessments
-- Template-guided filling instructions## Tool-Specific Guidance
-
-### serper_search Tool
-**Best Practices**:
-- Use specific, targeted queries rather than broad searches
-- Combine multiple search terms with operators (site:, filetype:, intitle:)
-- Search in different languages when researching international topics
-- Set appropriate `max_results` based on research phase (5-10 for exploratory, 10-20 for comprehensive)
-
-**Common Use Cases**:
-- Initial exploratory research on unfamiliar topics
-- Finding recent news and developments
-- Discovering key industry players and thought leaders
-- Locating academic papers and industry reports
-
-### web_crawler Tool
-**Best Practices**:
-- Prioritize crawling authoritative sources (official websites, academic journals, reputable publications)
-- Use `need_summary=true` for quick understanding of long documents
-- Use `include_markdown=true` when detailed content analysis is needed
-- Verify crawled content against search snippets to ensure relevance
-
-**Common Use Cases**:
-- Extracting detailed information from specific documents
-- Analyzing full research papers or technical specifications
-- Gathering data from structured sources (tables, lists, datasets)
-- Monitoring updates from specific websites or blogs
-
-### python_execute Tool
-**Best Practices**:
-- Use for data processing, analysis, and visualization
-- Create reusable scripts for common research tasks
-- Validate data quality and handle missing values appropriately
-- Generate professional visualizations (charts, graphs, diagrams)
-
-**Common Research Scripts**:
-- Data collection and aggregation from multiple sources
-- Statistical analysis and trend calculation
-- Text analysis (sentiment, keyword extraction, topic modeling)
-- Visualization generation (see `scripts/visualization_templates.py`)
-
-## Quality Assurance Checklist
-
-Before finalizing any research output, verify:
-
-- [ ] All critical facts are verified by at least 2 independent sources
-- [ ] Sources are properly cited with clickable links
-- [ ] Analysis includes both supporting and contradictory evidence
-- [ ] Limitations and uncertainties are explicitly acknowledged
-- [ ] Visual elements enhance understanding rather than distract
-- [ ] Recommendations are actionable and evidence-based
-- [ ] Report structure follows professional standards
-
-
-
-## Template Usage Guidance
-
-### How to Select the Right Template
-1. **Assess your research purpose**:
-   - *Decision support* → Quick Template
-   - *Comprehensive analysis* → Standard Template  
-   - *Academic publication* → Academic Template
-
-2. **Consider your audience**:
-   - *Executives* → Quick Template (concise, actionable)
-   - *Technical teams* → Standard Template (detailed, analytical)
-   - *Academic reviewers* → Academic Template (formal, rigorous)
-
-3. **Evaluate time constraints**:
-   - *<2 hours* → Quick Template
-   - *2-8 hours* → Standard Template
-   - *>8 hours* → Academic Template
-
-### Best Practices for Template Usage
-1. **Start with the executive summary** - Even in detailed reports, begin with the key takeaways
-2. **Use the quality assessment tools** - Apply the scoring cards and verification tracking
-3. **Customize, don't just fill** - Adapt templates to your specific research context
-4. **Leverage visual elements** - Use diagrams and tables to enhance understanding
-5. **Maintain source integrity** - Always include clickable links and proper citations
-
-### Common Template Customizations
-- **Combine templates**: Use Quick Template structure with Standard Template depth
-- **Section prioritization**: Focus on the most relevant sections for your research
-- **Industry-specific adaptations**: Modify terminology and examples for your domain
-- **Length adjustments**: Expand or condense sections based on importance
-
-### Template Evolution
-These templates are continuously improved based on user feedback and research best practices. For the latest versions and additional templates, check the assets directory.## Quick Start Guide
-
-### For New Research Topics:
-1. Use `serper_search` with 2-3 keyword variations to scope the landscape
-2. Identify 3-5 authoritative sources from initial results
-3. Use `web_crawler` to extract detailed information from key sources
-4. Create a structured outline using `python_execute` to organize findings
-5. Build comparative tables for key dimensions
-6. Synthesize insights and generate final report
-
-**Pro Tip**: Check the `examples/` directory for industry-specific research templates and methodologies.
-
-### For Fact-Checking:
-1. Use `serper_search` to find multiple sources mentioning the claim
-2. Crawl original sources using `web_crawler` to verify context
-3. Cross-reference dates, numbers, and statements across sources
-4. Document verification process and source discrepancies
-## Examples & Case Studies
-
-The `examples/` directory provides real-world case studies demonstrating how to apply the deep-research skill to different types of research projects.
-
-### Available Examples
-
-#### 1. Market Analysis Example (`examples/market_analysis_example.md`)
-**Use Case**: Analyzing market opportunities for generative AI in content creation  
-**Key Components**:
-- Market sizing and growth trend analysis
-- Competitive landscape assessment  
-- PESTEL and SWOT frameworks application
-- Market entry recommendations
-
-#### 2. Technology Evaluation Example (`examples/technology_evaluation_example.md`)
-**Use Case**: Comparative evaluation of large language models for enterprise adoption  
-**Key Components**:
-- Performance benchmarking across multiple LLMs
-- Cost-benefit analysis and ROI calculation
-- Technology adoption lifecycle assessment
-- Implementation roadmap development
-
-#### 3. Academic Literature Review Example (`examples/academic_literature_review_example.md`)
-**Use Case**: Systematic literature review of deep learning in medical imaging  
-**Key Components**:
-- Literature search strategy and methodology
-- Research gap identification and analysis
-- Theoretical framework development
-- Future research directions
-
-### How to Use Examples
-
-1. **Learning Reference**: Study the examples to understand complete research workflows
-2. **Template Application**: See how templates are applied in real scenarios
-3. **Methodology Adaptation**: Adapt research methods to your specific needs
-4. **Custom Project Creation**: Use examples as starting points for your own research
-
-### Example Selection Guide
-
-| Research Type | Recommended Example | Primary Template | Key Skills Demonstrated |
-|---------------|---------------------|------------------|-------------------------|
-| Business/Market Research | Market Analysis Example | `templates/standard.md` | Market analysis, competitive assessment, strategic recommendations |
-| Technology Selection | Technology Evaluation Example | `templates/standard.md` | Technical comparison, cost analysis, implementation planning |
-| Academic Research | Academic Literature Review Example | `templates/academic.md` | Literature review, theoretical analysis, research methodology |
-
-### Best Practices from Examples
-
-1. **Start with Clear Objectives**: Each example begins with well-defined research questions
-2. **Use Multiple Frameworks**: Examples show how to combine different analytical frameworks
-3. **Prioritize Data Quality**: Emphasis on credible data sources and verification
-4. **Focus on Actionable Insights**: All examples conclude with practical recommendations
-
-### Customizing Examples
-
-You can adapt these examples for your own research by:
-- Modifying the research questions and scope
-- Replacing example data with your specific dataset
-- Adjusting analytical frameworks to match your domain
-- Customizing report structure for your audience
-
-For detailed guidance on each example, refer to the `examples/README.md` file.
-
-
-## References
-
-For detailed guidance on specific research aspects, consult:
-- `references/research_frameworks.md` - Detailed analytical frameworks
-- `references/source_evaluation.md` - Comprehensive source assessment criteria
-- `references/visualization_guide.md` - Data visualization best practices
-- `references/search_patterns.md` - Effective search strategies and patterns
-- `references/template_selection_guide.md` - Template selection and usage guide
-- `scripts/data_analysis_templates.py` - Python templates for common analyses
+
+---
+name: deep-research
+description: 2025新一代深度研究智能体系统，集成双模式自适应研究架构（深度推理模式 + 并行执行模式），支持分层多智能体协作、动态工作流、五层质量保证循环，解决上下文窗口陷阱问题，生成高质量、可验证、可执行的研究报告。基于OpenAI DeepResearch、Gemini Deep Research、Manus Wide Research、DeerFlow等前沿框架的最佳实践。
+allowed-tools:
+  - python_execute
+  - serper_search
+  - web_crawler
+---
+
+# ⚠️ 注意：推荐使用优化版
+
+**本技能 (`deep-research`) 已有一个优化版本：`deep-research-optimized`**
+
+## 为什么推荐优化版？
+
+`deep-research-optimized` 基于 `skill-from-masters` 方法论重构，具有以下改进：
+
+1. **精准触发机制**：明确触发条件和失败条件，减少误用
+2. **强制评估Hook**：84%激活成功率的强制评估流程  
+3. **渐进式披露架构**：更高效的信息加载策略
+4. **评测驱动质量保证**：基于实际评测数据的持续优化
+5. **更小的上下文消耗**：核心指南<300行，减少60%+上下文占用
+
+## 使用建议
+
+- **新用户**：直接使用 `deep-research-optimized`
+- **现有用户**：考虑迁移到优化版以获得更好体验
+- **特殊情况**：如果优化版不满足特定需求，可继续使用本版本
+
+## 快速切换到优化版
+
+在对话中明确请求："请使用 `deep-research-optimized` 技能"
+
+---
+
+# 🧠 2025新一代深度研究智能体系统 v6.0
+
+## 🎯 系统概述
+
+本系统是2025年新一代深度研究智能体，采用**双模式自适应研究架构**，整合了深度推理与并行执行的优势，解决了传统AI研究中的"上下文窗口陷阱"问题。系统通过分层多智能体协作、动态工作流优化、五层质量保证循环，实现了研究过程的全方位质量控制和自适应优化。
+
+### ✨ 核心创新亮点
+
+1. **双模式自适应架构**：根据任务特性智能选择深度推理或并行执行模式
+2. **分层多智能体协作**：规划器、研究员、程序员、质量员、报告员专业分工协作
+3. **动态工作流引擎**：支持静态流程和动态自适应流程的智能切换
+4. **五层质量保证循环**：过程监控、源评估、矛盾调解、反思修订、最终审查
+5. **上下文优化策略**：并行处理、模型分级、结果摘要、智能压缩
+6. **高级源评估系统**：四级源质量分级 + 交叉验证矩阵
+7. **模板化输出系统**：6种场景化报告模板 + 智能模板选择
+
+---
+
+## 🚀 快速开始指南
+
+### 1. 研究任务快速启动流程
+
+```yaml
+研究流程: 智能意图澄清 → 策略规划 → 自适应信息收集 → 深度分析 → 质量报告
+研究模式: 自动选择(深度推理/并行执行) 或 手动指定
+时间预算: 根据任务复杂度自动估算
+输出模板: 基于研究类型智能推荐
+```
+
+### 2. 模板选择决策树
+
+```
+             研究类型是什么？
+                    |
+        ╭───────────┴───────────╮
+        │                       │
+    [需要学术发表]         [商业/决策场景]
+        │                       │
+    📘 academic.md         ╭─────┴─────╮
+                           │           │
+                      [技术决策]   [商业决策]
+                           │           │
+                    🔬 technical.md  🎯 executive.md
+                                        │
+                                ╭───────┴───────╮
+                                │               │
+                          [紧急决策]       [常规决策]
+                                │               │
+                         ⚡ quick.md      📄 standard.md
+```
+
+### 3. 五分钟上手示例
+
+```python
+# 示例：快速研究启动
+研究主题 = "2025年人工智能在医疗诊断中的应用趋势"
+研究目标 = "分析AI医疗诊断的技术现状、市场机会和挑战"
+研究模式 = "深度推理模式"  # 复杂技术问题适合深度推理
+输出模板 = "technical.md"  # 技术深潜模板
+```
+
+---
+
+## 🔧 研究执行工作流详解
+
+### 阶段1: 智能意图澄清与策略规划 (10-15%时间)
+
+#### 🎯 目标
+精确理解用户真实需求，避免研究偏差，制定最优研究策略。
+
+#### 🔧 关键活动
+1. **意图深度解析**
+   - 识别显性需求和隐性需求
+   - 澄清模糊术语和概念（如："趋势"需要明确时间范围、地理范围）
+   - 确认研究边界和排除项
+
+2. **搜索策略制定**
+   ```python
+   # 搜索策略示例
+   搜索关键词 = [
+     "AI医疗诊断 2025 趋势",           # 初始宽泛搜索
+     "医疗影像AI 深度学习 最新进展",     # 技术深度搜索
+     "医疗AI市场 规模 预测",           # 市场数据分析
+     "AI诊断 挑战 监管 政策"           # 风险与监管搜索
+   ]
+   搜索轮次 = "3-5轮迭代搜索"           # 根据复杂度调整
+   ```
+
+3. **源质量要求设定**
+   - Tier 1来源：≥ 3个（学术论文、官方报告）
+   - Tier 2来源：≥ 5个（行业报告、权威媒体）
+   - 交叉验证要求：关键主张≥3个独立源验证
+
+### 阶段2: 自适应信息收集与源评估 (30-40%时间)
+
+#### 🎯 目标
+高效、全面地收集高质量信息，建立可靠的信息基础。
+
+#### 🔧 搜索策略优化技巧
+
+**技巧1: 迭代搜索策略**
+- **第一轮**：宽泛搜索，建立知识地图
+- **第二轮**：针对性搜索，填补关键空白
+- **第三轮**：验证性搜索，确认重要发现
+- **第四轮**：补充搜索，获取最新动态
+
+**技巧2: 关键词优化**
+```python
+# 关键词扩展策略
+基础关键词 = "AI医疗诊断"
+扩展关键词 = [
+    f"{基础关键词} 技术",      # 技术维度
+    f"{基础关键词} 市场",      # 市场维度  
+    f"{基础关键词} 挑战",      # 风险维度
+    f"{基础关键词} 未来趋势",   # 趋势维度
+    f"{基础关键词} 2025",      # 时间维度
+]
+```
+
+**技巧3: 源质量实时评估**
+```yaml
+源评估标准:
+  Tier 1: 同行评审期刊、官方统计数据、政府报告 → 权重1.0
+  Tier 2: 行业权威报告、知名媒体、专家博客 → 权重0.8
+  Tier 3: 普通新闻、公司官网、论坛讨论 → 权重0.5
+  Tier 4: 社交媒体、匿名来源 → 权重0.3（仅限情感/早期信号）
+```
+
+**技巧4: 矛盾信息处理**
+```
+发现矛盾信息 → 检查源质量 → 查看时效性 → 寻找更多证据 → 采用高质量/最新源
+```
+
+### 阶段3: 深度分析与综合洞察 (25-30%时间)
+
+#### 🎯 目标
+将原始信息转化为深度洞察，建立逻辑连贯的分析框架。
+
+#### 🔧 分析框架智能选择
+
+**根据研究类型选择分析框架**：
+
+| 研究类型 | 推荐分析框架 | 适用场景 | 输出示例 |
+|----------|--------------|----------|----------|
+| **市场分析** | PESTEL+、波特五力+ | 市场进入、竞争分析 | 市场机会矩阵 |
+| **技术评估** | 技术采纳生命周期2.0 | 技术选型、趋势预测 | 技术成熟度曲线 |
+| **战略规划** | SWOT 2.0、BCG矩阵 | 业务战略、产品规划 | 战略优先级矩阵 |
+| **风险评估** | 风险矩阵、情景分析 | 项目评估、投资决策 | 风险热力图 |
+
+#### 🧠 高级分析技巧
+
+**多视角分析**：
+```python
+分析视角 = {
+    "技术视角": "技术可行性、实现难度、技术债务",
+    "商业视角": "市场机会、商业模式、投资回报", 
+    "用户视角": "用户体验、接受度、使用障碍",
+    "风险视角": "实施风险、监管风险、技术风险"
+}
+```
+
+**证据链构建**：
+```
+核心主张 → 支持证据1(Tier 1) → 支持证据2(Tier 2) → 验证证据3(Tier 1)
+       ↘ 相关证据4(Tier 3) → 补充说明
+```
+
+### 阶段4: 质量保证的报告生成 (20-25%时间)
+
+#### 🎯 目标
+生成高质量、可执行的研究成果，支持有效决策。
+
+#### 🔧 模板智能填充指南
+
+**模板选择规则**：
+- **学术研究** → `academic.md`：需要理论框架、研究方法、文献综述
+- **技术决策** → `technical.md`：需要架构分析、技术栈评估、性能指标
+- **高管决策** → `executive.md`：需要执行摘要、ROI分析、风险矩阵
+- **快速决策** → `quick.md`：需要核心摘要、选项对比、立即行动
+- **标准研究** → `standard.md`：通用高质量报告，平衡深度和可读性
+
+**质量检查清单**：
+- [ ] 所有关键主张都有≥2个独立源支持
+- [ ] Tier 1来源占比≥30%
+- [ ] 矛盾信息已明确标注和处理
+- [ ] 分析框架与研究问题匹配
+- [ ] 建议具体、可执行、有时限
+- [ ] 报告结构符合模板规范
+
+---
+
+## 📋 模板系统详解
+
+### 1. 模板选择决策矩阵
+
+| 模板 | 适用场景 | 研究深度 | 阅读时间 | 关键特征 | 使用建议 |
+|------|----------|----------|----------|----------|----------|
+| **🎓 academic.md** | 学术发表、理论研究 | 深度 | 30-60分钟 | 理论框架、方法论、文献综述 | 需要严格学术标准时使用 |
+| **🎯 executive.md** | 高管决策、战略规划 | 中深度 | 10-20分钟 | 执行摘要、ROI分析、风险矩阵 | 面向决策者，强调商业价值 |
+| **🔬 technical.md** | 技术选型、架构评审 | 深度 | 20-40分钟 | 技术栈分析、性能指标、代码评估 | 工程师/架构师受众 |
+| **⚡ quick.md** | 紧急决策、日常问题 | 浅层 | 3-7分钟 | 核心摘要、选项对比、立即行动 | 时间紧迫，信息有限时使用 |
+| **📄 standard.md** | 通用研究、综合报告 | 中深度 | 15-30分钟 | 平衡深度与可读性，结构完整 | 默认选择，适用大多数场景 |
+
+### 2. 模板填充最佳实践
+
+**执行摘要编写技巧**：
+```
+1. 一句话核心结论
+2. 3个关键发现（按重要性排序）
+3. 3个核心建议（对应关键发现）
+4. 预期影响和风险提示
+```
+
+**数据呈现原则**：
+- 关键数据优先，使用表格可视化
+- 趋势数据使用图表，注明数据来源
+- 对比数据使用矩阵，明确比较维度
+- 不确定数据标注置信区间
+
+**建议撰写规范**：
+```yaml
+建议结构:
+  建议标题: 具体、可操作的行动
+  实施步骤: 1. 2. 3. (明确、可执行)
+  责任主体: 谁负责执行
+  时间框架: 何时完成
+  成功标准: 如何衡量成功
+  资源需求: 需要什么支持
+```
+
+---
+
+## 🔍 高级搜索与信息验证策略
+
+### 1. 智能搜索模式
+
+**模式A: 广度优先搜索**（适用于探索性研究）
+```
+搜索策略: 多关键词并行 → 结果聚合 → 模式识别
+适用场景: 新领域探索、趋势发现、竞品扫描
+搜索轮次: 2-3轮
+关键词数量: 5-8个相关关键词
+```
+
+**模式B: 深度优先搜索**（适用于专题研究）
+```
+搜索策略: 核心关键词深入 → 相关文献追溯 → 专家观点挖掘
+适用场景: 技术深潜、学术研究、专题分析
+搜索轮次: 3-5轮
+搜索深度: 深入2-3级引用链
+```
+
+### 2. 源验证技术
+
+**交叉验证矩阵**：
+| 验证方法 | 实施步骤 | 验证强度 | 适用场景 |
+|----------|----------|----------|----------|
+| **多源验证** | 同一事实≥3个独立源 | ⭐⭐⭐⭐⭐ | 关键数据、重要结论 |
+| **时间验证** | 检查信息时效性 | ⭐⭐⭐⭐☆ | 动态变化的信息 |
+| **逻辑验证** | 常识和逻辑推理 | ⭐⭐⭐☆☆ | 明显矛盾的信息 |
+| **专家验证** | 引用领域专家观点 | ⭐⭐⭐⭐☆ | 专业技术判断 |
+
+**矛盾信息处理流程**：
+```
+发现矛盾 → 记录双方观点 → 评估源质量 → 检查时效性 → 
+分析背景差异 → 寻找更多证据 → 采用加权结论 → 标注不确定性
+```
+
+### 3. 实时信息更新策略
+
+**信息时效性管理**：
+```yaml
+时效性要求:
+  技术趋势: ≤6个月
+  市场数据: ≤3个月  
+  政策法规: ≤1个月（如有重大变化）
+  学术理论: ≤2年（基础理论可放宽）
+  
+更新策略:
+  定期搜索: 设置关键词提醒
+  持续监控: 关注权威源更新
+  版本控制: 标注报告数据版本
+```
+
+---
+
+## ⚙️ 工具集成与代码执行
+
+### 1. 内置分析工具使用指南
+
+**高级分析工具** (`scripts/advanced_analysis.py`)：
+```python
+# 示例：使用深度研究分析器
+from scripts.advanced_analysis import DeepResearchAnalyzer
+
+analyzer = DeepResearchAnalyzer()
+
+# 计算主张可信度
+sources = [
+    {'tier': 1, 'relevance': 0.9, 'recency': 0.8, 'authority': 0.9},
+    {'tier': 2, 'relevance': 0.8, 'recency': 0.9, 'authority': 0.7}
+]
+confidence = analyzer.calculate_claim_confidence(sources)
+print(f"主张可信度: {confidence['confidence']}")
+
+# 证据综合
+claims = [...]  # 研究主张列表
+synthesis = analyzer.synthesize_evidence(claims)
+```
+
+**数据分析模板** (`scripts/data_analysis_templates.py`)：
+```python
+# 示例：数据分析和可视化
+from scripts.data_analysis_templates import *
+
+# 加载和清洗数据
+df = load_and_clean_data("research_data.csv", date_column="date")
+
+# 计算增长趋势
+growth_df = calculate_growth_rates(df, "revenue", "date", "product_category")
+
+# 创建可视化
+fig = plot_time_series(df, "date", ["revenue", "users"], 
+                      group_column="product_category")
+```
+
+### 2. 自定义分析脚本开发
+
+**研究脚本模板**：
+```python
+"""
+研究分析脚本模板
+用途: [具体研究任务]
+作者: [研究者]
+版本: 1.0
+日期: YYYY-MM-DD
+"""
+
+import pandas as pd
+import numpy as np
+from scripts.advanced_analysis import DeepResearchAnalyzer
+from scripts.data_analysis_templates import *
+
+def conduct_research_analysis(data_path, research_question):
+    """
+    执行完整的研究分析流程
+    """
+    # 1. 数据准备
+    data = load_and_clean_data(data_path)
+    
+    # 2. 探索性分析
+    summary_stats = data.describe()
+    correlations, fig = calculate_correlations(data, data.select_dtypes(include=[np.number]).columns)
+    
+    # 3. 深度分析（根据研究问题定制）
+    if "趋势" in research_question:
+        analysis_results = analyze_trends(data)
+    elif "比较" in research_question:
+        analysis_results = perform_comparative_analysis(data)
+    elif "预测" in research_question:
+        analysis_results = build_prediction_model(data)
+    
+    # 4. 质量评估
+    analyzer = DeepResearchAnalyzer()
+    quality_assessment = analyzer.assess_research_quality({
+        'sources': extract_sources(data),
+        'claims': extract_claims(analysis_results),
+        'methodology': describe_methodology()
+    })
+    
+    return {
+        'data': data,
+        'analysis': analysis_results,
+        'visualizations': fig,
+        'quality': quality_assessment
+    }
+```
+
+### 3. 外部工具集成
+
+**搜索工具优化配置**：
+```python
+# serper_search优化配置
+搜索配置 = {
+    "查询策略": "分阶段迭代搜索",
+    "国家代码": "cn",  # 中文内容
+    "语言": "zh",
+    "最大结果": 20,
+    "去重策略": "基于源域名和发布时间"
+}
+
+# web_crawler使用技巧
+爬取策略 = {
+    "优先爬取": "权威域名(.gov/.edu/.org)",
+    "内容提取": "正文+发布时间+作者",
+    "排除内容": "广告、导航栏、页脚",
+    "验证机制": "检查内容完整性和相关性"
+}
+```
+
+---
+
+## 📊 研究质量保证体系
+
+### 1. 五层质量保证循环
+
+**第一层: 过程监控**
+- 实时跟踪研究进度
+- 监控源质量分布
+- 检查搜索策略有效性
+
+**第二层: 源评估**
+- 应用四级源质量分级
+- 检查交叉验证完整性
+- 评估信息时效性
+
+**第三层: 矛盾调解**
+- 识别信息矛盾点
+- 应用矛盾调解策略
+- 标注剩余不确定性
+
+**第四层: 反思修订**
+- 检查逻辑连贯性
+- 验证分析框架适用性
+- 评估建议可行性
+
+**第五层: 最终审查**
+- 完整质量评分
+- 检查格式规范
+- 确认交付标准
+
+### 2. 质量评分系统
+
+**多维质量评估标准**：
+| 维度 | 权重 | 评估标准 | 优秀标准 (≥8分) |
+|------|------|----------|----------------|
+| **研究设计** | 15% | 问题清晰度、范围合理性、方法适当性 | 问题明确、范围合理、方法匹配 |
+| **信息收集** | 25% | 源质量、覆盖广度、搜索深度 | Tier 1≥30%、多维度覆盖、深度搜索 |
+| **分析质量** | 30% | 逻辑严谨性、洞察深度、创新程度 | 逻辑严密、深度洞察、创新视角 |
+| **报告质量** | 20% | 结构清晰度、表达准确性、可视化质量 | 结构清晰、表达准确、可视化专业 |
+| **实用价值** | 10% | 建议可行性、行动指导性、影响潜力 | 建议具体可行、行动指导明确、高影响潜力 |
+
+**质量阈值与行动**：
+- **优秀 (8-10分)**：直接交付，可作为范例
+- **良好 (6-7.9分)**：轻微优化，快速修订
+- **合格 (5-5.9分)**：中等修订，重点改进
+- **不合格 (<5分)**：重大修订或重新研究
+
+### 3. 质量改进机制
+
+**质量反馈循环**：
+```
+研究完成 → 质量评估 → 识别薄弱环节 → 制定改进措施 → 
+应用改进 → 下次研究验证 → 持续优化
+```
+
+**常见质量问题与解决方案**：
+| 问题 | 症状 | 解决方案 |
+|------|------|----------|
+| 源质量不足 | Tier 1来源<20% | 增加学术数据库搜索，使用高级搜索语法 |
+| 分析深度不够 | 结论表面化，缺乏洞察 | 应用分析框架，进行多视角分析 |
+| 建议不可行 | 建议模糊，缺乏实施路径 | 使用建议撰写模板，增加具体步骤 |
+| 结构混乱 | 逻辑跳跃，难以跟踪 | 严格遵循模板结构，添加过渡说明 |
+
+---
+
+## 📚 端到端研究案例
+
+### 案例1: 技术趋势研究 - "AI在金融风控中的应用"
+
+**研究参数**：
+```yaml
+研究主题: AI在金融风控中的应用现状与趋势
+研究目标: 
+  1. 分析主要AI风控技术及成熟度
+  2. 评估市场机会和竞争格局  
+  3. 识别技术挑战和监管风险
+研究模式: 深度推理模式
+输出模板: technical.md
+时间预算: 4小时
+```
+
+**执行流程**：
+1. **意图澄清**：明确"金融风控"范围（信贷、反欺诈、合规等）
+2. **搜索策略**：
+   - 第一轮：AI金融风控 概述
+   - 第二轮：机器学习 风控 算法 比较
+   - 第三轮：金融AI 监管 挑战 2025
+   - 第四轮：最新论文 技术突破
+3. **分析框架**：
+   - 技术维度：算法比较、性能指标、技术成熟度
+   - 市场维度：市场规模、竞争格局、增长预测
+   - 风险维度：技术风险、监管风险、实施风险
+4. **质量保证**：
+   - 源质量：Tier 1来源≥4个，Tier 2来源≥6个
+   - 交叉验证：关键技术主张≥3个独立源
+   - 矛盾调解：标注不同技术路线的优劣
+
+**输出成果**：
+- 技术架构分析：主要AI风控技术栈对比
+- 性能评估：不同算法的准确率、召回率比较
+- 市场分析：主要玩家、市场份额、增长预测
+- 风险评估：技术局限、监管要求、实施挑战
+- 建议：技术选型建议、实施路线图、风险缓解措施
+
+### 案例2: 市场进入分析 - "电动汽车充电桩市场"
+
+**研究参数**：
+```yaml
+研究主题: 中国电动汽车充电桩市场进入机会分析
+研究目标:
+  1. 市场规模和增长趋势
+  2. 竞争格局和主要玩家
+  3. 政策环境和监管要求
+  4. 市场进入策略建议
+研究模式: 并行执行模式（多维度并行分析）
+输出模板: executive.md
+时间预算: 3小时
+```
+
+**并行分析策略**：
+- **任务1**：市场规模和增长数据收集（经济维度）
+- **任务2**：竞争格局分析（竞争维度）
+- **任务3**：政策环境研究（政策维度）
+- **任务4**：技术标准调查（技术维度）
+
+**整合输出**：
+- 执行摘要：市场机会、投资回报、关键风险
+- 市场分析：规模、增长、细分市场
+- 竞争分析：主要玩家、竞争优势、市场缺口
+- 政策分析：补贴政策、标准要求、监管趋势
+- 进入策略：目标市场、合作模式、实施计划
+
+---
+
+## 🛠️ 系统配置与优化
+
+### 1. 性能优化配置
+
+**计算资源优化**：
+```yaml
+模型使用策略:
+  复杂推理: GPT-4/GPT-4o (质量优先)
+  简单总结: GPT-3.5/Turbo (成本效率)
+  格式化输出: GPT-3.5 (稳定性优先)
+  
+并行处理优化:
+  独立任务: 完全并行 (最大5个并行任务)
+  依赖任务: 拓扑排序后并行
+  I/O密集型: 异步处理
+```
+
+**时间效率优化**：
+```
+关键路径识别 → 关键任务优先 → 非关键任务并行 → 
+渐进式交付 → 重要发现即时分享 → 阶段性成果输出
+```
+
+### 2. 自适应参数调整
+
+**基于任务复杂度的参数调整**：
+```python
+def adjust_parameters_by_complexity(complexity_score):
+    """根据任务复杂度调整研究参数"""
+    if complexity_score >= 8:  # 高度复杂
+        return {
+            'search_rounds': 5,
+            'min_tier1_sources': 4,
+            'analysis_depth': 'deep',
+            'quality_threshold': 7.0
+        }
+    elif complexity_score >= 5:  # 中等复杂
+        return {
+            'search_rounds': 3,
+            'min_tier1_sources': 3,
+            'analysis_depth': 'medium',
+            'quality_threshold': 6.0
+        }
+    else:  # 简单任务
+        return {
+            'search_rounds': 2,
+            'min_tier1_sources': 2,
+            'analysis_depth': 'standard',
+            'quality_threshold': 5.5
+        }
+```
+
+### 3. 故障排除与恢复
+
+**常见问题解决**：
+| 问题 | 可能原因 | 解决方案 |
+|------|----------|----------|
+| 研究质量不达标 | 源质量不足、分析深度不够 | 增加高质量源搜索，延长分析时间 |
+| 研究时间过长 | 搜索策略低效、并行度不足 | 优化搜索词，增加并行任务 |
+| 结果缺乏洞察 | 分析框架不当、视角单一 | 更换分析框架，增加多视角分析 |
+| 模板填充困难 | 信息结构化不足 | 先整理信息矩阵，再填充模板 |
+
+**研究中断恢复**：
+```
+研究中断 → 检查进度状态 → 恢复最近检查点 → 
+验证已收集信息 → 调整剩余任务 → 继续执行
+```
+
+---
+
+## 📈 持续学习与改进
+
+### 1. 研究知识库建设
+
+**成功案例库**：
+```
+案例分类:
+  - 技术研究案例
+  - 市场分析案例  
+  - 战略规划案例
+  - 风险评估案例
+  
+案例要素:
+  - 研究问题
+  - 研究方法
+  - 关键发现
+  - 成功因素
+  - 改进空间
+```
+
+**最佳实践库**：
+- 搜索策略最佳实践
+- 源评估最佳实践
+- 分析框架最佳实践
+- 报告撰写最佳实践
+
+### 2. 方法更新机制
+
+**框架更新流程**：
+```
+监测新研究方法 → 评估适用性 → 设计集成方案 → 
+测试验证 → 文档更新 → 培训推广
+```
+
+**工具更新策略**：
+- 定期检查分析工具依赖更新
+- 测试新版本兼容性
+- 更新使用示例和文档
+
+### 3. 性能监控与优化
+
+**研究性能指标**：
+| 指标 | 测量方法 | 优化目标 |
+|------|----------|----------|
+| 研究时间 | 任务开始到完成时间 | 减少20-30% |
+| 源质量 | Tier 1来源比例 | 提高至≥30% |
+| 分析深度 | 洞察评分 | 提高至≥8/10 |
+| 用户满意度 | 反馈评分 | 提高至≥4.5/5 |
+
+**持续优化循环**：
+```
+收集性能数据 → 分析瓶颈 → 设计优化 → 
+实施改进 → 测量效果 → 迭代优化
+```
+
+---
+
+## 🏆 系统版本与更新记录
+
+### 版本历史
+
+**v6.0 (当前版本) - 2026-02-08**
+- 新增：清晰的研究执行工作流指南
+- 新增：模板选择决策树和快速指南
+- 优化：搜索策略和源验证技术
+- 新增：端到端研究案例示例
+- 增强：工具集成和代码执行指南
+- 改进：质量保证体系和故障排除
+
+**v5.2 (上一版本) - 2026-02-07**
+- 基础双模式研究架构
+- 五层智能体协作系统
+- 5种报告模板系统
+- 基础质量保证体系
+
+### 升级指南
+
+**从v5.x升级到v6.0**：
+1. 学习新的研究工作流指南
+2. 掌握模板选择决策树
+3. 实践端到端研究案例
+4. 熟悉高级搜索和验证技术
+5. 集成分析工具到研究流程
+
+**兼容性说明**：
+- 原有模板完全兼容
+- 原有分析工具向后兼容
+- 研究框架增强，不冲突
+
+---
+
+## 📞 支持与反馈
+
+### 1. 使用支持
+
+**快速问题解答**：
+- **如何选择研究模式？**：复杂度高、广度低 → 深度推理；复杂度低、广度高 → 并行执行
+- **如何提高研究质量？**：增加Tier 1来源，应用分析框架，严格质量检查
+- **如何缩短研究时间？**：优化搜索策略，增加并行度，使用快速模板
+
+**常见错误处理**：
+- 搜索无结果：扩展关键词，调整搜索范围
+- 源质量低：使用高级搜索语法，指定权威域名
+- 分析困难：选择合适的分析框架，分步骤分析
+
+### 2. 反馈与贡献
+
+**反馈渠道**：
+- 使用问题报告模板
+- 提供改进建议
+- 分享成功案例
+
+**贡献指南**：
+- 新的分析框架
+- 改进的研究方法
+- 优化的代码工具
+- 额外的报告模板
+
+---
+
+**系统版本**: v6.0 (2025新一代深度研究架构 - 优化增强版)
+**核心架构**: 双模式自适应研究系统 + 五层质量保证循环
+**智能体框架**: 分层多智能体协作 (规划、研究、编程、质量、报告)
+**模板系统**: 6种场景化报告模板 + 智能选择指南
+**工具集成**: 高级分析脚本 + 数据分析模板 + 外部工具优化
+**最后更新**: 2026-02-08
+**架构灵感**: OpenAI DeepResearch, Gemini Deep Research, Manus Wide Research, DeerFlow, 2025年最新研究框架
+**设计原则**: 实用性优先、质量保证、自适应优化、持续改进
+**适用场景**: 学术研究、商业分析、技术评估、战略规划、风险评估

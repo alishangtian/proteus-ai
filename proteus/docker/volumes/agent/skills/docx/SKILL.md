@@ -13,7 +13,10 @@ allowed-tools:
 ---
 # DOCX creation, editing, and analysis
 
-## Overview
+> **Note**: This skill provides **comprehensive DOCX manipulation** including tracked changes, comments, OOXML editing, and advanced features.
+> For simple visual review and rendering tasks, consider using the `doc` skill instead.
+
+## Overview## Overview
 
 A user may ask you to create, edit, or analyze the contents of a .docx file. A .docx file is essentially a ZIP archive containing XML files and other resources that you can read or edit. You have different tools and workflows available for different tasks.
 

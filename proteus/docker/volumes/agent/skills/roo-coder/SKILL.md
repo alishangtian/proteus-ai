@@ -1,6 +1,6 @@
 ---
 name: roo-coder
-description: AI-driven project code management and editing system inspired by RooCode. Use when users need to edit code files, analyze project structures, manage Git operations, create pull requests, or perform automated code refactoring. This skill provides intelligent code editing workflows, project analysis capabilities, Git integration, and PR creation with proper conventions. **IMPORTANT: Project work directory should be /app/data/{project_name} for proper file operations and persistence.**
+description: 'AI-driven project code management and editing system inspired by RooCode. Use when users need to edit code files, analyze project structures, manage Git operations, create pull requests, or perform automated code refactoring. This skill provides intelligent code editing workflows, project analysis capabilities, Git integration, and PR creation with proper conventions. **IMPORTANT: Project work directory should be /app/data/{project_name} for proper file operations and persistence.**'
 allowed-tools:
   - python_execute
   - serper_search

@@ -61,7 +61,7 @@ class ModelManager:
             model_name: 模型名称
 
         Returns:
-            模型配置字典，包含base_url, api_key, model_name
+            模型配置字典，包含base_url, api_key, model_name, context_length
 
         Raises:
             ValueError: 如果模型配置不存在
@@ -73,12 +73,23 @@ class ModelManager:
         api_key = AESCipher.decrypt_string(
             ciphertext=model_config["api_key"], key=os.getenv("CRYPTO_SECRET_KEY")
         )
+        # 从配置中获取 context_length，支持顶级字段或 extra_params 中的 max_tokens 作为后备
+        context_length = model_config.get("context_length")
+        if context_length is None:
+            # 尝试从 extra_params 中的 max_tokens 获取
+            extra_params = model_config.get("extra_params", {})
+            context_length = extra_params.get("max_tokens")
+        if context_length is None:
+            # 默认值
+            context_length = 131072
+
         return {
             "base_url": model_config["base_url"],
             "api_key": api_key,
             "model_name": model_config["model_name"],
             "type": model_config["type"],
             "extra_params": model_config.get("extra_params", {}),
+            "context_length": int(context_length),
         }
 
     def list_models(self) -> List[str]:

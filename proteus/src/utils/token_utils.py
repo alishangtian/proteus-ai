@@ -1,7 +1,10 @@
 import tiktoken
 from typing import List, Dict, Any
 
-def count_tokens(messages: List[Dict[str, Any]], model: str = "gpt-3.5-turbo-0613") -> int:
+
+def count_tokens(
+    messages: List[Dict[str, Any]], model: str = "gpt-3.5-turbo-0613"
+) -> int:
     """
     计算消息列表的 token 数
     """

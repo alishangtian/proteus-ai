@@ -174,6 +174,10 @@
             background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
         }
 
+        .nav-card.token:hover {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
         .nav-card:hover .card-icon {
             transform: scale(1.1);
         }
@@ -399,6 +403,15 @@
                             浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等各类知识资源。
                         </p>
                     </div>
+
+                    <!-- Token 管理导航卡片 -->
+                    <div class="nav-card token" onclick="navigateToTokenManagement()">
+                        <div class="card-icon">🔐</div>
+                        <h2 class="card-title">Token 管理</h2>
+                        <p class="card-description">
+                            管理您的 Bearer Token，用于 API 认证和程序化访问，支持生成、查看和撤销 Token。
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -423,12 +436,18 @@
             window.location.href = '/knowledge/index';
         }
 
+        function navigateToTokenManagement() {
+            window.location.href = '/static/token_management.html';
+        }
+
         // 添加键盘快捷键支持
         document.addEventListener('keydown', function (event) {
             if (event.key === '1' || event.key === 'c') {
                 navigateToChat();
             } else if (event.key === '2' || event.key === 'k') {
                 navigateToKnowledgeBase();
+            } else if (event.key === '3' || event.key === 't') {
+                navigateToTokenManagement();
             }
         });
 

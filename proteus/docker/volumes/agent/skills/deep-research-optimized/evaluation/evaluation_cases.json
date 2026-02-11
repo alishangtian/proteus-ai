@@ -1,0 +1,119 @@
+{
+  "version": "1.0",
+  "creation_date": "2026-02-09",
+  "methodology": "基于skill-from-masters的评测驱动开发",
+  "cases": [
+    {
+      "id": "EVAL-001",
+      "name": "技术趋势研究 - AI在金融风控中的应用",
+      "description": "测试技术评估类深度研究能力",
+      "input": "进行深度研究关于AI在金融风控中的应用现状与趋势。需要分析主要技术、市场机会、技术挑战和监管风险。",
+      "expected_triggers": [
+        "deep-research-optimized"
+      ],
+      "quality_requirements": {
+        "min_tier1_sources": 4,
+        "min_total_sources": 12,
+        "analysis_depth_score": "≥8.0/10",
+        "report_structure": "technical.md模板",
+        "execution_time": "≤4小时"
+      },
+      "pass_criteria": [
+        "正确激活deep-research-optimized技能",
+        "使用technical.md模板生成报告",
+        "包含至少4个Tier 1来源",
+        "分析深度评分≥8.0",
+        "包含具体技术建议和实施路线图"
+      ]
+    },
+    {
+      "id": "EVAL-002",
+      "name": "市场进入分析 - 电动汽车充电桩市场",
+      "description": "测试市场分析类深度研究能力",
+      "input": "完成市场分析报告关于中国电动汽车充电桩市场进入机会。需要市场规模、竞争格局、政策环境和进入策略建议。",
+      "expected_triggers": [
+        "deep-research-optimized"
+      ],
+      "quality_requirements": {
+        "min_tier1_sources": 3,
+        "min_tier2_sources": 5,
+        "analysis_depth_score": "≥7.5/10",
+        "report_structure": "executive.md模板",
+        "execution_time": "≤3小时"
+      },
+      "pass_criteria": [
+        "正确激活deep-research-optimized技能",
+        "使用executive.md模板生成报告",
+        "包含市场规模数据和增长预测",
+        "竞争格局分析包含主要玩家",
+        "提供具体的市场进入策略"
+      ]
+    },
+    {
+      "id": "EVAL-003",
+      "name": "学术文献综述 - 深度学习在医疗影像的最新进展",
+      "description": "测试学术研究类深度研究能力",
+      "input": "做一个学术文献综述研究关于深度学习在医疗影像诊断中的最新进展。需要理论框架、方法比较、性能评估和研究展望。",
+      "expected_triggers": [
+        "deep-research-optimized"
+      ],
+      "quality_requirements": {
+        "min_tier1_sources": 6,
+        "min_total_sources": 15,
+        "analysis_depth_score": "≥8.5/10",
+        "report_structure": "academic.md模板",
+        "execution_time": "≤5小时"
+      },
+      "pass_criteria": [
+        "正确激活deep-research-optimized技能",
+        "使用academic.md模板生成报告",
+        "包含文献综述和理论框架",
+        "方法比较和性能评估",
+        "研究展望和未来方向"
+      ]
+    },
+    {
+      "id": "EVAL-004",
+      "name": "简单查询 - 不应该触发深度研究",
+      "description": "测试失败条件，确保简单查询不误触发",
+      "input": "现在几点了？",
+      "expected_triggers": [],
+      "quality_requirements": {
+        "should_not_trigger": true,
+        "response_time": "≤30秒",
+        "response_type": "简单直接回答"
+      },
+      "pass_criteria": [
+        "不激活deep-research-optimized技能",
+        "提供简单直接的回答",
+        "响应时间≤30秒",
+        "明确说明不需要深度研究"
+      ]
+    },
+    {
+      "id": "EVAL-005",
+      "name": "快速建议 - 不应该触发深度研究",
+      "description": "测试失败条件，确保快速建议不误触发",
+      "input": "简单介绍一下人工智能",
+      "expected_triggers": [],
+      "quality_requirements": {
+        "should_not_trigger": true,
+        "response_time": "≤1分钟",
+        "response_type": "简要概述"
+      },
+      "pass_criteria": [
+        "不激活deep-research-optimized技能",
+        "提供简要概述",
+        "响应时间≤1分钟",
+        "明确说明不需要深度分析"
+      ]
+    }
+  ],
+  "evaluation_framework": {
+    "activation_rate_target": "≥84%",
+    "false_positive_target": "≤10%",
+    "quality_score_target": "≥8.0/10",
+    "execution_time_target": "符合各用例要求",
+    "evaluation_frequency": "每次重大更新后"
+  }
+}

@@ -61,6 +61,7 @@ agent_dict = {}
 
 agent_model_list = [
     "chat",
+    "task",
     "workflow",
     "super-agent",
     "mcp-agent",
@@ -69,23 +70,6 @@ agent_model_list = [
     "deep-research-multi",
     "codeact-agent",
 ]
-
-
-# 延迟初始化工作流引擎
-def get_workflow_engine():
-    """延迟初始化工作流引擎"""
-    from src.core.engine import WorkflowEngine
-    from src.api.utils import convert_node_result
-
-    workflow_engine = WorkflowEngine()
-
-    # 注册节点状态回调
-    def node_status_callback(workflow_id: str, node_id: str, result):
-        """处理节点状态变化的回调函数"""
-        return convert_node_result(node_id, result)
-
-    workflow_engine.register_node_callback(node_status_callback)
-    return workflow_engine
 
 
 # 在启动时注册工作流节点类型 - 改为按需加载
@@ -182,6 +166,7 @@ async def auth_middleware(request: Request, call_next):
         "/newui",  # 新的聊天页面
         "/update_nickname",
         "/reset_password",
+        "/token",  # token 获取端点
     }
 
     path = request.url.path
@@ -191,7 +176,7 @@ async def auth_middleware(request: Request, call_next):
     if any(path.startswith(p) for p in exclude_paths):
         return await call_next(request)
 
-    # 检查登录状态（get_current_user 在文件中已延迟导入）
+    # 检查登录状态（get_current_user 已支持 Bearer token）
     user = await get_current_user(request)
     if not user:
         return RedirectResponse(url="/login")
@@ -201,8 +186,10 @@ async def auth_middleware(request: Request, call_next):
 
 # 注册路由
 from src.auth.router import router as l_router
+from src.login.login_router import router as login_router
 
 app.include_router(l_router)
+app.include_router(login_router)
 
 # Add CORS middleware
 app.add_middleware(
@@ -533,10 +520,15 @@ async def create_chat(
             )
         )
 
-    tool_choices = ["serper_search", "web_crawler", "python_execute"]
-
-    if sop_memory_enabled:
-        tool_choices.append("skills_extract")
+    # 工具选择列表：如果参数为空则使用默认值
+    if tool_choices is None:
+        tool_choices = ["serper_search", "web_crawler", "python_execute"]
+        if sop_memory_enabled:
+            tool_choices.append("skills_extract")
+    else:
+        # 如果参数已提供，则直接使用，但仍可根据 sop_memory_enabled 添加 skills_extract
+        if sop_memory_enabled and "skills_extract" not in tool_choices:
+            tool_choices.append("skills_extract")
 
     if modul in agent_model_list:
         # 启动智能体异步任务处理用户请求，传入 model_name（可能为 None）
@@ -788,6 +780,7 @@ async def process_agent(
     enable_tools: bool = False,  # 新增工具调用开关
     tool_choices: Optional[List[str]] = None,  # 新增工具选择参数
     selected_skills: Optional[List[str]] = None,  # 用户选中的技能列表
+    workspace_path: Optional[str] = None,  # 新增工作目录路径参数
 ):
     """处理Agent请求的异步函数
 
@@ -800,7 +793,7 @@ async def process_agent(
         user_name: 用户名(可选)，用于工具记忆隔离
     """
     logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name}, selected_skills={selected_skills})"
+        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name}, selected_skills={selected_skills}, workspace_path={workspace_path})"
     )
     team = None
     agent = None
@@ -852,6 +845,35 @@ async def process_agent(
                 enable_skills_memory=sop_memory_enabled,
                 enable_tool_memory=tool_memory_enabled,
                 selected_skills=selected_skills,
+                workspace_path=workspace_path,
+            )
+
+            # 运行 ChatAgent
+            final_result = await chat_agent.run(
+                chat_id=chat_id,
+                text=query,
+                file_analysis_context=file_analysis_context,
+            )
+        elif agentmodul == "task":
+            # task 模式：使用 ChatAgent 类处理，但 stream_manager 为空，不发送流事件
+            logger.info(
+                f"[{chat_id}] 开始 task 模式请求（非流式），工具调用: {enable_tools}"
+            )
+
+            # 创建 ChatAgent 实例，stream_manager 为 None
+            chat_agent = ChatAgent(
+                stream_manager=stream_manager,
+                model_name=model_name,
+                enable_tools=enable_tools,
+                tool_choices=tool_choices,
+                max_tool_iterations=itecount,
+                conversation_id=conversation_id,
+                conversation_round=conversation_round,
+                user_name=user_name,
+                enable_skills_memory=sop_memory_enabled,
+                enable_tool_memory=tool_memory_enabled,
+                selected_skills=selected_skills,
+                workspace_path=workspace_path,
             )
 
             # 运行 ChatAgent
@@ -869,7 +891,11 @@ async def process_agent(
 
         error_msg = f"处理Agent请求失败: {str(e)}"
         logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
-        await stream_manager.send_message(chat_id, await create_error_event(error_msg))
+        # task模式下不发送流事件
+        if agentmodul != "task":
+            await stream_manager.send_message(
+                chat_id, await create_error_event(error_msg)
+            )
         if team is not None:
             await team.stop()
     finally:
@@ -1929,6 +1955,122 @@ def _generate_content_preview(
         preview = preview + "..."
 
     return preview
+
+
+# ===== 任务管理接口 =====
+class TaskRequest(BaseModel):
+    """任务请求模型"""
+
+    query: str = Field(..., description="任务查询内容")
+    modul: str = Field(default="chat", description="任务模式，默认为chat")
+    model_name: Optional[str] = Field(None, description="模型名称")
+    itecount: int = Field(default=5, description="迭代次数")
+    agentid: Optional[str] = Field(None, description="代理ID")
+    team_name: Optional[str] = Field(None, description="团队名称")
+    conversation_id: Optional[str] = Field(None, description="会话ID")
+    conversation_round: int = Field(default=5, description="会话轮数")
+    file_ids: Optional[List[str]] = Field(None, description="文件ID列表")
+    tool_memory_enabled: bool = Field(default=False, description="是否启用工具记忆")
+    sop_memory_enabled: bool = Field(default=False, description="是否启用SOP记忆")
+    enable_tools: bool = Field(default=False, description="是否启用工具调用")
+    tool_choices: Optional[List[str]] = Field(None, description="工具选择列表")
+    selected_skills: Optional[List[str]] = Field(None, description="选中的技能列表")
+    workspace_path: Optional[str] = Field(None, description="工作目录路径")
+    stream: bool = Field(default=False, description="是否启用流式响应")
+
+
+class TaskResponse(BaseModel):
+    """任务响应模型"""
+
+    success: bool = Field(..., description="操作是否成功")
+    task_id: str = Field(..., description="生成的任务ID")
+    chat_id: str = Field(..., description="关联的聊天ID")
+    message: str = Field(..., description="提示信息")
+
+
+@app.post("/task", response_model=TaskResponse)
+async def create_task(request: Request, task_request: TaskRequest):
+    """创建新的任务
+
+    新建任务后返回任务ID，任务执行过程使用process_agent异步处理。
+    """
+    # 获取当前登录用户
+    user = await get_current_user(request)
+    logger.info(f"用户 {user} 创建新的任务")
+    user_name = user.user_name if user else None
+
+    # 生成任务ID和聊天ID
+    task_id = f"task-{uuid.uuid4().hex[:8]}"
+    chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+    # 仅在非task模式下创建流，task模式下不需要流事件
+    if task_request.modul != "task" or task_request.stream:
+        stream_manager.create_stream(chat_id, task_request.query)
+
+    # 如果提供了conversation_id，保存关系
+    if task_request.conversation_id:
+        redis_conn = get_redis_connection()
+        conv_chats_key = f"conversation:{task_request.conversation_id}:chats"
+        redis_conn.rpush(conv_chats_key, chat_id)
+        redis_conn.set(
+            f"chat:{chat_id}:conversation", task_request.conversation_id, ex=None
+        )
+
+        # 异步保存会话摘要信息
+        asyncio.create_task(
+            save_conversation_summary(
+                conversation_id=task_request.conversation_id,
+                chat_id=chat_id,
+                initial_question=task_request.query,
+                user_name=user_name,
+                modul=task_request.modul,
+            )
+        )
+
+    # 准备工具选择列表（与chat端点类似）：如果参数为空则使用默认值
+    if task_request.tool_choices is None:
+        tool_choices = ["serper_search", "web_crawler", "python_execute"]
+        if task_request.sop_memory_enabled:
+            tool_choices.append("skills_extract")
+    else:
+        # 如果参数已提供，则直接使用，但仍可根据 sop_memory_enabled 添加 skills_extract
+        tool_choices = task_request.tool_choices
+        if task_request.sop_memory_enabled and "skills_extract" not in tool_choices:
+            tool_choices.append("skills_extract")
+
+    # 检查模式是否支持
+    if task_request.modul in agent_model_list:
+        # 启动智能体异步任务处理用户请求
+        asyncio.create_task(
+            process_agent(
+                chat_id,
+                task_request.query,
+                task_request.itecount,
+                task_request.agentid,
+                agentmodul=task_request.modul,
+                team_name=task_request.team_name,
+                conversation_id=task_request.conversation_id,
+                model_name=task_request.model_name,
+                conversation_round=task_request.conversation_round,
+                file_ids=task_request.file_ids,
+                user_name=user_name,
+                tool_memory_enabled=task_request.tool_memory_enabled,
+                sop_memory_enabled=task_request.sop_memory_enabled,
+                enable_tools=task_request.enable_tools,
+                tool_choices=tool_choices,
+                selected_skills=task_request.selected_skills,
+                workspace_path=task_request.workspace_path,
+            )
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Invalid model type")
+
+    return TaskResponse(
+        success=True,
+        task_id=task_id,
+        chat_id=chat_id,
+        message="任务创建成功，已启动异步执行",
+    )
 
 
 # ===== 技能列表接口 =====

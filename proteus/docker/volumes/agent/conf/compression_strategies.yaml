@@ -1,0 +1,88 @@
+# 压缩策略配置文件
+# 根据对话类型选择不同的压缩策略
+strategies:
+  debugging:
+    name: "调试会话压缩"
+    method: "selective_pruning"
+    keep_recent_messages: 5
+    preserve_tools:
+      - "skills_extract"
+      - "code_search"
+      - "file_read"
+    aggressiveness: 0.7
+    description: "调试会话中工具输出快速过时，优先修剪旧工具输出"
+
+  code_review:
+    name: "代码审查压缩"
+    method: "hybrid"
+    keep_recent_messages: 8
+    preserve_tools:
+      - "code_search"
+      - "diff_tool"
+      - "lint_tool"
+    aggressiveness: 0.5
+    description: "代码审查需要保留文件更改和决策，混合策略平衡"
+
+  research:
+    name: "研究分析压缩"
+    method: "summary_compression"
+    keep_recent_messages: 10
+    preserve_tools:
+      - "web_search"
+      - "citation_lookup"
+      - "data_analysis"
+    aggressiveness: 0.3
+    description: "研究对话需要保留引用和发现，优先摘要压缩"
+
+  brainstorming:
+    name: "头脑风暴压缩"
+    method: "summary_compression"
+    keep_recent_messages: 6
+    preserve_tools:
+      - "mind_map"
+      - "whiteboard"
+      - "idea_generator"
+    aggressiveness: 0.4
+    description: "头脑风暴需要保留创意流，摘要压缩保持连贯性"
+
+  technical_design:
+    name: "技术设计压缩"
+    method: "summary_compression"
+    keep_recent_messages: 8
+    preserve_tools:
+      - "arch_diagram"
+      - "spec_writer"
+      - "api_designer"
+    aggressiveness: 0.3
+    description: "技术设计需要保留规格和决策，摘要压缩最佳"
+
+  tool_heavy:
+    name: "工具密集型压缩"
+    method: "selective_pruning"
+    keep_recent_messages: 4
+    preserve_tools:
+      - "skills_extract"
+      - "code_search"
+      - "file_read"
+      - "web_search"
+    aggressiveness: 0.6
+    description: "工具密集型对话，优先修剪旧工具输出"
+
+  general:
+    name: "通用压缩"
+    method: "hybrid"
+    keep_recent_messages: 5
+    preserve_tools:
+      - "skills_extract"
+      - "code_search"
+    aggressiveness: 0.5
+    description: "通用对话，平衡摘要压缩和选择性修剪"
+
+# 配置加载设置
+config:
+  # 配置文件路径（相对或绝对）
+  path: "conf/compression_strategies.yaml"
+  # 是否启用动态重载（开发环境）
+  reload_on_change: false
+  # 默认策略（当对话类型未匹配时使用）
+  default_strategy: "general"

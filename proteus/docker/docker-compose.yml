@@ -10,6 +10,7 @@ services:
       - ./volumes/agent/.env:/app/.env
       - ./volumes/agent/conf:/app/conf
       - ./volumes/agent/skills:/app/.proteus/skills
+      - /Users/alishangtian/workspace:/app/workspace
     environment:
       - log_file_path=/app/logs/agent.log
       - TZ=Asia/Shanghai

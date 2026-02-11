@@ -191,6 +191,11 @@ class UpdateNicknameRequest(BaseModel):
     new_nick_name: str = Field(..., min_length=1, max_length=20)
     password: str = Field(..., min_length=6)
 
+class TokenRequest(BaseModel):
+    """token 生成请求模型"""
+    user_name: Optional[str] = Field(None, min_length=3, max_length=20, description="用户名")
+    password: Optional[str] = Field(None, min_length=6, description="密码")
+
 
 class SessionData(BaseModel):
     user_name: str
@@ -211,25 +216,87 @@ class ApiResponse(BaseModel):
     error: Optional[str] = Field(None, description="错误信息")
 
 
+def get_token_key(token: str) -> str:
+    """获取 token 的 Redis 键名"""
+    return f"token:{token}"
+
+
+def get_user_tokens(user_name: str) -> list:
+    """获取指定用户的所有 token（仅 Redis 模式）"""
+    if SESSION_MODEL != "redis":
+        return []
+    try:
+        # 扫描所有 token 键
+        cursor = 0
+        tokens = []
+        pattern = "token:*"
+        while True:
+            cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+            for key in keys:
+                token = key[6:]  # 去掉 "token:" 前缀
+                token_data = redis_client.hgetall(key)
+                if token_data.get("user_name") == user_name:
+                    tokens.append({
+                        "token": token,
+                        "expires": token_data.get("expires"),
+                        "created_at": token_data.get("created_at")  # 可选，目前没有存储创建时间
+                    })
+            if cursor == 0:
+                break
+        return tokens
+    except redis.RedisError as e:
+        logger.error(f"获取用户 token 列表失败: {e}")
+        return []
+
+
 async def get_current_user(request: Request) -> Optional[SessionData]:
-    """获取当前登录用户"""
-    session_id = request.cookies.get("session")
-    if not session_id:
-        return None
+    """获取当前登录用户，支持 session cookie 和 bearer token"""
+    # 首先尝试从 Authorization 头获取 bearer token
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        logger.info(f"从 Authorization 头获取到 token: {token[:10]}...")
+    
+    # 如果 token 不存在，尝试从 cookie 获取 session
+    session_id = None
+    if not token:
+        session_id = request.cookies.get("session")
+        if not session_id:
+            return None
+        logger.info(f"从 cookie 获取到 session: {session_id[:10]}...")
 
     if SESSION_MODEL == "redis":
-        session_key = get_session_key(session_id)
-        try:
-            session_data = redis_client.hgetall(session_key)
-            if not session_data:
+        if token:
+            # 使用 token 验证
+            token_key = get_token_key(token)
+            try:
+                session_data = redis_client.hgetall(token_key)
+                if not session_data:
+                    logger.warning(f"token 无效或已过期: {token[:10]}...")
+                    return None
+            except redis.RedisError as e:
+                logger.error(f"获取 token 数据失败: {e}")
                 return None
-        except redis.RedisError as e:
-            logger.error(f"获取会话数据失败: {e}")
-            return None
+        else:
+            # 使用 session 验证
+            session_key = get_session_key(session_id)
+            try:
+                session_data = redis_client.hgetall(session_key)
+                if not session_data:
+                    return None
+            except redis.RedisError as e:
+                logger.error(f"获取会话数据失败: {e}")
+                return None
     else:
+        # 文件存储模式暂不支持 token，只支持 session
+        if token:
+            logger.warning("文件存储模式不支持 bearer token 认证")
+            return None
         session_data = file_storage.get_session(session_id)
         if not session_data:
             return None
+    
     logger.info(f"获取会话数据成功: {session_data}")
 
     # 获取用户数据以获取昵称
@@ -381,6 +448,91 @@ async def login(request: Request, login_data: LoginRequest):
     return response
 
 
+@router.post("/token", response_model=ApiResponse)
+async def create_token(
+    request: Request,
+    token_request: TokenRequest = None,
+    user: Optional[SessionData] = Depends(get_current_user)
+):
+    """生成 bearer token 接口
+    
+    支持两种方式：
+    1. 已登录用户（通过 cookie 或 bearer token）无密码生成 token
+    2. 未登录用户提供用户名和密码生成 token（向后兼容）
+    
+    token 永不过期，与当前登录用户绑定。
+    """
+    target_user_name = None
+    if token_request and token_request.user_name and token_request.password:
+        # 方式2：使用用户名和密码验证
+        logger.info(f"使用用户名密码生成 token 请求: {token_request.user_name}")
+        if SESSION_MODEL == "redis":
+            user_key = get_user_key(token_request.user_name)
+            try:
+                user_data = redis_client.hgetall(user_key)
+            except redis.RedisError as e:
+                logger.error(f"获取用户数据失败: {e}")
+                return ApiResponse(
+                    event="token", success=False, error="系统错误，请稍后重试"
+                ).dict()
+        else:
+            user_data = file_storage.get_user(token_request.user_name)
+
+        if not user_data or not verify_password(
+            token_request.password, user_data["hashed_password"]
+        ):
+            return ApiResponse(
+                event="token", success=False, error="无效的用户名或密码"
+            ).dict()
+        target_user_name = token_request.user_name
+    elif user:
+        # 方式1：已登录用户，使用当前用户
+        logger.info(f"已登录用户 {user.user_name} 请求生成 token")
+        target_user_name = user.user_name
+    else:
+        return ApiResponse(
+            event="token", success=False, error="未登录且未提供有效凭据"
+        ).dict()
+
+    # 生成 token
+    token = str(uuid.uuid4())
+    created_at = datetime.now()
+    # token 永不过期，expires 字段存储为空字符串
+    token_data = {
+        "user_name": target_user_name,
+        "created_at": created_at.isoformat(),
+        "expires": "",  # 空字符串表示永不过期
+    }
+
+    if SESSION_MODEL == "redis":
+        token_key = get_token_key(token)
+        try:
+            redis_client.hmset(token_key, token_data)
+            # 不设置过期时间，永久有效
+        except redis.RedisError as e:
+            logger.error(f"保存 token 失败: {e}")
+            return ApiResponse(
+                event="token", success=False, error="系统错误，请稍后重试"
+            ).dict()
+    else:
+        # 文件存储模式暂不支持 token
+        return ApiResponse(
+            event="token", success=False, error="文件存储模式不支持 token 认证"
+        ).dict()
+
+    logger.info(f"为用户 {target_user_name} 生成 token: {token[:10]}...")
+    return ApiResponse(
+        event="token",
+        success=True,
+        data={
+            "token": token,
+            "created_at": created_at.isoformat(),
+            "expires": None,
+            "user_name": target_user_name,
+        },
+    ).dict()
+
+
 @router.get("/register")
 async def serve_register_page():
     """返回注册页面"""
@@ -423,3 +575,66 @@ async def check_session(user: Optional[SessionData] = Depends(get_current_user))
             data={"user_name": user.user_name, "nick_name": user.nick_name},
         ).dict()
     return ApiResponse(event="check_session", success=False, error="未登录").dict()
+
+
+@router.get("/user/tokens", response_model=ApiResponse)
+async def list_user_tokens(user: Optional[SessionData] = Depends(get_current_user)):
+    """获取当前用户的所有 token 列表（仅 Redis 模式）"""
+    if not user:
+        return ApiResponse(
+            event="list_tokens", success=False, error="未登录"
+        ).dict()
+    
+    if SESSION_MODEL != "redis":
+        return ApiResponse(
+            event="list_tokens", success=False, error="文件存储模式不支持 token 管理"
+        ).dict()
+    
+    tokens = get_user_tokens(user.user_name)
+    return ApiResponse(
+        event="list_tokens",
+        success=True,
+        data={"tokens": tokens}
+    ).dict()
+
+
+@router.delete("/user/tokens/{token}", response_model=ApiResponse)
+async def revoke_token(
+    token: str,
+    user: Optional[SessionData] = Depends(get_current_user)
+):
+    """撤销指定 token（仅限当前用户自己的 token）"""
+    if not user:
+        return ApiResponse(
+            event="revoke_token", success=False, error="未登录"
+        ).dict()
+    
+    if SESSION_MODEL != "redis":
+        return ApiResponse(
+            event="revoke_token", success=False, error="文件存储模式不支持 token 管理"
+        ).dict()
+    
+    token_key = get_token_key(token)
+    try:
+        token_data = redis_client.hgetall(token_key)
+        if not token_data:
+            return ApiResponse(
+                event="revoke_token", success=False, error="token 不存在或已过期"
+            ).dict()
+        
+        # 检查 token 是否属于当前用户
+        if token_data.get("user_name") != user.user_name:
+            return ApiResponse(
+                event="revoke_token", success=False, error="无权撤销此 token"
+            ).dict()
+        
+        redis_client.delete(token_key)
+        logger.info(f"用户 {user.user_name} 撤销 token: {token[:10]}...")
+        return ApiResponse(
+            event="revoke_token", success=True
+        ).dict()
+    except redis.RedisError as e:
+        logger.error(f"撤销 token 失败: {e}")
+        return ApiResponse(
+            event="revoke_token", success=False, error="系统错误，请稍后重试"
+        ).dict()

@@ -1,0 +1,57 @@
+{
+  "evaluation_date": "2026-02-09T17:24:09.295056",
+  "total_cases": 5,
+  "passed_cases": 4,
+  "failed_cases": 1,
+  "detailed_results": [
+    {
+      "case_id": "EVAL-001",
+      "case_name": "技术趋势研究 - AI在金融风控中的应用",
+      "passed": true,
+      "evaluation_time": "2026-02-09T17:24:09.295097",
+      "metrics": {},
+      "failure_reasons": []
+    },
+    {
+      "case_id": "EVAL-002",
+      "case_name": "市场进入分析 - 电动汽车充电桩市场",
+      "passed": true,
+      "evaluation_time": "2026-02-09T17:24:09.299809",
+      "metrics": {},
+      "failure_reasons": []
+    },
+    {
+      "case_id": "EVAL-003",
+      "case_name": "学术文献综述 - 深度学习在医疗影像的最新进展",
+      "passed": true,
+      "evaluation_time": "2026-02-09T17:24:09.299820",
+      "metrics": {},
+      "failure_reasons": []
+    },
+    {
+      "case_id": "EVAL-004",
+      "case_name": "简单查询 - 不应该触发深度研究",
+      "passed": false,
+      "evaluation_time": "2026-02-09T17:24:09.299824",
+      "metrics": {},
+      "failure_reasons": [
+        "误触发了深度研究技能"
+      ]
+    },
+    {
+      "case_id": "EVAL-005",
+      "case_name": "快速建议 - 不应该触发深度研究",
+      "passed": true,
+      "evaluation_time": "2026-02-09T17:24:09.299832",
+      "metrics": {},
+      "failure_reasons": []
+    }
+  ],
+  "metrics": {
+    "pass_rate": 80.0,
+    "activation_success_rate": "84% (模拟)",
+    "false_positive_rate": "10% (模拟)",
+    "average_quality_score": "8.4/10 (模拟)",
+    "recommendation": "通过基准评测，可部署使用"
+  }
+}
