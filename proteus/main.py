@@ -11,7 +11,6 @@ import json
 import asyncio
 import yaml
 import time
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
@@ -29,15 +28,10 @@ from sse_starlette.sse import EventSourceResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.utils.logger import setup_logger
-from src.agent.prompt.react_playbook_prompt_v3 import REACT_PLAYBOOK_PROMPT_v3
-from src.agent.prompt.cot_team_prompt import COT_TEAM_PROMPT_TEMPLATES
-from src.agent.prompt.code_agent_system_prompt import CODE_AGENT_SYSTEM_PROMPT
-from src.agent.prompt.cot_browser_use_prompt import COT_BROWSER_USE_PROMPT_TEMPLATES
 from src.agent.chat_agent import ChatAgent
+from src.tasks.task_processor import TaskProcessor
 from src.utils.langfuse_wrapper import langfuse_wrapper
-from src.api.events import (
-    create_complete_event,
-)
+from src.login.login_router import get_user_from_token
 
 language = os.getenv("LANGUAGE", "中文")
 # 设置MCP配置文件路径
@@ -635,11 +629,6 @@ async def replay_stream_request(chat_id: str):
     )
 
 
-from src.utils.md_title_extractor import (
-    extract_title_from_md,
-)
-
-
 async def generate_conversation_title(text_content: str) -> str:
     """根据 Markdown 内容提取第一个一级标题作为会话标题。
     如果不存在一级标题，则使用文本开头截断作为标题。
@@ -651,44 +640,39 @@ async def generate_conversation_title(text_content: str) -> str:
         生成的会话标题。
     """
     try:
-        title = extract_title_from_md(text_content)
-        if title:
-            # 清理标题，移除可能的引号和多余空格
-            return title
-        else:
-            logger.info("内容中未检测到一级标题，尝试使用 LLM 生成标题")
-            # 如果没有一级标题，回退到原来的 LLM 生成标题逻辑
-            # 构建提示词，要求生成简洁的标题
-            messages = [
-                {
-                    "role": "system",
-                    "content": "你是一个专业的标题生成助手。请根据以下内容生成一个简洁、准确的会话标题，不超过25个字。只返回标题文本，不要有任何其他内容。",
-                },
-                {
-                    "role": "user",
-                    "content": f"请为以下内容生成一个简洁的会话标题：\n\n{text_content}",
-                },
-            ]
+        logger.info("内容中未检测到一级标题，尝试使用 LLM 生成标题")
+        # 如果没有一级标题，回退到原来的 LLM 生成标题逻辑
+        # 构建提示词，要求生成简洁的标题
+        messages = [
+            {
+                "role": "system",
+                "content": "你是一个专业的标题生成助手。请根据以下内容生成一个简洁、准确的会话标题，不超过25个字。只返回标题文本，不要有任何其他内容。",
+            },
+            {
+                "role": "user",
+                "content": f"请为以下内容生成一个简洁的会话标题：\n\n{text_content}",
+            },
+        ]
 
-            # 调用 LLM API 生成标题
-            from src.api.llm_api import call_llm_api
+        # 调用 LLM API 生成标题
+        from src.api.llm_api import call_llm_api
 
-            llm_title, _ = await call_llm_api(
-                messages=messages,
-                request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                temperature=0.3,  # 使用较低的温度以获得更稳定的输出
-                model_name="deepseek-chat",  # 使用默认模型
-            )
+        llm_title, _ = await call_llm_api(
+            messages=messages,
+            request_id=f"title-gen-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            temperature=0.3,  # 使用较低的温度以获得更稳定的输出
+            model_name="deepseek-chat",  # 使用默认模型
+        )
 
-            # 清理标题，移除可能的引号和多余空格
-            llm_title = llm_title.strip().strip('"').strip("'").strip()
+        # 清理标题，移除可能的引号和多余空格
+        llm_title = llm_title.strip().strip('"').strip("'").strip()
 
-            # 如果标题过长，截断并添加省略号
-            if len(llm_title) > 25:
-                llm_title = llm_title[:22] + "..."
+        # 如果标题过长，截断并添加省略号
+        if len(llm_title) > 25:
+            llm_title = llm_title[:22] + "..."
 
-            logger.info(f"LLM 生成会话标题: {llm_title}")
-            return llm_title
+        logger.info(f"LLM 生成会话标题: {llm_title}")
+        return llm_title
 
     except Exception as e:
         logger.warning(f"生成会话标题失败，回退到简单截断方式: {str(e)}")
@@ -718,48 +702,15 @@ async def save_conversation_summary(
         modul: 模型类型
         final_result: 最终的会话结果，如果存在则用于生成标题
     """
-    try:
-        redis_conn = get_redis_connection()
-        conversation_key = f"conversation:{conversation_id}:info"
-        user_name = user_name or "anonymous"
-
-        # 优先使用 final_result 生成标题，否则使用 initial_question
-        title = await generate_conversation_title(final_result or initial_question)
-
-        # 检查会话是否已存在
-        if not redis_conn.exists(conversation_key):
-            # 新建会话：保存完整信息
-            conversation_data = {
-                "conversation_id": conversation_id,
-                "title": title,
-                "initial_question": initial_question,
-                "user_name": user_name,
-                "modul": modul or "unknown",
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-                "first_chat_id": chat_id,
-            }
-            redis_conn.hmset(conversation_key, mapping=conversation_data)
-
-            # 添加到用户的会话列表（有序集合，按时间戳排序）
-            user_conversations_key = f"user:{user_name}:conversations"
-            timestamp = time.time()
-            redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
-            logger.info(f"已创建会话摘要: {conversation_id}, 标题: {title}")
-        else:
-            # 已存在会话：更新标题和时间戳
-            redis_conn.hset(conversation_key, "title", title)
-            redis_conn.hset(conversation_key, "updated_at", datetime.now().isoformat())
-
-            # 更新用户在有序集合中的时间戳，确保按更新时间排序
-            user_conversations_key = f"user:{user_name}:conversations"
-            timestamp = time.time()
-            redis_conn.zadd(user_conversations_key, {conversation_id: timestamp})
-
-            logger.info(f"已更新会话摘要: {conversation_id}, 新标题: {title}")
-
-    except Exception as e:
-        logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
+    processor = TaskProcessor()
+    await processor._save_conversation_summary(
+        conversation_id=conversation_id,
+        chat_id=chat_id,
+        initial_question=initial_question,
+        user_name=user_name,
+        modul=modul,
+        final_result=final_result,
+    )
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -792,126 +743,183 @@ async def process_agent(
         agentmodel: 代理模型(可选)
         user_name: 用户名(可选)，用于工具记忆隔离
     """
-    logger.info(
-        f"[{chat_id}] 开始处理Agent请求: {query[:100]}... (agentid={agentid}, user_name={user_name}, selected_skills={selected_skills}, workspace_path={workspace_path})"
+    processor = TaskProcessor()
+    return await processor.process(
+        chat_id=chat_id,
+        query=query,
+        itecount=itecount,
+        agentid=agentid,
+        agentmodul=agentmodul,
+        team_name=team_name,
+        conversation_id=conversation_id,
+        model_name=model_name,
+        conversation_round=conversation_round,
+        file_ids=file_ids,
+        user_name=user_name,
+        tool_memory_enabled=tool_memory_enabled,
+        sop_memory_enabled=sop_memory_enabled,
+        enable_tools=enable_tools,
+        tool_choices=tool_choices,
+        selected_skills=selected_skills,
+        workspace_path=workspace_path,
     )
-    team = None
-    agent = None
-    final_result = None
+
+
+@app.on_event("startup")
+async def start_task_consumer():
+    """启动任务消费者，从Redis队列中获取任务并异步处理"""
+    logger.info("启动任务消费者...")
+    asyncio.create_task(consume_tasks())
+
+
+async def consume_tasks():
+    """持续消费Redis队列中的任务"""
+    from src.utils.redis_cache import get_redis_connection
+    import json
+    import asyncio
+
+    redis_conn = get_redis_connection()
+    queue_key = "task_queue"
+    logger.info(f"开始监听队列: {queue_key}")
+    while True:
+        try:
+            # 阻塞式获取任务，使用异步线程避免阻塞事件循环
+            item = await asyncio.to_thread(redis_conn.blpop, queue_key, timeout=1)
+            if item is None:
+                continue
+            _, task_json = item
+            task_data = json.loads(task_json)
+            logger.info(f"接收到任务: {task_data.get('task_id', 'unknown')}")
+            # 异步执行任务处理
+            asyncio.create_task(process_task(task_data))
+        except Exception as e:
+            logger.error(f"消费任务时发生错误: {e}", exc_info=True)
+            await asyncio.sleep(1)
+
+
+async def process_task(task_data: dict):
+    """处理单个任务，调用 TaskProcessor"""
     try:
-        logger.info(f"[{chat_id}] process_agent 接收到的 file_ids: {file_ids}")
-        file_analysis_context = ""
-        if file_ids:
-            redis_conn = get_redis_connection()
-            for file_id in file_ids:
-                file_data_str = redis_conn.get(f"file_analysis:{file_id}")
-                if file_data_str:
-                    file_data = json.loads(file_data_str)
-                    analysis = file_data.get("analysis")
-                    original_filename = file_data.get("original_filename", "未知文件")
-                    file_type = file_data.get("file_type", "未知类型")
-
-                    if analysis:
-                        file_analysis_context += f"\n\n用户上传了文件 '{original_filename}' ({file_type})，其解析内容如下：\n{analysis}"
-                    else:
-                        file_analysis_context += f"\n\n用户上传了文件 '{original_filename}' ({file_type})，该文件不支持解析，只进行了上传。"
-                else:
-                    logger.warning(
-                        f"[{chat_id}] Redis 中未找到 file_id: {file_id} 的文件分析数据。"
-                    )
-            if file_analysis_context:
-                logger.info(
-                    f"[{chat_id}] 已将文件解析内容添加到context中。长度: {len(file_analysis_context)}"
-                )
+        # 提取任务类型
+        task_type = task_data.get("task_type", "start")
+        
+        # 如果是停止任务，则执行停止逻辑
+        if task_type == "stop":
+            chat_id = task_data.get("chat_id")
+            if not chat_id:
+                logger.error("停止任务缺少 chat_id")
+                return
+            # token 验证（可选，但建议保留）
+            token = task_data.get("token")
+            if token:
+                token_user = await get_user_from_token(token)
+                if token_user is None:
+                    logger.error(f"token 验证失败: {token[:10]}...")
+                    raise ValueError("token 验证不通过")
+                logger.info(f"从 token 中获取用户: {token_user}")
+            agents = ChatAgent.get_agents(chat_id)
+            if agents:
+                for agent in agents:
+                    await agent.stop()
+                logger.info(f"已停止聊天: {chat_id}")
             else:
-                logger.info(f"[{chat_id}] 没有文件解析内容需要添加到文本中。")
-
-        if agentmodul == "chat":
-            # chat 模式：使用 ChatAgent 类处理
-            logger.info(
-                f"[{chat_id}] 开始 chat 模式请求（流式），工具调用: {enable_tools}"
-            )
-
-            # 创建 ChatAgent 实例
-            chat_agent = ChatAgent(
-                stream_manager=stream_manager,
-                model_name=model_name,
-                enable_tools=enable_tools,
-                tool_choices=tool_choices,
-                max_tool_iterations=itecount,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                enable_skills_memory=sop_memory_enabled,
-                enable_tool_memory=tool_memory_enabled,
-                selected_skills=selected_skills,
-                workspace_path=workspace_path,
-            )
-
-            # 运行 ChatAgent
-            final_result = await chat_agent.run(
-                chat_id=chat_id,
-                text=query,
-                file_analysis_context=file_analysis_context,
-            )
-        elif agentmodul == "task":
-            # task 模式：使用 ChatAgent 类处理，但 stream_manager 为空，不发送流事件
-            logger.info(
-                f"[{chat_id}] 开始 task 模式请求（非流式），工具调用: {enable_tools}"
-            )
-
-            # 创建 ChatAgent 实例，stream_manager 为 None
-            chat_agent = ChatAgent(
-                stream_manager=stream_manager,
-                model_name=model_name,
-                enable_tools=enable_tools,
-                tool_choices=tool_choices,
-                max_tool_iterations=itecount,
-                conversation_id=conversation_id,
-                conversation_round=conversation_round,
-                user_name=user_name,
-                enable_skills_memory=sop_memory_enabled,
-                enable_tool_memory=tool_memory_enabled,
-                selected_skills=selected_skills,
-                workspace_path=workspace_path,
-            )
-
-            # 运行 ChatAgent
-            final_result = await chat_agent.run(
-                chat_id=chat_id,
-                text=query,
-                file_analysis_context=file_analysis_context,
-            )
+                logger.info(f"未找到活跃的 agent: {chat_id}")
+            # 停止任务处理完毕，无需继续执行
+            return
+        
+        # 以下是原有的开始任务处理逻辑
+        # 提取任务参数
+        task_id = task_data.get("task_id")
+        query = task_data.get("query")
+        modul = task_data.get("modul", "chat")
+        model_name = task_data.get("model_name")
+        itecount = task_data.get("itecount", 100)
+        agentid = task_data.get("agentid")
+        team_name = task_data.get("team_name")
+        conversation_id = task_data.get("conversation_id")
+        conversation_round = task_data.get("conversation_round", 20)
+        file_ids = task_data.get("file_ids")
+        user_name = task_data.get("user_name")
+        tool_memory_enabled = task_data.get("tool_memory_enabled", False)
+        sop_memory_enabled = task_data.get("sop_memory_enabled", True)
+        enable_tools = task_data.get("enable_tools", True)
+        tool_choices = task_data.get("tool_choices")
+        selected_skills = task_data.get("selected_skills")
+        token = task_data.get("token")  # 可能需要用于认证
+        # token 验证
+        if token:
+            token_user = await get_user_from_token(token)
+            if token_user is None:
+                logger.error(f"token 验证失败: {token[:10]}...")
+                raise ValueError("token 验证不通过")
+            # 使用 token 中的用户信息覆盖 user_name
+            user_name = token_user
+            logger.info(f"从 token 中获取用户: {user_name}")
         else:
-            await stream_manager.send_message(
-                chat_id, await create_error_event("工作模式未定义")
-            )
-    except Exception as e:
-        from src.api.events import create_error_event
+            # 如果没有提供 token，检查 user_name 是否存在
+            raise ValueError("token 验证不通过")
+        # 获取 chat_id，如果不存在则生成新的
+        from datetime import datetime
 
-        error_msg = f"处理Agent请求失败: {str(e)}"
-        logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
-        # task模式下不发送流事件
-        if agentmodul != "task":
-            await stream_manager.send_message(
-                chat_id, await create_error_event(error_msg)
-            )
-        if team is not None:
-            await team.stop()
-    finally:
-        # 会话完成后异步更新会话标题 - 仅当 final_result 有内容时才尝试更新，以生成更准确的标题
-        if conversation_id and final_result:
+        chat_id = task_data.get("chat_id")
+        if not chat_id:
+            chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            logger.warning(f"任务中未提供 chat_id，使用生成的 chat_id: {chat_id}")
+
+        # 保存 conversation_id 和 chat_id 的关系到 Redis（类似 /chat 接口中的逻辑）
+        if conversation_id:
+            redis_conn = get_redis_connection()
+            # 使用 List 存储一个 conversation_id 对应的多个 chat_id
+            conv_chats_key = f"conversation:{conversation_id}:chats"
+            redis_conn.rpush(conv_chats_key, chat_id)
+            # redis_conn.expire(conv_chats_key, 7 * 24 * 3600)  # 7天过期
+
+            # 保存反向映射关系
+            redis_conn.set(f"chat:{chat_id}:conversation", conversation_id, ex=None)
+
+            # 异步保存会话摘要信息
             asyncio.create_task(
                 save_conversation_summary(
                     conversation_id=conversation_id,
                     chat_id=chat_id,
-                    initial_question=query,  # 仍然传递原始问题以防LLM生成失败
+                    initial_question=query,
                     user_name=user_name,
-                    modul=agentmodul,
-                    final_result=final_result,  # 传递最终结果以生成更准确的标题
+                    modul=modul,
                 )
             )
-        return {"status": "success", "final_result": final_result, "text": query}
+
+        if tool_choices is None:
+            tool_choices = ["serper_search", "web_crawler", "python_execute"]
+            if sop_memory_enabled:
+                tool_choices.append("skills_extract")
+        else:
+            if sop_memory_enabled and "skills_extract" not in tool_choices:
+                tool_choices.append("skills_extract")
+
+        # 调用 TaskProcessor
+        processor = TaskProcessor()
+        await processor.process(
+            chat_id=chat_id,
+            query=query,
+            itecount=itecount,
+            agentid=agentid,
+            agentmodul=modul,
+            team_name=team_name,
+            conversation_id=conversation_id,
+            model_name=model_name,
+            conversation_round=conversation_round,
+            file_ids=file_ids,
+            user_name=user_name,
+            tool_memory_enabled=tool_memory_enabled,
+            sop_memory_enabled=sop_memory_enabled,
+            enable_tools=enable_tools,
+            tool_choices=tool_choices,
+            selected_skills=selected_skills,
+            workspace_path=None,
+        )
+        logger.info(f"任务处理完成: {task_id}")
+    except Exception as e:
+        logger.error(f"处理任务失败: {task_id}, 错误: {e}", exc_info=True)
 
 
 # 提供模型配置列表接口，供前端下拉使用
@@ -1962,20 +1970,22 @@ class TaskRequest(BaseModel):
     """任务请求模型"""
 
     query: str = Field(..., description="任务查询内容")
-    modul: str = Field(default="chat", description="任务模式，默认为chat")
-    model_name: Optional[str] = Field(None, description="模型名称")
-    itecount: int = Field(default=5, description="迭代次数")
+    workspace_path: str = Field(..., description="工作目录路径")
+    modul: str = Field(default="task", description="任务模式，默认为task")
+    model_name: Optional[str] = Field(
+        default="deepseek-reasoner", description="模型名称"
+    )
+    itecount: int = Field(default=200, description="迭代次数")
     agentid: Optional[str] = Field(None, description="代理ID")
     team_name: Optional[str] = Field(None, description="团队名称")
     conversation_id: Optional[str] = Field(None, description="会话ID")
     conversation_round: int = Field(default=5, description="会话轮数")
     file_ids: Optional[List[str]] = Field(None, description="文件ID列表")
     tool_memory_enabled: bool = Field(default=False, description="是否启用工具记忆")
-    sop_memory_enabled: bool = Field(default=False, description="是否启用SOP记忆")
-    enable_tools: bool = Field(default=False, description="是否启用工具调用")
+    sop_memory_enabled: bool = Field(default=True, description="是否启用SOP记忆")
+    enable_tools: bool = Field(default=True, description="是否启用工具调用")
     tool_choices: Optional[List[str]] = Field(None, description="工具选择列表")
     selected_skills: Optional[List[str]] = Field(None, description="选中的技能列表")
-    workspace_path: Optional[str] = Field(None, description="工作目录路径")
     stream: bool = Field(default=False, description="是否启用流式响应")
 
 

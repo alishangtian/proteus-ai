@@ -58,7 +58,9 @@ async def parse_file(file_path: str, file_type: str, file_id: str) -> Optional[s
                 },
             ]
             resp, _ = await call_multimodal_llm_api(
-                messages=messages, request_id=file_id
+                messages=messages,
+                request_id=file_id,
+                model_name=os.getenv("MULTIMODAL_MODEL", "qwen3.5-397b-a17b"),
             )
             parsed_content = resp
             logger.info(f"图片文件 '{file_path}' 解析成功")

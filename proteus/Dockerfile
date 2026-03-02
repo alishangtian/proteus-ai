@@ -23,6 +23,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y telnet \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Python environment from builder
 COPY --from=builder /venv /venv
 ENV VIRTUAL_ENV=/venv

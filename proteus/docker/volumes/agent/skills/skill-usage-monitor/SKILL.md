@@ -1,10 +1,13 @@
 ---
 name: skill-usage-monitor
-description: Skills usage frequency monitoring and analytics system. Tracks skill usage, identifies low-usage skills, and generates usage reports. Use when you want to monitor skill usage patterns, identify underutilized skills, or generate skill usage analytics.
+description: Skills usage frequency monitoring and analytics system. Tracks skill
+  usage, identifies low-usage skills, and generates usage reports. Use when you want
+  to monitor skill usage patterns, identify underutilized skills, or generate skill
+  usage analytics.
 allowed-tools:
-  - python_execute
+- python_execute
+version: 1.0.0
 ---
-
 # Skill Usage Monitor
 
 ## 🎯 Overview

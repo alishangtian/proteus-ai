@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+Multi-task deep research initialization script
+支持依赖关系的子任务管理
+"""
+
+import os
+import json
+import shutil
+from datetime import datetime
+
+def create_subtask_structure(task_dir, subtask_name, subtask_description, dependencies=None, subtask_query=None):
+    """
+    Create directory structure and files for a subtask with dependencies support
+    
+    Args:
+        task_dir: Main task directory
+        subtask_name: Name of the subtask
+        subtask_description: Description of the subtask
+        dependencies: List of subtask names this task depends on (default: empty list)
+        subtask_query: Research query for this subtask
+    """
+    # Clean subtask name for directory
+    clean_subtask_name = subtask_name.replace(" ", "_").replace("/", "_")
+    subtask_dir = os.path.join(task_dir, "sub_tasks", clean_subtask_name)
+    os.makedirs(subtask_dir, exist_ok=True)
+    
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Default dependencies to empty list
+    if dependencies is None:
+        dependencies = []
+    
+    # Format dependencies for display
+    if dependencies:
+        deps_display = "\n".join([f"- {dep}" for dep in dependencies])
+    else:
+        deps_display = "无"
+    
+    # Create subtask plan from template
+    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 
+                                 "templates", "sub_task_template.md")
+    subtask_plan_path = os.path.join(subtask_dir, "task_plan.md")
+    
+    if os.path.exists(template_path):
+        try:
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template = f.read()
+            
+            # Replace template variables
+            filled = template.replace("[子任务名称]", subtask_name)
+            filled = filled.replace("[在此描述子任务的具体目标和研究问题]", subtask_description)
+            filled = filled.replace("[YYYY-MM-DD HH:MM:SS]", current_time)
+            filled = filled.replace("[主任务名称]", os.path.basename(task_dir))
+            filled = filled.replace("[依赖的子任务名称，如无则写\"无\"]", deps_display)
+            
+            with open(subtask_plan_path, 'w', encoding='utf-8') as f:
+                f.write(filled)
+        except Exception as e:
+            print(f"Warning: Could not use template: {e}")
+            # Create simple plan
+            with open(subtask_plan_path, 'w', encoding='utf-8') as f:
+                f.write(f"# 子任务规划: {subtask_name}\n\n")
+                f.write(f"## 子任务目标\n{subtask_description}\n\n")
+                f.write(f"## 依赖任务\n{deps_display}\n\n")
+                f.write(f"## 当前状态\n**状态:** pending\n**开始时间:** {current_time}\n")
+    else:
+        # Create simple plan
+        with open(subtask_plan_path, 'w', encoding='utf-8') as f:
+            f.write(f"# 子任务规划: {subtask_name}\n\n")
+            f.write(f"## 子任务目标\n{subtask_description}\n\n")
+            f.write(f"## 依赖任务\n{deps_display}\n\n")
+            f.write(f"## 当前状态\n**状态:** pending\n**开始时间:** {current_time}\n")
+    
+    # Create empty findings.md
+    findings_path = os.path.join(subtask_dir, "findings.md")
+    with open(findings_path, 'w', encoding='utf-8') as f:
+        f.write(f"# 研究发现: {subtask_name}\n\n")
+        f.write(f"**子任务:** {subtask_name}\n**状态:** 进行中\n**开始时间:** {current_time}\n")
+        f.write(f"**依赖任务:** {', '.join(dependencies) if dependencies else '无'}\n\n")
+        f.write("## 关键发现\n[等待研究完成]\n\n")
+        f.write("## 数据来源\n[等待研究完成]\n")
+    
+    # Create empty progress.md
+    progress_path = os.path.join(subtask_dir, "progress.md")
+    with open(progress_path, 'w', encoding='utf-8') as f:
+        f.write(f"# 进度跟踪: {subtask_name}\n\n")
+        f.write(f"**子任务:** {subtask_name}\n**状态:** 未开始\n**进度:** 0%\n")
+        f.write(f"**依赖任务:** {', '.join(dependencies) if dependencies else '无'}\n\n")
+        f.write("## 活动日志\n")
+        f.write(f"- {current_time}: 子任务创建\n")
+    
+    return clean_subtask_name
+
+def init_multi_task_research(task_name, task_description, subtasks=None, base_dir="/app/data/tasks", 
+                            auto_start_subtasks=False, api_config=None):
+    """
+    Initialize multi-task research project with dependency support
+    
+    Args:
+        task_name: Name of the main task
+        task_description: Description of the main task
+        subtasks: List of subtask dictionaries with 'name', 'description', and optionally 'dependencies' and 'query'
+        base_dir: Base directory for tasks
+        auto_start_subtasks: Whether to automatically start subtasks after creation (但启动时会考虑依赖关系)
+        api_config: API configuration for starting subtasks
+    """
+    
+    # Clean task name for directory
+    clean_task_name = task_name.replace(" ", "_").replace("/", "_")
+    task_dir = os.path.join(base_dir, clean_task_name)
+    
+    print(f"初始化多任务研究: {task_name}")
+    
+    try:
+        # Create directories
+        os.makedirs(task_dir, exist_ok=True)
+        os.makedirs(os.path.join(task_dir, "sub_tasks"), exist_ok=True)
+        os.makedirs(os.path.join(task_dir, "reports"), exist_ok=True)
+        os.makedirs(os.path.join(task_dir, "data", "sources"), exist_ok=True)
+        os.makedirs(os.path.join(task_dir, "data", "analysis"), exist_ok=True)
+        
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Create master files from templates if available
+        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+        
+        # master_task_plan.md
+        master_plan_path = os.path.join(task_dir, "master_task_plan.md")
+        master_plan_template = os.path.join(template_dir, "master_task_plan.md")
+        
+        if os.path.exists(master_plan_template):
+            with open(master_plan_template, 'r', encoding='utf-8') as f:
+                template = f.read()
+            filled = template.replace("[任务名称]", task_name)
+            filled = filled.replace("[任务描述]", task_description)
+            filled = filled.replace("[YYYY-MM-DD HH:MM:SS]", current_time)
+            with open(master_plan_path, 'w', encoding='utf-8') as f:
+                f.write(filled)
+        else:
+            with open(master_plan_path, 'w', encoding='utf-8') as f:
+                f.write(f"# 主任务规划: {task_name}\n\n")
+                f.write(f"## 总体目标\n{task_description}\n\n")
+                f.write(f"## 当前状态\n**状态:** planning\n**开始时间:** {current_time}\n")
+        
+        # master_findings.md
+        master_findings_path = os.path.join(task_dir, "master_findings.md")
+        master_findings_template = os.path.join(template_dir, "master_findings.md")
+        
+        if os.path.exists(master_findings_template):
+            shutil.copy(master_findings_template, master_findings_path)
+        else:
+            with open(master_findings_path, 'w', encoding='utf-8') as f:
+                f.write(f"# 主研究发现: {task_name}\n\n## 执行摘要\n[等待研究完成]\n")
+        
+        # master_progress.md
+        master_progress_path = os.path.join(task_dir, "master_progress.md")
+        master_progress_template = os.path.join(template_dir, "master_progress.md")
+        
+        if os.path.exists(master_progress_template):
+            shutil.copy(master_progress_template, master_progress_path)
+        else:
+            with open(master_progress_path, 'w', encoding='utf-8') as f:
+                f.write(f"# 主任务进度: {task_name}\n\n## 总体进度\n**总体进度:** 0%\n")
+        
+        # Prepare subtasks list
+        if subtasks is None:
+            subtasks = []
+        
+        subtask_configs = []
+        subtask_name_map = {}  # Map subtask names to their configs for dependency validation
+        
+        print(f"创建 {len(subtasks)} 个子任务...")
+        for subtask in subtasks:
+            subtask_name = subtask.get("name", f"子任务 {len(subtask_configs)+1}")
+            subtask_desc = subtask.get("description", "")
+            subtask_deps = subtask.get("dependencies", [])  # List of subtask names
+            subtask_query = subtask.get("query", subtask_desc)
+            
+            print(f"  创建子任务: {subtask_name}")
+            if subtask_deps:
+                print(f"    依赖: {', '.join(subtask_deps)}")
+            
+            clean_subtask_name = create_subtask_structure(
+                task_dir, subtask_name, subtask_desc, subtask_deps, subtask_query
+            )
+            
+            subtask_config = {
+                "name": subtask_name,
+                "clean_name": clean_subtask_name,
+                "description": subtask_desc,
+                "query": subtask_query,
+                "directory": clean_subtask_name,
+                "dependencies": subtask_deps,  # Store dependencies
+                "status": "pending",
+                "progress": 0.0,
+                "created_at": current_time,
+                "started_at": None,
+                "completed_at": None,
+                "last_activity": current_time,
+                "error_count": 0,
+                "api_calls": 0
+            }
+            subtask_configs.append(subtask_config)
+            subtask_name_map[subtask_name] = subtask_config
+        
+        # Validate dependencies
+        print("\n验证依赖关系...")
+        valid = True
+        for subtask_config in subtask_configs:
+            for dep_name in subtask_config["dependencies"]:
+                if dep_name not in subtask_name_map:
+                    print(f"  ⚠ 警告: 子任务 '{subtask_config['name']}' 依赖不存在的子任务 '{dep_name}'")
+                    valid = False
+                else:
+                    print(f"  ✓ 子任务 '{subtask_config['name']}' -> '{dep_name}' (依赖存在)")
+        
+        if not valid:
+            print("\n⚠ 警告: 存在无效依赖关系，可能会影响任务执行顺序")
+        
+        # Default API configuration
+        default_api_config = {
+            "endpoint": "https://127.0.0.1/task",
+            "auth_token": "9921ff12-6ff6-4756-bc1a-37e22e04ae70",
+            "model_name": "deepseek-reasoner",
+            "itecount": 200,
+            "conversation_round": 5,
+            "tool_choices": ["serper_search", "web_crawler", "python_execute"],
+            "selected_skills": ["planning-with-file"],
+        }
+        
+        # Merge with provided API config
+        final_api_config = default_api_config.copy()
+        if api_config:
+            final_api_config.update(api_config)
+        
+        # Create task config
+        task_config = {
+            "task_name": task_name,
+            "clean_task_name": clean_task_name,
+            "task_description": task_description,
+            "created_at": current_time,
+            "updated_at": current_time,
+            "status": "planning",
+            "base_dir": task_dir,
+            "subtasks": subtask_configs,
+            "monitoring": {
+                "enabled": True,
+                "interval_seconds": 300,
+                "last_check": current_time,
+                "next_check": current_time
+            },
+            "api_config": final_api_config,
+            "metadata": {
+                "version": "1.1.0",  # Updated version
+                "created_by": "multi-task-deep-research skill",
+                "skill_version": "v1.1.0"
+            },
+            "overall_progress": 0.0
+        }
+        
+        config_path = os.path.join(task_dir, "task_config.json")
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(task_config, f, indent=2, ensure_ascii=False)
+        
+        print(f"\n✓ 项目创建成功: {task_dir}")
+        print(f"  - 创建 {len(subtask_configs)} 个子任务")
+        print(f"  - 配置保存到: {config_path}")
+        
+        # Calculate dependency order for display
+        try:
+            from scripts.start_subtasks import topological_sort
+            sorted_tasks = topological_sort(subtask_configs)
+            print(f"  - 依赖执行顺序: {', '.join([t['name'] for t in sorted_tasks])}")
+        except:
+            # If topological_sort not available, just show warning
+            print(f"  - 注意: 子任务有依赖关系，将按依赖顺序启动")
+        
+        # Auto-start subtasks if requested
+        if auto_start_subtasks and subtask_configs:
+            print("\n尝试自动启动子任务...")
+            try:
+                # Import and call start_subtasks function
+                start_module_path = os.path.join(os.path.dirname(__file__), "start_subtasks.py")
+                if os.path.exists(start_module_path):
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("start_subtasks", start_module_path)
+                    start_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(start_module)
+                    # Start tasks one by one considering dependencies
+                    success = start_module.start_subtasks_sequential(task_dir, wait_for_completion=False)
+                    if success:
+                        print("✓ 所有子任务按依赖顺序启动成功")
+                    else:
+                        print("⚠ 部分子任务启动失败")
+                else:
+                    print("⚠ start_subtasks.py 未找到，跳过自动启动")
+            except Exception as e:
+                print(f"⚠ 自动启动失败: {e}")
+        
+        return task_dir
+        
+    except Exception as e:
+        print(f"错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1:
+        task_name = sys.argv[1]
+        task_description = input("任务描述: ")
+        
+        # Ask for subtasks
+        subtasks = []
+        print("输入子任务 (名称留空结束):")
+        while True:
+            name = input("子任务名称: ").strip()
+            if not name:
+                break
+            description = input("子任务描述: ").strip()
+            
+            # Ask for dependencies
+            print("输入依赖的子任务名称 (多个用逗号分隔，留空表示无依赖):")
+            deps_input = input("依赖: ").strip()
+            if deps_input:
+                dependencies = [dep.strip() for dep in deps_input.split(",")]
+            else:
+                dependencies = []
+            
+            query = input("研究查询语句 (可选，回车使用描述): ").strip()
+            if not query:
+                query = description
+            
+            subtasks.append({
+                "name": name,
+                "description": description,
+                "dependencies": dependencies,
+                "query": query
+            })
+        
+        auto_start = input("自动启动子任务? (y/N): ").strip().lower() == 'y'
+        
+        init_multi_task_research(task_name, task_description, subtasks, auto_start_subtasks=auto_start)
+    else:
+        print("用法: python init_multi_task.py <任务名称>")
+        print("\n示例:")
+        print("  python init_multi_task.py \"AI教育技术趋势研究\"")

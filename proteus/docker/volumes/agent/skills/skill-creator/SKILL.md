@@ -5,9 +5,10 @@ description: Guide for creating effective skills. This skill should be used when
   with specialized knowledge, workflows, or tool integrations.
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Skill Creator
 

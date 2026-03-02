@@ -7,9 +7,10 @@ description: Guide users through a structured workflow for co-authoring document
   Trigger when user mentions writing docs, creating proposals, drafting specs, or
   similar documentation tasks.
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Doc Co-Authoring Workflow
 

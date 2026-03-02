@@ -6,9 +6,10 @@ description: Applies Anthropic's official brand colors and typography to any sor
   apply.
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Anthropic Brand Styling
 

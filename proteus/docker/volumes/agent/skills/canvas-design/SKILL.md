@@ -6,9 +6,10 @@ description: Create beautiful visual art in .png and .pdf documents using design
   work to avoid copyright violations.
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 These are instructions for creating design philosophies - aesthetic movements that are then EXPRESSED VISUALLY. Output only .md files, .pdf files, and .png files.
 

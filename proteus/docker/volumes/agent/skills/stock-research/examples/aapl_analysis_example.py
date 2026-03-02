@@ -25,8 +25,7 @@ def run_aapl_analysis():
     analyzer = StockAnalyzer(symbol="AAPL", market="US", period="1y")
     
     # Get basic information
-    print("
-2. Basic Company Information:")
+    print("\n2. Basic Company Information:")
     print("-" * 40)
     basic_info = analyzer.get_basic_info()
     

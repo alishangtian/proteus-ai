@@ -47,7 +47,7 @@ def execute_python_code(
         with tempfile.NamedTemporaryFile(
             "w", suffix=".py", delete=False, encoding="utf-8"
         ) as f:
-            f.write(code)
+            f.write("import os\n" + code)
             tmp_path = f.name
 
         # 使用系统 Python 运行临时文件，-u 保证 stdout/stderr 不被缓冲

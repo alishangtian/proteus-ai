@@ -1,9 +1,11 @@
 ---
-name: "pdf-visual-check"
-description: "Visual PDF review and rendering skill. Use when tasks involve reading, creating, or reviewing PDF files where rendering and layout matter; prefer visual checks by rendering pages (Poppler) and use Python tools such as `reportlab`, `pdfplumber`, and `pypdf` for generation and extraction."
+name: pdf-visual-check
+description: Visual PDF review and rendering skill. Use when tasks involve reading,
+  creating, or reviewing PDF files where rendering and layout matter; prefer visual
+  checks by rendering pages (Poppler) and use Python tools such as `reportlab`, `pdfplumber`,
+  and `pypdf` for generation and extraction.
+version: 1.0.0
 ---
-
-
 # PDF Skill
 
 ## When to use

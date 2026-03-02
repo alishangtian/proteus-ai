@@ -6,9 +6,10 @@ description: Toolkit for styling artifacts with a theme. These artifacts can be 
   theme on-the-fly.
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Theme Factory Skill
 

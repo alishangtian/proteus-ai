@@ -6,9 +6,10 @@ description: 'Presentation creation, editing, and analysis. When Claude needs to
   or any other presentation tasks'
 license: Proprietary. LICENSE.txt has complete terms
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # PPTX creation, editing, and analysis
 

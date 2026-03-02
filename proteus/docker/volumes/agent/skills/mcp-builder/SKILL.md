@@ -6,9 +6,10 @@ description: Guide for creating high-quality MCP (Model Context Protocol) server
   Python (FastMCP) or Node/TypeScript (MCP SDK).
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # MCP Server Development Guide
 

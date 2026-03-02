@@ -7,14 +7,14 @@ import argparse
 import json
 from datetime import datetime
 try:
-    from .monitor import
-except ImportError:
-    from monitor import
 try:
-    from .analyzer import
+    from .monitor import SkillUsageMonitor
 except ImportError:
-    from analyzer import
-
+    from monitor import SkillUsageMonitor
+try:
+    from .analyzer import SkillUsageAnalyzer
+except ImportError:
+    from analyzer import SkillUsageAnalyzer
 
 def main():
     parser = argparse.ArgumentParser(description='识别低使用率技能')

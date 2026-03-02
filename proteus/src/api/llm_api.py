@@ -4,6 +4,7 @@ import logging
 import json
 import asyncio
 import aiohttp
+import uuid
 import base64
 import threading
 import time
@@ -1214,9 +1215,15 @@ async def call_llm_api_with_tools_stream(
 
                                             # 更新工具调用信息
                                             if "id" in tool_call:
-                                                accumulated_tool_calls[index]["id"] = (
-                                                    tool_call["id"]
-                                                )
+                                                tool_call_id = tool_call["id"]
+                                                if (
+                                                    not tool_call_id
+                                                    or tool_call_id == ""
+                                                ):
+                                                    tool_call_id = str(uuid.uuid4())
+                                                accumulated_tool_calls[index][
+                                                    "id"
+                                                ] = tool_call_id
                                             if "type" in tool_call:
                                                 accumulated_tool_calls[index][
                                                     "type"

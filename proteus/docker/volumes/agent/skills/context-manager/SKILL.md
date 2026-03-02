@@ -1,8 +1,13 @@
 ---
 name: context-manager
-description: OpenCode-style intelligent context management system for AI agents with automatic compression and pruning. Use when building or working with long-running AI conversations, managing context windows for LLM interactions, implementing conversation history optimization, or dealing with token limit constraints in AI systems. Provides architecture patterns, Python implementations, and best practices for context overflow handling, intelligent summarization, and selective memory retention.
+description: OpenCode-style intelligent context management system for AI agents with
+  automatic compression and pruning. Use when building or working with long-running
+  AI conversations, managing context windows for LLM interactions, implementing conversation
+  history optimization, or dealing with token limit constraints in AI systems. Provides
+  architecture patterns, Python implementations, and best practices for context overflow
+  handling, intelligent summarization, and selective memory retention.
+version: 1.0.0
 ---
-
 # Context Manager: OpenCode-style Intelligent Context Management System
 
 ## Overview

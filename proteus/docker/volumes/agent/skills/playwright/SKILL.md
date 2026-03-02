@@ -1,9 +1,10 @@
 ---
-name: "playwright"
-description: "Use when the task requires automating a real browser from the terminal (navigation, form filling, snapshots, screenshots, data extraction, UI-flow debugging) via `playwright-cli` or the bundled wrapper script."
+name: playwright
+description: Use when the task requires automating a real browser from the terminal
+  (navigation, form filling, snapshots, screenshots, data extraction, UI-flow debugging)
+  via `playwright-cli` or the bundled wrapper script.
+version: 1.0.0
 ---
-
-
 # Playwright CLI Skill
 
 Drive a real browser from the terminal using `playwright-cli`. Prefer the bundled wrapper script so the CLI works even when it is not globally installed.

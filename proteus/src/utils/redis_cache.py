@@ -1,6 +1,7 @@
 """Redis缓存实现"""
 
 import redis
+import ssl
 import os
 import time
 import logging
@@ -17,24 +18,74 @@ class RedisCache:
         self.retry_delay = 1
         self._connect()
 
+    def _get_client(self) -> redis.Redis:
+        """获取Redis客户端"""
+        return self._client
+
     def _connect(self):
         """建立Redis连接"""
         for attempt in range(self.max_retries):
             try:
-                self._pool = redis.ConnectionPool(
-                    host=os.getenv("REDIS_HOST"),
-                    port=int(os.getenv("REDIS_PORT")),
-                    db=int(os.getenv("REDIS_DB")),
-                    password=os.getenv("REDIS_PASSWORD"),
-                    decode_responses=True,
-                    health_check_interval=30,
-                    socket_keepalive=True,
-                    max_connections=20,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    retry_on_timeout=True,
-                )
-                self._client = redis.Redis(connection_pool=self._pool)
+                # 解析TLS配置
+                tls_env = os.getenv("REDIS_TLS", "false").lower()
+                use_tls = tls_env in ("true", "1", "yes")
+
+                # 构建Redis连接URL
+                host = os.getenv("REDIS_HOST")
+                port = int(os.getenv("REDIS_PORT"))
+                db = int(os.getenv("REDIS_DB"))
+                password = os.getenv("REDIS_PASSWORD")
+
+                protocol = "rediss" if use_tls else "redis"
+                url = f"{protocol}://"
+                if password:
+                    url += f":{password}@"
+                url += f"{host}:{port}/{db}"
+
+                # 额外参数
+                extra_kwargs = {
+                    "decode_responses": True,
+                    "health_check_interval": 30,
+                    "socket_keepalive": True,
+                    "max_connections": int(os.getenv("REDIS_MAX_CONNECTIONS", 20)),
+                    "socket_timeout": 5,
+                    "socket_connect_timeout": 5,
+                    "retry_on_timeout": True,
+                }
+
+                # SSL相关参数
+                if use_tls:
+                    ssl_ca_certs = os.getenv("REDIS_SSL_CA_CERTS")
+                    if ssl_ca_certs:
+                        extra_kwargs["ssl_ca_certs"] = ssl_ca_certs
+                    ssl_certfile = os.getenv("REDIS_SSL_CERTFILE")
+                    if ssl_certfile:
+                        extra_kwargs["ssl_certfile"] = ssl_certfile
+                    ssl_keyfile = os.getenv("REDIS_SSL_KEYFILE")
+                    if ssl_keyfile:
+                        extra_kwargs["ssl_keyfile"] = ssl_keyfile
+
+                    ssl_cert_reqs_env = os.getenv("REDIS_SSL_CERT_REQS", "none").lower()
+                    if ssl_cert_reqs_env == "required":
+                        extra_kwargs["ssl_cert_reqs"] = ssl.CERT_REQUIRED
+                    elif ssl_cert_reqs_env == "optional":
+                        extra_kwargs["ssl_cert_reqs"] = ssl.CERT_OPTIONAL
+                    else:
+                        extra_kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
+
+                    ssl_check_hostname_env = os.getenv(
+                        "REDIS_SSL_CHECK_HOSTNAME", "false"
+                    ).lower()
+                    extra_kwargs["ssl_check_hostname"] = ssl_check_hostname_env in (
+                        "true",
+                        "1",
+                        "yes",
+                    )
+
+                logger.info(f"尝试连接 Redis: url={url}, extra_kwargs={extra_kwargs}")
+
+                self._client = redis.Redis.from_url(url, **extra_kwargs)
+                self._pool = self._client.connection_pool
                 self._client.ping()
                 return
             except (redis.ConnectionError, redis.TimeoutError) as e:
@@ -47,13 +98,7 @@ class RedisCache:
 
     def _get_client(self):
         """获取Redis客户端"""
-        try:
-            self._client.ping()
-            return self._client
-        except (redis.ConnectionError, redis.TimeoutError):
-            logger.warning("Redis连接丢失，尝试重新连接...")
-            self._connect()
-            return self._client
+        return self._client
 
     def get(self, key: str) -> Optional[str]:
         """获取缓存值"""
@@ -351,4 +396,4 @@ def get_redis_connection():
     global _redis_instance
     if _redis_instance is None:
         _redis_instance = RedisCache()
-    return _redis_instance
+    return _redis_instance._get_client()

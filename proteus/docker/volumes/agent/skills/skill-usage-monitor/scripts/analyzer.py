@@ -7,13 +7,9 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Tuple
 import difflib
 try:
-    try:
     from .monitor import SkillUsageMonitor
 except ImportError:
     from monitor import SkillUsageMonitor
-except ImportError:
-    from monitor import SkillUsageMonitor
-
 
 class SkillUsageAnalyzer:
     """技能使用数据分析器"""
@@ -439,7 +435,6 @@ class SkillUsageAnalyzer:
             ])
         
         return suggestions[:5]  # 最多返回5个建议
-
 
 # 便捷函数
 def analyze_usage(days: int = 30) -> Dict[str, Any]:

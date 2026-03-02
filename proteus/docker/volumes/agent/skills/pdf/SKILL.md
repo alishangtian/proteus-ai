@@ -6,9 +6,10 @@ description: Comprehensive PDF manipulation toolkit for extracting text and tabl
   documents at scale.
 license: Proprietary. LICENSE.txt has complete terms
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # PDF Processing Guide
 

@@ -7,9 +7,10 @@ description: 'Comprehensive document creation, editing, and analysis with suppor
   (4) Adding comments, or any other document tasks'
 license: Proprietary. LICENSE.txt has complete terms
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # DOCX creation, editing, and analysis
 

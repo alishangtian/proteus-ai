@@ -5,9 +5,10 @@ description: Comprehensive toolkit for stock analysis, research, and trading rec
   and professional reporting for stocks.
 license: MIT
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Stock Research Skill
 

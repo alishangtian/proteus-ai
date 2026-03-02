@@ -1,9 +1,11 @@
 ---
-name: "speech"
-description: "Use when the user asks for text-to-speech narration or voiceover, accessibility reads, audio prompts, or batch speech generation via the OpenAI Audio API; run the bundled CLI (`scripts/text_to_speech.py`) with built-in voices and require `OPENAI_API_KEY` for live calls. Custom voice creation is out of scope."
+name: speech
+description: Use when the user asks for text-to-speech narration or voiceover, accessibility
+  reads, audio prompts, or batch speech generation via the OpenAI Audio API; run the
+  bundled CLI (`scripts/text_to_speech.py`) with built-in voices and require `OPENAI_API_KEY`
+  for live calls. Custom voice creation is out of scope.
+version: 1.0.0
 ---
-
-
 # Speech Generation Skill
 
 Generate spoken audio for the current project (narration, product demo voiceover, IVR prompts, accessibility reads). Defaults to `gpt-4o-mini-tts-2025-12-15` and built-in voices, and prefers the bundled CLI for deterministic, reproducible runs.

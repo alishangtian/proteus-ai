@@ -1,0 +1,28 @@
+{
+  "query": "请分析当前目录下的文件结构，并生成一份报告",
+  "workspace_path": "/app/data/tasks",
+  "modul": "task",
+  "model_name": "deepseek-reasoner",
+  "itecount": 200,
+  "agentid": null,
+  "team_name": "analysis-team",
+  "conversation_id": "conv-123456",
+  "conversation_round": 5,
+  "file_ids": [
+    "file-1",
+    "file-2"
+  ],
+  "tool_memory_enabled": false,
+  "sop_memory_enabled": true,
+  "enable_tools": true,
+  "tool_choices": [
+    "serper_search",
+    "web_crawler",
+    "python_execute"
+  ],
+  "selected_skills": [
+    "file-task-manager",
+    "code-review"
+  ],
+  "stream": false
+}

@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Proteus AI</string>
+    <string name="token_settings">Token 设置</string>
+    <string name="enter_token">请输入您的 Token</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="conversations">会话列表</string>
+    <string name="no_conversations">暂无会话</string>
+    <string name="loading">加载中…</string>
+    <string name="error">错误</string>
+    <string name="retry">重试</string>
+    <string name="send">发送</string>
+    <string name="input_hint">输入消息…</string>
+    <string name="token_saved">Token 已保存</string>
+    <string name="token_required">请先在右上角设置 Token</string>
+    <string name="settings">设置</string>
+    <string name="logout">退出登录</string>
+    <string name="new_conversation">新建会话</string>
+    <string name="unnamed_conversation">未命名会话</string>
+    <string name="message_count">消息数</string>
+    <string name="streaming">AI 正在回复…</string>
+    <string name="new_chat_hint">新对话</string>
+</resources>

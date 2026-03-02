@@ -5,9 +5,10 @@ description: Toolkit for interacting with and testing local web applications usi
   browser screenshots, and viewing browser logs.
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Web Application Testing
 

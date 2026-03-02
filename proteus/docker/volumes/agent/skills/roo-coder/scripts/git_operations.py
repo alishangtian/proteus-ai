@@ -14,10 +14,10 @@ from typing import Dict, List, Optional, Tuple
 
 class GitOperations:
     """Advanced Git operations for Roo-Coder."""
-    Note: Initialize with repo_path pointing to /app/data/{project_name}
+    # Note: Initialize with repo_path pointing to /app/data/{project_name}
     for proper file persistence and compatibility with the Proteus skill system.
     
-    
+
     def __init__(self, repo_path: str = None):
         self.repo_path = repo_path or os.getcwd()
         

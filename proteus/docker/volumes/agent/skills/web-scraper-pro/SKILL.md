@@ -3,7 +3,8 @@ name: web-scraper-pro
 description: 高级网页内容提取技能，用于应对简单的反爬虫机制（如User-Agent检测），并将网页HTML内容智能转换为LLM易于阅读的Markdown格式。主要用于替代基础的crawler工具，特别是在基础工具无法获取内容或内容格式混乱时。当用户提供一个URL并要求"阅读"、"总结"或"提取"内容时，如果标准爬虫失败或需要更高质量的文本提取，请运行此技能。
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
+- python_execute
+version: 1.0.0
 ---
 # Web Scraper Pro Skill
 

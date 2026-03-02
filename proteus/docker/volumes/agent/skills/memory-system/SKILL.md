@@ -1,9 +1,8 @@
 ---
 name: memory-system
 description: 为AI智能体提供三层记忆管理（短期、中期、长期）的统一系统，支持LLM增强、向量检索和跨会话上下文保持。适用于用户偏好存储、知识积累和个性化交互。
+version: 1.0.0
 ---
-
-
 > **重要更新**: 记忆系统的嵌入模型现在只支持Ollama，不支持其他方式。
 > - Ollama服务地址: `http://host.docker.internal:11434` (适用于Docker环境)
 > - 默认模型: `bge-m3` (推荐用于中文)

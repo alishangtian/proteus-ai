@@ -6,6 +6,8 @@ from typing import Dict, Optional, AsyncGenerator, List
 from datetime import datetime
 import logging
 from src.utils.redis_cache import RedisCache, get_redis_connection
+from src.utils.langfuse_wrapper import langfuse_wrapper
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ class StreamManager:
         return chat_id
 
     async def send_message(
-        self, chat_id: str, message: dict, replay: bool = False
+        self, chat_id: str, message: dict, replay: bool = True
     ) -> None:
         """发送消息到指定的流，并存入redis
 
@@ -62,9 +64,23 @@ class StreamManager:
         if chat_id in self._streams:
             await self._streams[chat_id].put(message)
             # 同时存入redis，key格式为chat_stream:{chat_id}
-            if not replay:
-                redis_key = f"chat_stream:{chat_id}"
-                self._redis_client.lpush(redis_key, json.dumps(message))
+            if replay:
+                # 异步保存会话摘要信息
+                asyncio.create_task(self.send_to_redis(chat_id, message))
+
+    async def send_stream(self, chat_id: str, message: dict) -> None:
+        """发送消息到指定的流，并存入redis
+        Args:
+            chat_id: 聊天会话ID
+            message: 要发送的消息
+        """
+        asyncio.create_task(self.send_to_redis(chat_id, message))
+
+    async def send_to_redis(self, chat_id: str, message: dict) -> None:
+        redis_key = f"chat_stream:{chat_id}"  #  全量式replay
+        redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay
+        self._redis_client.lpush(redis_key, json.dumps(message))
+        self._redis_client.lpush(redis_key_b, json.dumps(message))
 
     async def get_messages(self, chat_id: str) -> AsyncGenerator[dict, None]:
         """获取指定流的消息生成器
@@ -118,9 +134,9 @@ class StreamManager:
         # 创建临时流用于回放
         self.create_stream(chat_id)
 
-        # 按照原始顺序发送消息(redis lrange返回顺序与原始插入顺序相反)
         for msg in reversed(messages):
-            await self.send_message(chat_id, json.loads(msg), True)
+            message = json.loads(msg)
+            await self.send_message(chat_id, message, True)
             # await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:

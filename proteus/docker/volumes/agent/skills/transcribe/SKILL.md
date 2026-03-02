@@ -1,9 +1,10 @@
 ---
-name: "transcribe"
-description: "Transcribe audio files to text with optional diarization and known-speaker hints. Use when a user asks to transcribe speech from audio/video, extract text from recordings, or label speakers in interviews or meetings."
+name: transcribe
+description: Transcribe audio files to text with optional diarization and known-speaker
+  hints. Use when a user asks to transcribe speech from audio/video, extract text
+  from recordings, or label speakers in interviews or meetings.
+version: 1.0.0
 ---
-
-
 # Audio Transcribe
 
 Transcribe audio using OpenAI, with optional speaker diarization when requested. Prefer the bundled CLI for deterministic, repeatable runs.

@@ -1,9 +1,12 @@
 ---
-name: "doc"
-description: "Visual DOCX review and rendering skill. Use when tasks involve reading, creating, or reviewing `.docx` documents where visual layout and rendering fidelity matter; prefer visual checks by rendering pages. For comprehensive document creation, editing with tracked changes, comments, and advanced OOXML manipulation, use the `docx` skill instead."
+name: doc
+description: Visual DOCX review and rendering skill. Use when tasks involve reading,
+  creating, or reviewing `.docx` documents where visual layout and rendering fidelity
+  matter; prefer visual checks by rendering pages. For comprehensive document creation,
+  editing with tracked changes, comments, and advanced OOXML manipulation, use the
+  `docx` skill instead.
+version: 1.0.0
 ---
-
-
 # DOCX Skill
 
 > **Note**: This skill focuses on **visual review and rendering** of DOCX documents. 

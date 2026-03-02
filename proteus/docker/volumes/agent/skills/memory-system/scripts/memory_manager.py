@@ -215,7 +215,7 @@ class MemoryManager:
             self._store_medium_term(memory_id, content, importance, tags, metadata)
 
         elif memory_type == "long_term":
-        self._store_long_term(memory_id, content, importance, tags, metadata)
+            self._store_long_term(memory_id, content, importance, tags, metadata)
         logger.debug(f"存储记忆: id={memory_id}, type={memory_type}")
 
         # 记录到AOF日志

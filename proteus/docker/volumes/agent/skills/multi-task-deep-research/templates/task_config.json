@@ -1,0 +1,56 @@
+{
+  "task_name": "[任务名称]",
+  "clean_task_name": "[清理后的任务名称]",
+  "task_description": "[任务详细描述]",
+  "created_at": "YYYY-MM-DD HH:MM:SS",
+  "updated_at": "YYYY-MM-DD HH:MM:SS",
+  "status": "planning",
+  "base_dir": "/app/data/tasks/[任务目录]",
+  "subtasks": [
+    {
+      "name": "[子任务1名称]",
+      "clean_name": "[清理后的子任务名称]",
+      "description": "[子任务详细描述]",
+      "query": "[研究查询语句]",
+      "directory": "[子任务目录名]",
+      "status": "pending",
+      "progress": 0.0,
+      "created_at": "YYYY-MM-DD HH:MM:SS",
+      "started_at": null,
+      "completed_at": null,
+      "last_activity": "YYYY-MM-DD HH:MM:SS",
+      "error_count": 0,
+      "api_calls": 0,
+      "dependencies": [
+        "[依赖的子任务名称]"
+      ]
+    }
+  ],
+  "monitoring": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "last_check": "YYYY-MM-DD HH:MM:SS",
+    "next_check": "YYYY-MM-DD HH:MM:SS"
+  },
+  "api_config": {
+    "endpoint": "https://127.0.0.1/task",
+    "auth_token": "[认证令牌]",
+    "model_name": "[模型名称]",
+    "itecount": 200,
+    "conversation_round": 5,
+    "tool_choices": [
+      "serper_search",
+      "web_crawler",
+      "python_execute"
+    ],
+    "selected_skills": [
+      "planning-with-file"
+    ]
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "created_by": "multi-task-deep-research skill",
+    "skill_version": "v1.0.0"
+  },
+  "overall_progress": 0.0
+}

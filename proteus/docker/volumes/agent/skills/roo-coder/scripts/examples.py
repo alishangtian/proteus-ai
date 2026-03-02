@@ -54,4 +54,21 @@ def demonstrate_project_setup():
     
     # Write a sample file
     print("3. Writing sample Python file:")
-    sample_code = 
+    sample_code = """
+def hello_world():
+    print("Hello from Roo-Coder example")
+"""
+    
+    # Write the file
+    sample_path = os.path.join(temp_project, "src", "main.py")
+    with open(sample_path, "w") as f:
+        f.write(sample_code)
+    print(f"   Created: {os.path.relpath(sample_path, temp_project)}")
+    print()
+    
+    # End of demonstration
+    print("Demo completed successfully!")
+    print(f"Project created at: {temp_project}")
+    
+if __name__ == "__main__":
+    demonstrate_project_setup()

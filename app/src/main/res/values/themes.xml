@@ -1,0 +1,10 @@
+<resources>
+    <!-- Full-screen theme for a Jetpack Compose app; no ActionBar needed. -->
+    <style name="Theme.ProteusAI" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/white</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <color name="white">#FFFFFFFF</color>
+</resources>

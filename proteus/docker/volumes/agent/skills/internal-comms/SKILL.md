@@ -7,9 +7,10 @@ description: A set of resources to help me write all kinds of internal communica
   etc.).
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 ## When to use this skill
 To write internal communications, use this skill for:

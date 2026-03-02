@@ -5,9 +5,10 @@ description: Knowledge and utilities for creating animated GIFs optimized for Sl
   animated GIFs for Slack like "make me a GIF of X doing Y for Slack."
 license: Complete terms in LICENSE.txt
 allowed-tools:
-  - python_execute
-  - serper_search
-  - web_crawler
+- python_execute
+- serper_search
+- web_crawler
+version: 1.0.0
 ---
 # Slack GIF Creator
 

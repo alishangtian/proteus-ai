@@ -1,0 +1,91 @@
+# 模型配置YAML文件
+deepseek-reasoner:
+  type: openai
+  base_url: https://api.deepseek.com/v1
+  api_key: XvrFTLaJiZtqhx7ANu934yzbtUQG4DWVtgNKSg1yXyO/Y2PHTQW0MpS2SbkgCViKSVKQFCw5dcpgEJ+7tqZGqQ==
+  model_name: deepseek-reasoner
+  context_length: 131072
+  extra_params:
+    temperature: 0.7
+    max_tokens: 32768
+deepseek-chat:
+  type: openai
+  base_url: https://api.deepseek.com/v1
+  api_key: XvrFTLaJiZtqhx7ANu934yzbtUQG4DWVtgNKSg1yXyO/Y2PHTQW0MpS2SbkgCViKSVKQFCw5dcpgEJ+7tqZGqQ==
+  model_name: deepseek-chat
+  context_length: 131072
+  extra_params:
+    temperature: 0.7
+    max_tokens: 8192
+qwen3.5-plus-02-15:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: qwen/qwen3.5-plus-02-15
+  context_length: 262144
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536 
+glm-5:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: z-ai/glm-5
+  context_length: 196608
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+kimi-k2.5:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: moonshotai/kimi-k2.5
+  context_length: 262144
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+minimax-m2.1:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: minimax/minimax-m2.1
+  context_length: 196608
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+pony-alpha:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: openrouter/pony-alpha
+  context_length: 200000
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+qwen3-coder:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: qwen/qwen3-coder
+  context_length: 262144
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+gemini-3-flash-preview:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: google/gemini-3-flash-preview
+  context_length: 262144
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
+gemini-3-pro-preview:
+  type: openai
+  base_url: https://openrouter.ai/api/v1
+  api_key: TGGPqHezPcurfBd7SjTC4YLjnZKAH4BcRscNGQwvCMb0CrZgGCKcwDp6LndivWF4QXB8tG1z2ZaaFtWvacY15f8NJUiVwtRLeSJNeAdcMr5w8BP/Ses9CHqmdgm2jv/8
+  model_name: google/gemini-3-pro-preview
+  context_length: 262144
+  extra_params:
+    temperature: 0.7
+    max_tokens: 65536
