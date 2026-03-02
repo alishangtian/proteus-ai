@@ -5,11 +5,12 @@ import json
 import time
 import os
 import threading
+import asyncio
 import yaml
 from pathlib import Path
 from string import Template
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 from src.api.stream_manager import StreamManager
 from src.api.llm_api import (
     call_llm_api,
@@ -28,6 +29,11 @@ from src.nodes.skills_extract import (
     scan_multiple_skills_directories,
 )
 from src.manager.conversation_manager import conversation_manager
+from src.manager.memory_manager import (
+    MemoryManager,
+    extract_and_save_tool_memory,
+    extract_and_save_sop_memory,
+)
 import uuid
 from src.api.events import (
     create_agent_start_event,
@@ -145,6 +151,12 @@ class ChatAgent:
         # 加载压缩策略配置
         self._compression_strategies = self._load_compression_strategies()
         self.workspace_path = workspace_path
+        # 初始化三层记忆管理器 (MTM + LTM)
+        if self.enable_tool_memory and self.user_name:
+            from src.utils.redis_cache import get_redis_connection
+            self._memory_manager = MemoryManager(get_redis_connection(), self.user_name)
+        else:
+            self._memory_manager = None
 
     def _load_compression_strategies(self) -> Dict[str, Any]:
         """加载压缩策略配置文件"""
@@ -319,6 +331,14 @@ class ChatAgent:
                 )
             all_values["SKILLS_PROMPT"] = skills_prompt
 
+            # 二层/三层记忆注入 (MTM + LTM)
+            memory_context = ""
+            if self._memory_manager:
+                memory_context = self._memory_manager.build_memory_context(query=text)
+                if memory_context:
+                    logger.info(f"[{chat_id}] 已加载三层记忆上下文 ({len(memory_context)} 字)")
+            all_values["MEMORY_CONTEXT"] = memory_context
+
             if not messages:
                 system_message = {
                     "role": "system",
@@ -382,6 +402,11 @@ class ChatAgent:
             logger.info(
                 f"[{chat_id}] chat 模式使用模型: {self.model_name}，将根据 API 响应自动处理 thinking 内容"
             )
+
+            # 用于 SOP 记忆的工具调用链记录
+            _tool_chain_parts: List[str] = []
+            # 后台任务集合，防止 GC 提前回收
+            _bg_tasks: Set[asyncio.Task] = set()
 
             # 工具调用循环
             max_iterations = (
@@ -534,6 +559,28 @@ class ChatAgent:
                             f"[{chat_id}] 已保存 {len(tool_messages)} 个工具调用结果到 Redis"
                         )
 
+                    # 异步保存工具记忆 (MTM Layer 2)
+                    if self._memory_manager and tool_calls and tool_messages:
+                        for tc, tm in zip(tool_calls, tool_messages):
+                            tc_name = tc.get("function", {}).get("name", "unknown")
+                            tc_params = str(list(tc.get("function", {}).get("arguments", {}).keys()))
+                            tm_content = tm.get("content", "")
+                            status = "成功" if tm_content and "error" not in tm_content.lower() else "失败"
+                            _tool_chain_parts.append(f"{tc_name}({tc_params})->{status}")
+                            task = asyncio.create_task(
+                                extract_and_save_tool_memory(
+                                    memory_manager=self._memory_manager,
+                                    tool_name=tc_name,
+                                    tool_result=tm_content,
+                                    user_query=text,
+                                    execution_status=status,
+                                    param_types=tc_params,
+                                    model_name=self.model_name,
+                                )
+                            )
+                            _bg_tasks.add(task)
+                            task.add_done_callback(_bg_tasks.discard)
+
                     # 增加迭代计数
                     tool_iteration += 1
                     logger.info(
@@ -564,6 +611,22 @@ class ChatAgent:
                 logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
 
             logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
+
+            # 异步保存 SOP 记忆 (MTM Layer 2) - 任务成功完成后提取最佳实践
+            if self._memory_manager and final_response_text:
+                tool_chain_desc = " -> ".join(_tool_chain_parts) if _tool_chain_parts else "无工具调用"
+                sop_task = asyncio.create_task(
+                    extract_and_save_sop_memory(
+                        memory_manager=self._memory_manager,
+                        user_query=text,
+                        tool_chain=tool_chain_desc,
+                        final_result=final_response_text,
+                        resolution_status="成功",
+                        model_name=self.model_name,
+                    )
+                )
+                _bg_tasks.add(sop_task)
+                sop_task.add_done_callback(_bg_tasks.discard)
 
             return final_response_text
 

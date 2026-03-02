@@ -118,6 +118,7 @@ graph TD
     Think -- "Complete" --> FinalOutput
 ```
 ${SKILLS_PROMPT}
+${MEMORY_CONTEXT}
 # System Information:
 - CURRENT_TIME ${CURRENT_TIME}. 
 - LANGUAGE：${LANGUAGE}

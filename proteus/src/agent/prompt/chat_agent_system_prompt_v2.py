@@ -142,6 +142,7 @@ tips：参考来源链接必须是可点击的链接，请勿使用纯文本。
 - [来源 2 标题](链接)
 </example>
 ${SKILLS_PROMPT}
+${MEMORY_CONTEXT}
 # 系统信息如下
 - 当前日期 ${CURRENT_TIME}. 
 - 工作语言：${LANGUAGE}
