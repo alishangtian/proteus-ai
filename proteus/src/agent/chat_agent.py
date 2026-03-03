@@ -157,6 +157,8 @@ class ChatAgent:
             self._memory_manager = MemoryManager(get_redis_connection(), self.user_name)
         else:
             self._memory_manager = None
+        # 延迟初始化的工具执行器（复用实例，避免每次调用重复创建）
+        self._tool_executor = None
 
     def _load_compression_strategies(self) -> Dict[str, Any]:
         """加载压缩策略配置文件"""
@@ -413,6 +415,9 @@ class ChatAgent:
                 self.max_tool_iterations if self.enable_tools and tools else 1
             )
             tool_iteration = 0
+            final_response_text = ""
+            # 标记是否需要保存最终助手消息（仅当最后一轮无工具调用时才保存）
+            _save_final_message = False
             while tool_iteration < max_iterations:
                 if self.stopped:
                     logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
@@ -509,13 +514,14 @@ class ChatAgent:
                     # 如果没有工具调用，说明模型返回了最终答案，退出循环
                     if not tool_calls:
                         logger.info(f"[{chat_id}] 模型返回最终答案，结束工具调用循环")
-                        if thinking_text:
+                        if thinking_text and thinking_type:
                             thought_message = {
                                 "role": "assistant",
                                 thinking_type: thinking_text,
                                 "content": response_text,
                             }
                             messages.append(thought_message)
+                        _save_final_message = True
                         break
 
                     # 执行工具调用
@@ -528,10 +534,10 @@ class ChatAgent:
                     # 将助手消息（包含工具调用）添加到messages
                     assistant_message = {
                         "role": "assistant",
-                        thinking_type: thinking_text,
                         "content": response_text,
                         "tool_calls": tool_calls,
                         "reasoning_details": reasoning_details,
+                        **({thinking_type: thinking_text} if thinking_type and thinking_text else {}),
                     }
                     messages.append(assistant_message)
 
@@ -597,9 +603,9 @@ class ChatAgent:
                     chat_id, await create_complete_event()
                 )
 
-            # 如果没有工具调用，保存最终的助手回答到 Redis
-            # （如果有工具调用，助手消息已经在工具调用循环中保存了）
-            if self.conversation_id:
+            # 仅当最后一轮无工具调用（正常结束循环）时，保存最终助手回答到 Redis
+            # （有工具调用时助手消息已在循环中保存，避免重复保存）
+            if self.conversation_id and _save_final_message:
                 # 构建最终助手消息对象
                 final_assistant_message = {
                     "role": "assistant",
@@ -702,7 +708,6 @@ class ChatAgent:
         thinking_text = ""
         thinking_type = ""
         reasoning_details = []
-        first_content_chunk_sent = False
         need_compress = False
         tool_calls = None
         accumulated_usage = {}
@@ -1115,11 +1120,13 @@ class ChatAgent:
         """
         from src.api.tool_executor import ToolExecutor
 
-        tool_executor = ToolExecutor(
-            stream_manager=self.stream_manager,
-            max_retries=3,
-            retry_delay=1.0,
-        )
+        if self._tool_executor is None:
+            self._tool_executor = ToolExecutor(
+                stream_manager=self.stream_manager,
+                max_retries=3,
+                retry_delay=1.0,
+            )
+        tool_executor = self._tool_executor
 
         # 批量执行工具调用并收集结果
         start_time = time.time()
@@ -1447,7 +1454,7 @@ class ChatAgent:
         recent_messages = messages[-5:] if len(messages) >= 5 else messages
         content = " ".join([msg.get("content", "").lower() for msg in recent_messages])
 
-        # 检测关键词
+        # 检测关键词（中英文）
         debugging_keywords = [
             "error",
             "bug",
@@ -1456,6 +1463,12 @@ class ChatAgent:
             "exception",
             "crash",
             "traceback",
+            "错误",
+            "异常",
+            "修复",
+            "调试",
+            "崩溃",
+            "报错",
         ]
         code_review_keywords = [
             "review",
@@ -1464,6 +1477,11 @@ class ChatAgent:
             "improve",
             "refactor",
             "code quality",
+            "代码审查",
+            "建议",
+            "优化",
+            "重构",
+            "改进",
         ]
         research_keywords = [
             "research",
@@ -1472,6 +1490,11 @@ class ChatAgent:
             "findings",
             "citation",
             "source",
+            "研究",
+            "分析",
+            "调研",
+            "来源",
+            "发现",
         ]
         brainstorming_keywords = [
             "idea",
@@ -1480,6 +1503,12 @@ class ChatAgent:
             "plan",
             "strategy",
             "concept",
+            "想法",
+            "头脑风暴",
+            "设计",
+            "方案",
+            "策略",
+            "概念",
         ]
         technical_keywords = [
             "architecture",
@@ -1487,6 +1516,11 @@ class ChatAgent:
             "spec",
             "requirement",
             "technical",
+            "架构",
+            "规格",
+            "需求",
+            "技术",
+            "接口",
         ]
 
         # 工具使用检测

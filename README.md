@@ -147,7 +147,12 @@ chat_agent = ChatAgent(
     tool_choices=["serper_search", "web_crawler", "python_execute"],
     max_tool_iterations=5,
     conversation_id=conversation_id,
-    user_name=user_name
+    conversation_round=5,
+    enable_tool_memory=True,
+    enable_skills_memory=True,
+    user_name=user_name,
+    selected_skills=selected_skills,
+    workspace_path=workspace_path,  # 可选，工作区路径
 )
 
 # 运行智能体

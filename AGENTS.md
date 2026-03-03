@@ -8,12 +8,13 @@ Proteus AI 提供了功能强大的 Chat 智能体，支持工具调用、上下
 - [🔧 工具系统](#-工具系统)
 - [📚 技能系统](#-技能系统)
 - [💾 记忆系统](#-记忆系统)
+- [📱 Android 客户端](#-android-客户端)
 
 ---
 
 ## 🤖 Chat 智能体
 
-Chat 智能体是 Proteus AI 的核心，支持工具调用和上下文管理，是处理日常查询和交互的理想选择。
+Chat 智能体是 Proteus AI 的核心，支持工具调用和上下文管理，是处理日常查询和交互的理想选择。实现位于 `proteus/src/agent/chat_agent.py`。
 
 ### 配置示例
 
@@ -30,7 +31,10 @@ chat_agent = ChatAgent(
     enable_tool_memory=True,
     enable_skills_memory=True,
     user_name=user_name,
-    selected_skills=selected_skills
+    selected_skills=selected_skills,
+    system_prompt=None,       # 可选，自定义系统提示词
+    agentid=None,             # 可选，智能体唯一ID，不传则自动生成
+    workspace_path=None,      # 可选，工作区路径
 )
 
 # 运行智能体
@@ -49,40 +53,60 @@ result = await chat_agent.run(
 - **流式响应**：通过 SSE (Server-Sent Events) 实时输出思考过程和回复内容，提供更好的用户体验。
 - **技能系统**：支持技能调用和技能记忆，可扩展智能体能力。
 - **工具记忆**：记录工具调用历史，优化后续交互。
+- **上下文压缩**：当对话上下文超出模型窗口限制时，自动选择压缩策略（摘要、选择性裁剪或混合模式）。
 
 ### 参数说明
 
 | 参数 | 类型 | 描述 |
 |------|------|------|
-| `stream_manager` | StreamManager | 流管理器实例，用于 SSE 通信 |
+| `stream_manager` | StreamManager | 流管理器实例，用于 SSE 通信，task 模式可为空 |
 | `model_name` | str | 模型名称，默认为 "deepseek-chat" |
 | `enable_tools` | bool | 是否启用工具调用 |
-| `tool_choices` | List[str] | 指定可用的工具列表 |
-| `max_tool_iterations` | int | 最大工具调用迭代次数 |
-| `conversation_id` | str | 会话 ID，用于保存对话历史 |
-| `conversation_round` | int | 会话轮次 |
+| `tool_choices` | List[str] | 指定可用的工具列表（工具类型名称） |
+| `max_tool_iterations` | int | 最大工具调用迭代次数，默认 5 |
+| `conversation_id` | str | 会话 ID，用于保存和恢复对话历史 |
+| `conversation_round` | int | 会话轮次，默认 5 |
 | `enable_tool_memory` | bool | 是否启用工具记忆功能 |
 | `enable_skills_memory` | bool | 是否启用技能记忆功能 |
 | `user_name` | str | 用户名，用于工具记忆隔离 |
 | `selected_skills` | List[str] | 用户选中的技能列表 |
+| `system_prompt` | str | 自定义系统提示词，默认使用内置 Mermaid 提示词 |
+| `agentid` | str | 智能体唯一标识，不传时自动生成 UUID |
+| `workspace_path` | str | 工作区路径，用于文件操作等场景 |
+
+### 智能体生命周期管理
+
+`ChatAgent` 内置缓存机制，支持同一 `chat_id` 下的多智能体管理：
+
+```python
+# 获取某个 chat_id 下的所有 agent
+agents = ChatAgent.get_agents(chat_id)
+
+# 停止 agent
+await agent.stop()
+
+# 清除缓存
+ChatAgent.clear_agents(chat_id)
+```
 
 ---
 
 ## 🔧 工具系统
 
-Chat 智能体可以动态调用多种工具来完成复杂任务。
+Chat 智能体可以动态调用多种工具来完成复杂任务。工具定义自动从 `proteus/src/nodes/agent_node_config.yaml` 和 `proteus/src/nodes/node_config.py` 加载。
 
 ### 内置工具
 
 | 工具名称 | 功能描述 |
 |----------|----------|
-| `serper_search` | Serper 搜索引擎，搜索最新信息 |
-| `web_crawler` | 网页爬虫，根据链接抓取网页内容 |
+| `serper_search` | Serper 搜索引擎，搜索最新信息（新闻、论坛、博客等） |
+| `web_crawler` | 网页爬虫，根据链接抓取网页完整内容 |
 | `python_execute` | Python/Shell 代码执行，在安全沙箱中运行 |
-| `arxiv_search` | Arxiv 论文搜索 |
-| `weather_forecast` | 天气预报查询 |
-| `api_call` | 通用 API 调用 |
-| `skills_extract` | 技能解析管理 |
+| `arxiv_search` | Arxiv 学术论文搜索，返回标题、作者、摘要、PDF 链接等 |
+| `weather_forecast` | 天气预报查询，通过经纬度获取天气数据 |
+| `api_call` | 通用 REST API 调用，支持 Bearer Token 认证 |
+| `skills_extract` | 技能解析管理，列出、获取和读取技能文件 |
+| `duckduckgo_search` | DuckDuckGo 搜索引擎，匿名搜索网络信息 |
 
 ### 工具调用流程
 
@@ -90,7 +114,7 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。
 2. 构造工具调用参数
 3. 执行工具并获取结果
 4. 将结果整合到响应中
-5. 如需继续调用其他工具，重复上述步骤
+5. 如需继续调用其他工具，重复上述步骤（最多 `max_tool_iterations` 次）
 
 ---
 
@@ -100,7 +124,7 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。
 
 ### 技能结构
 
-技能存储在 `/app/.proteus/skills` 目录下，每个技能包含：
+技能存储在 `/app/.proteus/skills` 目录下（对应仓库中的 `proteus/docker/volumes/agent/skills/`），每个技能包含：
 
 - `SKILL.md`：技能描述文件，包含技能的详细说明
 - 相关资源文件：模板、配置等
@@ -110,8 +134,8 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。
 通过 `skills_extract` 工具可以：
 
 - **列出技能**：`action: "list"` - 获取所有可用技能
-- **获取详情**：`action: "get"` - 获取指定技能的详细信息
-- **获取文件**：`action: "getContent"` - 获取技能的特定文件内容
+- **获取详情**：`action: "get"` - 获取指定技能的详细信息（含文件夹结构和 `SKILL.md` 全文）
+- **获取文件**：`action: "getContent"` - 获取技能目录中指定文件的内容
 
 ---
 
@@ -121,9 +145,11 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。
 
 智能体自动管理对话历史，支持：
 
-- 会话历史加载和恢复
-- 消息链完整性验证
-- 对话上下文压缩（当上下文过长时）
+- 会话历史加载和恢复（基于 `conversation_id`）
+- 消息链完整性验证（确保 tool_call/tool_result 配对）
+- 对话上下文压缩（当上下文过长时，根据会话类型自动选择策略）
+
+压缩策略配置位于 `proteus/conf/compression_strategies.yaml`，支持 `summary`（摘要）、`selective_pruning`（选择性裁剪）、`hybrid`（混合）三种模式。
 
 ### 工具记忆
 
@@ -131,8 +157,21 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。
 
 - 避免重复调用
 - 优化后续交互
-- 用户隔离（基于 user_name）
+- 用户隔离（基于 `user_name`）
 
 ### 技能记忆
 
 启用技能记忆后，智能体会将选中的技能信息纳入上下文，帮助更好地理解和执行特定任务。
+
+---
+
+## 📱 Android 客户端
+
+`app/` 目录包含 Proteus AI 的 Android 客户端，基于 Jetpack Compose + Kotlin 构建，详细说明见 [`app/AGENTS.md`](app/AGENTS.md) 和 [`app/README.md`](app/README.md)。
+
+Android 客户端通过 Retrofit 与后端 REST API 通信，使用 OkHttp 接收 SSE 流式响应，主要功能包括：
+
+- Token 管理与会话鉴权
+- 会话列表浏览与切换
+- 实时流式消息收发（SSE）
+- 深度研究、网络搜索、技能调用等模式切换
