@@ -256,32 +256,54 @@ python -m pytest tests/
 
 ## 📱 Android 客户端 (app/)
 
-`app/` 目录包含 Proteus AI 的 Android 客户端，基于 **Jetpack Compose + Kotlin** 构建，详细说明见 [`app/README.md`](app/README.md)。
+`app/` 目录包含 Proteus AI 的官方 Android 客户端，基于 **Jetpack Compose + Kotlin + Material Design 3** 构建，让你随时随地通过手机使用 AI 智能体服务。详细说明见 [`app/README.md`](app/README.md)。
 
 ### 主要功能
 
-- **Token 管理**：通过设置弹窗存储和更新 Bearer Token
-- **会话列表**：侧边栏显示用户的对话历史，支持点击切换会话
-- **消息界面**：仿聊天气泡设计，区分用户消息和 AI 回复
-- **任务提交**：通过 `/submit_task` 接口发送用户查询，实时接收 SSE 流式响应
-- **Material Design 3**：现代化 UI，支持深色/浅色主题
+- **实时流式对话**：通过 SSE 实时接收 AI 回复，支持 Markdown 渲染和 Mermaid 图表
+- **思考过程可视化**：可折叠卡片展示 AI 推理链路和工具调用详情
+- **三种增强模式**：深度研究 🌐 / 网络搜索 🔍 / 技能调用 🛠️，按需开启
+- **会话历史管理**：侧边栏显示所有历史对话，点击即可加载历史记录
+- **Token 管理**：Bearer Token 安全持久化存储
+- **停止任务**：AI 回复过程中可随时中断
+- **Material Design 3**：支持深色/浅色主题自动切换
 
-### 快速编译
+### 快速上手
+
+#### 1. 启动后端服务
+
+按照本 README 上方的"快速开始"章节启动 Proteus AI 后端服务。
+
+#### 2. 编译安装应用
 
 ```bash
 # 进入 app 目录
 cd app
 
-# 生成调试版 APK（需已配置 Android SDK 环境变量）
+# 编译调试版 APK（需已配置 Android SDK 环境变量）
 ./gradlew assembleDebug
-# APK 输出路径：app/build/outputs/apk/debug/app-debug.apk
+
+# 安装到已连接的 Android 设备
+adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> 也可使用 Android Studio（推荐 2023.3+）打开 `app/` 目录，点击 Run 直接安装到设备或模拟器。
+> 推荐使用 **Android Studio 2023.3+** 打开 `app/` 目录，点击 ▶️ Run 直接安装并运行。
 
-### 配置 API 地址
+#### 3. 配置服务器地址
 
-默认 API 地址为 `http://10.0.2.2:8888/`（适用于 Android 模拟器访问本机服务），如需修改，请编辑 `app/src/main/java/.../ApiClient.kt` 中的 `BASE_URL` 常量。
+| 场景 | 配置方式 |
+|------|---------|
+| Android 模拟器访问本机（默认） | 无需修改，默认 `http://10.0.2.2:8888/` |
+| 真机访问局域网服务器 | 修改 `app/build.gradle.kts` 中 `defaultConfig` 的 `BASE_URL` 为局域网 IP |
+| 生产环境 | 修改 `buildTypes.release` 中的 `BASE_URL` |
+
+#### 4. 首次使用
+
+1. 启动应用，自动弹出 Token 配置对话框
+2. 输入 Proteus AI 后端服务的 **Bearer Token**
+3. 确认后自动加载历史会话，即可开始对话
+
+> 更多详细说明（架构、接口文档、常见问题等）请查看 [`app/README.md`](app/README.md)。
 
 ---
 
