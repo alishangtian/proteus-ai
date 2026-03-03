@@ -213,6 +213,10 @@ proteus-ai/
 ├── sandbox/                # 沙箱环境（安全代码执行）
 ├── app/                    # Android 客户端
 │   └── src/                # Kotlin/Compose 源码
+├── server/                 # 轻量级 Web 服务器
+│   ├── main.py             # FastAPI 主应用
+│   ├── requirements.txt    # Python 依赖
+│   └── .env.example        # 环境变量示例
 ├── examples/               # 使用示例
 │   ├── deep-research/      # 深度研究报告示例
 │   └── self_improving_agent/ # 自我改进智能体示例
@@ -249,6 +253,82 @@ python -m pytest tests/
 1. **配置 MCP 服务器**
 2. **在代码中使用 MCP 管理器**
 3. **在 Agent 中使用 MCP 工具**
+
+## 📱 Android 客户端 (app/)
+
+`app/` 目录包含 Proteus AI 的 Android 客户端，基于 **Jetpack Compose + Kotlin** 构建，详细说明见 [`app/README.md`](app/README.md)。
+
+### 主要功能
+
+- **Token 管理**：通过设置弹窗存储和更新 Bearer Token
+- **会话列表**：侧边栏显示用户的对话历史，支持点击切换会话
+- **消息界面**：仿聊天气泡设计，区分用户消息和 AI 回复
+- **任务提交**：通过 `/submit_task` 接口发送用户查询，实时接收 SSE 流式响应
+- **Material Design 3**：现代化 UI，支持深色/浅色主题
+
+### 快速编译
+
+```bash
+# 进入 app 目录
+cd app
+
+# 生成调试版 APK（需已配置 Android SDK 环境变量）
+./gradlew assembleDebug
+# APK 输出路径：app/build/outputs/apk/debug/app-debug.apk
+```
+
+> 也可使用 Android Studio（推荐 2023.3+）打开 `app/` 目录，点击 Run 直接安装到设备或模拟器。
+
+### 配置 API 地址
+
+默认 API 地址为 `http://10.0.2.2:8888/`（适用于 Android 模拟器访问本机服务），如需修改，请编辑 `app/src/main/java/.../ApiClient.kt` 中的 `BASE_URL` 常量。
+
+---
+
+## 🌐 轻量级 Web 服务器 (server/)
+
+`server/` 目录包含一个基于 **FastAPI** 的轻量级 Web 服务器，提供对话管理、模型配置查询、任务队列提交和 SSE 流式重放等接口，详细说明见 [`server/README.md`](server/README.md)。
+
+### 主要接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/conversations` | 获取当前用户的会话列表 |
+| `GET` | `/conversations/{id}` | 获取指定会话详情 |
+| `GET` | `/models` | 获取可用模型列表 |
+| `GET` | `/replay/stream/{chat_id}` | SSE 流式重放已保存的聊天记录 |
+| `POST` | `/submit_task` | 提交任务到 Redis 队列 |
+| `GET` | `/health` | 服务健康检查 |
+
+### 快速启动
+
+```bash
+cd server
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 配置环境变量
+cp .env.example .env
+# 编辑 .env，填写 Redis 连接信息
+
+# 启动服务
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+服务启动后可访问：
+- Swagger UI：http://localhost:8000/docs
+- ReDoc：http://localhost:8000/redoc
+
+### 认证方式
+
+在请求头中携带 Bearer Token：
+
+```
+Authorization: Bearer <your_token>
+```
+
+---
 
 ## 🔮 未来计划
 
@@ -304,6 +384,8 @@ python -m pytest tests/
 - [Docker 部署指南](proteus/docker/)
 - [智能体详细文档](AGENTS.md)
 - [项目文档](proteus/docs/)
+- [Android 客户端说明](app/README.md)
+- [轻量级 Web 服务器说明](server/README.md)
 
 ## 💬 支持与反馈
 
