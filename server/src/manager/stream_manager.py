@@ -150,7 +150,10 @@ class StreamManager:
                     self._redis_client.brpop, key, timeout=timeout
                 )
                 if result is None:
-                    # 超时，继续循环
+                    # 超时，检查 key 是否仍然存在，不存在则停止消费
+                    if not self._redis_client.exists(key):
+                        logger.info(f"阻塞队列 key 不存在，停止消费: {key}")
+                        break
                     continue
                 # result 是 (key, value) 元组
                 _, value = result

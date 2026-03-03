@@ -429,9 +429,12 @@ async def stop_chat(
             {"event": "complete", "data": "stopped by user"}
         )
         redis_conn.lpush(blocking_key, completion_message)
+        # 设置 blocking_key 的过期时间，防止无消费者时 Redis 内存积累
+        redis_conn.expire(blocking_key, 60)
 
-        # 删除流相关的Redis键（可选）
-        redis_conn.delete(stream_key, blocking_key)
+        # 仅删除 stream_key（历史消息），不删除 blocking_key
+        # 删除 blocking_key 会导致消费者无法收到 complete 事件，陷入无限循环
+        redis_conn.delete(stream_key)
 
         # 构建停止任务负载，推送到任务队列
         auth_header = http_request.headers.get("Authorization")

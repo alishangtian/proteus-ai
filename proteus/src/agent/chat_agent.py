@@ -590,6 +590,16 @@ class ChatAgent:
                     chat_id, await create_error_event(error_msg)
                 )
             raise
+        finally:
+            # 从缓存中移除当前 agent，防止内存泄漏
+            with ChatAgent._cache_lock:
+                if chat_id in ChatAgent._agent_cache:
+                    ChatAgent._agent_cache[chat_id] = [
+                        a for a in ChatAgent._agent_cache[chat_id]
+                        if a.agentid != self.agentid
+                    ]
+                    if not ChatAgent._agent_cache[chat_id]:
+                        del ChatAgent._agent_cache[chat_id]
 
     @langfuse_wrapper.dynamic_observe()
     async def _load_tools_with_tracking(
@@ -692,6 +702,9 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
+                            if self.stopped:
+                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
@@ -836,6 +849,9 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
+                            if self.stopped:
+                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
