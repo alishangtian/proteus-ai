@@ -167,10 +167,10 @@ class ToolExecutor:
                 if self.stream_manager and retry_count <= self.max_retries:
                     try:
                         retry_event = await create_tool_retry_event(
-                            action=tool_name,
-                            retry_count=retry_count,
+                            tool=tool_name,
+                            attempt=retry_count,
                             max_retries=self.max_retries,
-                            error_message=last_error,
+                            error=last_error,
                         )
                         await self.stream_manager.send_message(chat_id, retry_event)
                     except Exception as event_error:
