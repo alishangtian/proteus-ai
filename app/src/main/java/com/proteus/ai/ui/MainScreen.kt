@@ -40,6 +40,7 @@ import com.proteus.ai.ui.viewmodel.UiState
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory)) {
     val tokenState by viewModel.tokenState.collectAsState()
+    val serverUrlState by viewModel.serverUrlState.collectAsState()
     val showTokenDialog by viewModel.showTokenDialog.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val loading by viewModel.loading.collectAsState()
@@ -54,8 +55,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
     if (showTokenDialog) {
         TokenDialog(
             onDismissRequest = { viewModel.hideTokenDialog() },
-            onConfirm = { token -> viewModel.saveToken(token) },
-            initialToken = tokenState ?: ""
+            onConfirm = { token, serverUrl -> viewModel.saveSettings(token, serverUrl) },
+            initialToken = tokenState ?: "",
+            initialServerUrl = serverUrlState ?: ""
         )
     }
 

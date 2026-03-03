@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.proteus.ai.ProteusAIApplication
+import com.proteus.ai.api.ApiClient
 import com.proteus.ai.api.model.Conversation
 import com.proteus.ai.api.model.SseEvent
 import com.proteus.ai.repository.ChatRepository
@@ -37,6 +38,9 @@ class MainViewModel(
 
     private val _tokenState = MutableStateFlow<String?>(null)
     val tokenState: StateFlow<String?> = _tokenState.asStateFlow()
+
+    private val _serverUrlState = MutableStateFlow<String?>(null)
+    val serverUrlState: StateFlow<String?> = _serverUrlState.asStateFlow()
 
     private val _showTokenDialog = MutableStateFlow(false)
     val showTokenDialog: StateFlow<Boolean> = _showTokenDialog.asStateFlow()
@@ -88,6 +92,14 @@ class MainViewModel(
                 } else {
                     _showTokenDialog.value = true
                 }
+            }
+        }
+        viewModelScope.launch {
+            tokenManager.serverUrlFlow().collect { url ->
+                // 如果没有设置服务器地址，使用默认本机地址
+                val effectiveUrl = url ?: TokenManager.DEFAULT_SERVER_URL
+                _serverUrlState.value = effectiveUrl
+                ApiClient.setBaseUrl(effectiveUrl)
             }
         }
     }
@@ -269,7 +281,23 @@ class MainViewModel(
     fun setSkillCall(v: Boolean) { _skillCall.value = v }
     fun showTokenDialog() { _showTokenDialog.value = true }
     fun hideTokenDialog() { _showTokenDialog.value = false }
-    fun saveToken(t: String) { viewModelScope.launch { tokenManager.saveToken(t); _showTokenDialog.value = false } }
+    
+    fun saveSettings(token: String, serverUrl: String) {
+        viewModelScope.launch {
+            if (token.isNotBlank()) {
+                tokenManager.saveToken(token)
+            }
+            // 如果设置了服务器地址则保存，否则不保存（使用默认值）
+            if (serverUrl.isNotBlank()) {
+                tokenManager.saveServerUrl(serverUrl)
+                ApiClient.setBaseUrl(serverUrl)
+            } else {
+                // 使用默认本机地址
+                ApiClient.setBaseUrl(TokenManager.DEFAULT_SERVER_URL)
+            }
+            _showTokenDialog.value = false
+        }
+    }
 
     private fun currentTime(): String = LocalDateTime.now().format(timeFormatter)
 

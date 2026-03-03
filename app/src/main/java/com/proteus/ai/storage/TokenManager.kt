@@ -15,10 +15,18 @@ class TokenManager(private val context: Context) {
 
     companion object {
         private val TOKEN_KEY = stringPreferencesKey("bearer_token")
+        private val SERVER_URL_KEY = stringPreferencesKey("server_url")
+        
+        // 默认使用本机地址（Android 模拟器访问宿主机器）
+        const val DEFAULT_SERVER_URL = "http://10.0.2.2:8888/"
     }
 
     fun tokenFlow(): Flow<String?> = context.dataStore.data.map { prefs ->
         prefs[TOKEN_KEY]
+    }
+
+    fun serverUrlFlow(): Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[SERVER_URL_KEY]
     }
 
     suspend fun saveToken(token: String) {
@@ -27,9 +35,24 @@ class TokenManager(private val context: Context) {
         }
     }
 
+    suspend fun saveServerUrl(url: String) {
+        context.dataStore.edit { prefs ->
+            val normalizedUrl = url.trim().let {
+                if (!it.endsWith("/")) "$it/" else it
+            }
+            prefs[SERVER_URL_KEY] = normalizedUrl
+        }
+    }
+
     suspend fun clearToken() {
         context.dataStore.edit { prefs ->
             prefs.remove(TOKEN_KEY)
+        }
+    }
+
+    suspend fun clearServerUrl() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(SERVER_URL_KEY)
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.proteus.ai.api
 
-import com.proteus.ai.BuildConfig
+import android.content.Context
+import com.proteus.ai.storage.TokenManager
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -8,42 +9,62 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 object ApiClient {
-    val BASE_URL: String = BuildConfig.BASE_URL
+    private val _baseUrl = MutableStateFlow(TokenManager.DEFAULT_SERVER_URL)
+    val baseUrlFlow: StateFlow<String> = _baseUrl.asStateFlow()
 
-    private val gson = GsonBuilder()
-        .setLenient()
-        .create()
+    // 对于正规证书，不再需要 appContext 来加载本地文件
+    fun init(context: Context) {
+        // 仅保留结构，逻辑恢复默认
+        okHttpClient = createOkHttpClient()
+        retrofit = createRetrofit()
+    }
+
+    fun setBaseUrl(url: String) {
+        val normalizedUrl = if (!url.endsWith("/")) "$url/" else url
+        if (_baseUrl.value != normalizedUrl) {
+            _baseUrl.value = normalizedUrl
+            okHttpClient = createOkHttpClient()
+            retrofit = createRetrofit()
+            Timber.d("BASE_URL updated to: $normalizedUrl")
+        }
+    }
+
+    val BASE_URL: String get() = _baseUrl.value
+
+    private val gson = GsonBuilder().setLenient().create()
 
     private val loggingInterceptor = HttpLoggingInterceptor { message ->
-        // 自定义日志逻辑：如果消息太长（很可能是 SSE 数据），则不全量打印，防止内存抖动
         if (message.startsWith("event:") || message.startsWith("data:")) {
             Timber.tag("SSE-Raw").v(message)
         } else {
             Timber.tag("OkHttp").d(message)
         }
-    }.apply {
-        // 关键优化：针对生产环境或流式请求，Level.BODY 会导致 Interceptor 尝试缓冲整个流
-        // 这里设为 Level.HEADERS 以避免流被拦截器阻塞
-        level = HttpLoggingInterceptor.Level.HEADERS
+    }.apply { level = HttpLoggingInterceptor.Level.HEADERS }
+
+    private var okHttpClient: OkHttpClient = createOkHttpClient()
+    private var retrofit: Retrofit = createRetrofit()
+
+    private fun createOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.MINUTES) // 保持长连接用于 SSE
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            // 移除自定义 TrustManager 和 HostnameVerifier，回归系统安全标准
+            .build()
     }
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(loggingInterceptor)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.SECONDS) // SSE 必须保持无限读取
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
-
-    private val retrofit = Retrofit.Builder()
-        .baseUrl(BASE_URL)
+    private fun createRetrofit(): Retrofit = Retrofit.Builder()
+        .baseUrl(_baseUrl.value)
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create(gson))
         .build()
 
-    val apiService: ApiService by lazy {
-        retrofit.create(ApiService::class.java)
-    }
+    val apiService: ApiService get() = retrofit.create(ApiService::class.java)
 }

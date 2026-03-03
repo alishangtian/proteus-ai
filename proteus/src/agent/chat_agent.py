@@ -88,9 +88,33 @@ class ChatAgent:
     async def stop(self) -> None:
         """停止 agent：设置停止标志、取消监听任务并从 role_agents 列表移除自身"""
         self.stopped = True
+        # 取消所有待处理任务
+        if hasattr(self, "_pending_tasks"):
+            for task in self._pending_tasks:
+                if not task.done():
+                    task.cancel()
+            self._pending_tasks.clear()
+        # 从缓存中移除自身
+        if self.chat_id:
+            with ChatAgent._cache_lock:
+                agents = ChatAgent._agent_cache.get(self.chat_id)
+                if agents:
+                    # 移除所有 agentid 匹配的 agent（通常只有一个）
+                    ChatAgent._agent_cache[self.chat_id] = [
+                        a for a in agents if a.agentid != self.agentid
+                    ]
+                    # 如果列表为空，删除该 chat_id 的条目
+                    if not ChatAgent._agent_cache[self.chat_id]:
+                        ChatAgent._agent_cache.pop(self.chat_id, None)
+        # 清理工具执行器
+        if self._tool_executor is not None:
+            # ToolExecutor 没有显式的清理方法，但可以置空以帮助垃圾回收
+            self._tool_executor = None
+        logger.info(f"Agent {self.agentid} 已停止并清理")
 
     async def _register_agent(self, chat_id: str) -> None:
         """注册当前agent到缓存"""
+        self.chat_id = chat_id
         with ChatAgent._cache_lock:
             if chat_id not in ChatAgent._agent_cache:
                 ChatAgent._agent_cache[chat_id] = []
@@ -146,6 +170,8 @@ class ChatAgent:
         self.workspace_path = workspace_path
         # 延迟初始化的工具执行器（复用实例，避免每次调用重复创建）
         self._tool_executor = None
+        self.chat_id = None  # 将在 _register_agent 中设置
+        self._pending_tasks = set()
 
     def _load_compression_strategies(self) -> Dict[str, Any]:
         """加载压缩策略配置文件"""

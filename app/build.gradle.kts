@@ -1,6 +1,16 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application") version "8.5.0"
     id("org.jetbrains.kotlin.android") version "1.9.24"
+}
+
+// Load keystore properties
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -23,6 +33,15 @@ android {
         buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8888/\"")
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(keystoreProperties["storeFile"] as String)
+            storePassword = keystoreProperties["storePassword"] as String
+            keyAlias = keystoreProperties["keyAlias"] as String
+            keyPassword = keystoreProperties["keyPassword"] as String
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -33,6 +52,8 @@ android {
             )
             // Release 构建使用生产环境 URL
             buildConfigField("String", "BASE_URL", "\"https://api.proteus-ai.com/\"")
+            // 使用签名配置
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             // Debug 构建启用日志

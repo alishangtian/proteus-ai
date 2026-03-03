@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Background -->
+    <path
+        android:fillColor="#1E3A5F"
+        android:pathData="M0,0h108v108h-108z" />
+
+    <!-- Trident symbol - main vertical shaft -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M52,25 L56,25 L56,75 L52,75 Z" />
+
+    <!-- Trident - left prong -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M35,35 L42,35 L42,70 L35,70 C32,70 30,68 30,65 L30,40 C30,37 32,35 35,35 Z" />
+
+    <!-- Trident - right prong -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M66,35 L73,35 C76,35 78,37 78,40 L78,65 C78,68 76,70 73,70 L66,70 L66,35 Z" />
+
+    <!-- Trident - center prong (higher) -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M48,20 L60,20 C62,20 64,22 64,25 L64,70 L56,70 L56,25 C56,22 54,20 52,20 L48,20 Z" />
+
+    <!-- Trident - base crossbar -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M28,72 L80,72 L80,78 L28,78 Z" />
+
+    <!-- Decorative circles on crossbar -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M35,75 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M54,75 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0" />
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M73,75 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0" />
+</vector>
