@@ -69,7 +69,7 @@ def demo_dependency_workflow():
             subtasks=subtasks,
             auto_start_subtasks=False,  # 手动控制启动
             api_config={
-                "auth_token": "9921ff12-6ff6-4756-bc1a-37e22e04ae70",
+                "auth_token": "421f1d95-1bb4-439b-b66e-941c46cc2831",
                 "model_name": "deepseek-reasoner"
             }
         )

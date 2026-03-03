@@ -221,7 +221,7 @@ def init_multi_task_research(task_name, task_description, subtasks=None, base_di
         # Default API configuration
         default_api_config = {
             "endpoint": "https://127.0.0.1/task",
-            "auth_token": "9921ff12-6ff6-4756-bc1a-37e22e04ae70",
+            "auth_token": "421f1d95-1bb4-439b-b66e-941c46cc2831",
             "model_name": "deepseek-reasoner",
             "itecount": 200,
             "conversation_round": 5,
