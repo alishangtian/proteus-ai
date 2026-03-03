@@ -34,7 +34,7 @@
   },
   "api_config": {
     "endpoint": "https://127.0.0.1/task",
-    "auth_token": "[认证令牌]",
+    "auth_token": "421f1d95-1bb4-439b-b66e-941c46cc2831",
     "model_name": "[模型名称]",
     "itecount": 200,
     "conversation_round": 5,

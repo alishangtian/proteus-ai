@@ -136,8 +136,8 @@ class StreamManager:
 
         for msg in reversed(messages):
             message = json.loads(msg)
-            await self.send_message(chat_id, message, True)
-            # await asyncio.sleep(0.001)
+            await self.send_message(chat_id, message, False)
+            await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题

@@ -1977,7 +1977,6 @@ class TaskRequest(BaseModel):
 
     query: str = Field(..., description="任务查询内容")
     workspace_path: str = Field(..., description="工作目录路径")
-    modul: str = Field(default="task", description="任务模式，默认为task")
     model_name: Optional[str] = Field(
         default="deepseek-reasoner", description="模型名称"
     )
@@ -1987,12 +1986,8 @@ class TaskRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="会话ID")
     conversation_round: int = Field(default=5, description="会话轮数")
     file_ids: Optional[List[str]] = Field(None, description="文件ID列表")
-    tool_memory_enabled: bool = Field(default=False, description="是否启用工具记忆")
-    sop_memory_enabled: bool = Field(default=True, description="是否启用SOP记忆")
-    enable_tools: bool = Field(default=True, description="是否启用工具调用")
     tool_choices: Optional[List[str]] = Field(None, description="工具选择列表")
     selected_skills: Optional[List[str]] = Field(None, description="选中的技能列表")
-    stream: bool = Field(default=False, description="是否启用流式响应")
 
 
 class TaskResponse(BaseModel):
@@ -2019,10 +2014,6 @@ async def create_task(request: Request, task_request: TaskRequest):
     task_id = f"task-{uuid.uuid4().hex[:8]}"
     chat_id = f"chat-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-    # 仅在非task模式下创建流，task模式下不需要流事件
-    if task_request.modul != "task" or task_request.stream:
-        stream_manager.create_stream(chat_id, task_request.query)
-
     # 如果提供了conversation_id，保存关系
     if task_request.conversation_id:
         redis_conn = get_redis_connection()
@@ -2045,41 +2036,38 @@ async def create_task(request: Request, task_request: TaskRequest):
 
     # 准备工具选择列表（与chat端点类似）：如果参数为空则使用默认值
     if task_request.tool_choices is None:
-        tool_choices = ["serper_search", "web_crawler", "python_execute"]
-        if task_request.sop_memory_enabled:
-            tool_choices.append("skills_extract")
+        tool_choices = [
+            "serper_search",
+            "web_crawler",
+            "python_execute",
+            "skills_extract",
+        ]
     else:
-        # 如果参数已提供，则直接使用，但仍可根据 sop_memory_enabled 添加 skills_extract
         tool_choices = task_request.tool_choices
-        if task_request.sop_memory_enabled and "skills_extract" not in tool_choices:
-            tool_choices.append("skills_extract")
 
     # 检查模式是否支持
-    if task_request.modul in agent_model_list:
-        # 启动智能体异步任务处理用户请求
-        asyncio.create_task(
-            process_agent(
-                chat_id,
-                task_request.query,
-                task_request.itecount,
-                task_request.agentid,
-                agentmodul=task_request.modul,
-                team_name=task_request.team_name,
-                conversation_id=task_request.conversation_id,
-                model_name=task_request.model_name,
-                conversation_round=task_request.conversation_round,
-                file_ids=task_request.file_ids,
-                user_name=user_name,
-                tool_memory_enabled=task_request.tool_memory_enabled,
-                sop_memory_enabled=task_request.sop_memory_enabled,
-                enable_tools=task_request.enable_tools,
-                tool_choices=tool_choices,
-                selected_skills=task_request.selected_skills,
-                workspace_path=task_request.workspace_path,
-            )
+    # 启动智能体异步任务处理用户请求
+    asyncio.create_task(
+        process_agent(
+            chat_id,
+            task_request.query,
+            task_request.itecount,
+            task_request.agentid,
+            agentmodul="task",
+            team_name=task_request.team_name,
+            conversation_id=task_request.conversation_id,
+            model_name=task_request.model_name,
+            conversation_round=task_request.conversation_round,
+            file_ids=task_request.file_ids,
+            user_name=user_name,
+            tool_memory_enabled=True,
+            sop_memory_enabled=True,
+            enable_tools=True,
+            tool_choices=tool_choices,
+            selected_skills=task_request.selected_skills,
+            workspace_path=task_request.workspace_path,
         )
-    else:
-        raise HTTPException(status_code=400, detail="Invalid model type")
+    )
 
     return TaskResponse(
         success=True,

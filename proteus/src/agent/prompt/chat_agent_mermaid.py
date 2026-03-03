@@ -119,6 +119,7 @@ graph TD
 ```
 ${SKILLS_PROMPT}
 # System Information:
+${WORKSPACE_PATH}.
 - CURRENT_TIME ${CURRENT_TIME}. 
 - LANGUAGE：${LANGUAGE}
 """

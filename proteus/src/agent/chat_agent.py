@@ -346,6 +346,13 @@ class ChatAgent:
                 )
             all_values["SKILLS_PROMPT"] = skills_prompt
 
+            if self.workspace_path:
+                all_values["WORKSPACE_PATH"] = (
+                    f"- WORKSPACE_PATH: {self.workspace_path}"
+                )
+            else:
+                all_values["WORKSPACE_PATH"] = ""
+
             if not messages:
                 system_message = {
                     "role": "system",

@@ -148,7 +148,7 @@ def start_subtask(task_dir, subtask, api_config, max_retries=2, retry_delay=5):
     
     # Prepare headers
     endpoint = api_config.get("endpoint", "https://127.0.0.1/task")
-    auth_token = api_config.get("auth_token", "9921ff12-6ff6-4756-bc1a-37e22e04ae70")
+    auth_token = api_config.get("auth_token", "421f1d95-1bb4-439b-b66e-941c46cc2831")
     
     headers = {
         "Content-Type": "application/json",
@@ -262,7 +262,7 @@ def start_subtasks_sequential(task_dir, wait_for_completion=False, check_interva
             print("警告: 任务配置中没有API配置")
             api_config = {
                 "endpoint": "https://127.0.0.1/task",
-                "auth_token": "9921ff12-6ff6-4756-bc1a-37e22e04ae70",
+                "auth_token": "421f1d95-1bb4-439b-b66e-941c46cc2831",
                 "model_name": "deepseek-reasoner",
                 "itecount": 200,
                 "conversation_round": 5,
