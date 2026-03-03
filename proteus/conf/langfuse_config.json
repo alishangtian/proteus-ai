@@ -14,6 +14,11 @@
       "capture_input": true,
       "capture_output": true
     },
+    "process_task": {
+      "name": "${context.query}",
+      "capture_input": true,
+      "capture_output": true
+    },
     "load_tools_with_tracking": {
       "name": "tool-loading",
       "capture_input": true,

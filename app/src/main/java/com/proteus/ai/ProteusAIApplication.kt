@@ -1,6 +1,7 @@
 package com.proteus.ai
 
 import android.app.Application
+import com.proteus.ai.api.ApiClient
 import com.proteus.ai.storage.TokenManager
 import timber.log.Timber
 
@@ -17,5 +18,8 @@ class ProteusAIApplication : Application() {
         }
 
         tokenManager = TokenManager(this)
+        
+        // 初始化 ApiClient 以便加载 SSL 证书（针对非 Debug 环境）
+        ApiClient.init(this)
     }
 }

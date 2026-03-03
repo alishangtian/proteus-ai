@@ -2,6 +2,7 @@
     <string name="app_name">Proteus AI</string>
     <string name="token_settings">Token 设置</string>
     <string name="enter_token">请输入您的 Token</string>
+    <string name="server_url">服务器地址</string>
     <string name="save">保存</string>
     <string name="cancel">取消</string>
     <string name="conversations">会话列表</string>
@@ -20,4 +21,5 @@
     <string name="message_count">消息数</string>
     <string name="streaming">AI 正在回复…</string>
     <string name="new_chat_hint">新对话</string>
+    <string name="settings_saved">设置已保存</string>
 </resources>

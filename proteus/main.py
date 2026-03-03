@@ -558,7 +558,11 @@ async def stop_chat(model: str, chat_id: str):
     if agents:
         for agent in agents:
             await agent.stop()
-    logger.info(f"[{chat_id}] 已经停止")
+    # 清除残留的代理缓存
+    ChatAgent.clear_agents(chat_id)
+    # 关闭对应的流
+    stream_manager.close_stream(chat_id)
+    logger.info(f"[{chat_id}] 已经停止并清理")
     return {"success": True, "chat_id": chat_id}
 
 
@@ -772,6 +776,7 @@ async def start_task_consumer():
     asyncio.create_task(consume_tasks())
 
 
+@langfuse_wrapper.dynamic_observe()
 async def consume_tasks():
     """持续消费Redis队列中的任务"""
     from src.utils.redis_cache import get_redis_connection
@@ -797,12 +802,13 @@ async def consume_tasks():
             await asyncio.sleep(1)
 
 
+@langfuse_wrapper.dynamic_observe()
 async def process_task(task_data: dict):
     """处理单个任务，调用 TaskProcessor"""
     try:
         # 提取任务类型
         task_type = task_data.get("task_type", "start")
-        
+
         # 如果是停止任务，则执行停止逻辑
         if task_type == "stop":
             chat_id = task_data.get("chat_id")
@@ -826,7 +832,7 @@ async def process_task(task_data: dict):
                 logger.info(f"未找到活跃的 agent: {chat_id}")
             # 停止任务处理完毕，无需继续执行
             return
-        
+
         # 以下是原有的开始任务处理逻辑
         # 提取任务参数
         task_id = task_data.get("task_id")
