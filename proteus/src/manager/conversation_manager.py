@@ -4,6 +4,7 @@ Conversation Manager
 """
 
 import json
+import os
 import time
 import logging
 from datetime import datetime
@@ -26,6 +27,8 @@ class ConversationManager:
         """
         self.logger = logger or logging.getLogger(__name__)
         self.redis_conn = get_redis_connection()
+        self._max_messages = int(os.getenv("CONVERSATION_MAX_MESSAGES", "500"))
+        self._ttl_seconds = int(os.getenv("CONVERSATION_TTL_DAYS", "30")) * 86400
 
     def save_message(self, conversation_id: str, message: Dict[str, Any]) -> bool:
         """
@@ -52,8 +55,12 @@ class ConversationManager:
 
             record_json = json.dumps(record, ensure_ascii=False)
 
-            # 使用list存储，保持消息顺序
-            self.redis_conn.rpush(redis_key, record_json)
+            # 使用list存储，保持消息顺序；同时裁剪超出上限的旧消息并刷新TTL
+            pipe = self.redis_conn.pipeline()
+            pipe.rpush(redis_key, record_json)
+            pipe.ltrim(redis_key, -self._max_messages, -1)
+            pipe.expire(redis_key, self._ttl_seconds)
+            pipe.execute()
 
             self.logger.info(
                 f"成功保存消息到对话历史 (conversation_id: {conversation_id}, "

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from typing import Dict, Optional, AsyncGenerator, List
 from datetime import datetime
 import logging
@@ -27,6 +28,8 @@ class StreamManager:
             )
         self._streams: Dict[str, asyncio.Queue] = {}
         self._redis_client = RedisCache()
+        self._stream_max_messages = int(os.getenv("STREAM_MAX_MESSAGES", "1000"))
+        self._stream_ttl_seconds = int(os.getenv("STREAM_TTL_SECONDS", str(24 * 3600)))
         StreamManager._instance = self
 
     @classmethod
@@ -79,8 +82,18 @@ class StreamManager:
     async def send_to_redis(self, chat_id: str, message: dict) -> None:
         redis_key = f"chat_stream:{chat_id}"  #  全量式replay
         redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay
-        self._redis_client.lpush(redis_key, json.dumps(message))
-        self._redis_client.lpush(redis_key_b, json.dumps(message))
+        msg_json = json.dumps(message)
+        pipe = self._redis_client.pipeline()
+        if pipe:
+            pipe.lpush(redis_key, msg_json)
+            pipe.ltrim(redis_key, 0, self._stream_max_messages - 1)
+            pipe.expire(redis_key, self._stream_ttl_seconds)
+            pipe.lpush(redis_key_b, msg_json)
+            pipe.ltrim(redis_key_b, 0, self._stream_max_messages - 1)
+            pipe.expire(redis_key_b, self._stream_ttl_seconds)
+            pipe.execute()
+        else:
+            logger.error(f"无法创建 Redis pipeline，跳过消息持久化 (chat_id: {chat_id})")
 
     async def get_messages(self, chat_id: str) -> AsyncGenerator[dict, None]:
         """获取指定流的消息生成器

@@ -6,6 +6,7 @@ import os
 import threading
 import asyncio
 import yaml
+from collections import OrderedDict
 from pathlib import Path
 from string import Template
 from datetime import datetime
@@ -55,8 +56,9 @@ class ChatAgent:
     - 对话历史管理
     """
 
-    _agent_cache: Dict[str, List["ChatAgent"]] = {}
+    _agent_cache: "OrderedDict[str, List['ChatAgent']]" = OrderedDict()
     _cache_lock = threading.Lock()
+    _agent_cache_max_size: int = int(os.getenv("AGENT_CACHE_MAX_SIZE", "100"))
 
     @classmethod
     def get_agents(cls, chat_id: str) -> List["ChatAgent"]:
@@ -93,6 +95,9 @@ class ChatAgent:
         """注册当前agent到缓存"""
         with ChatAgent._cache_lock:
             if chat_id not in ChatAgent._agent_cache:
+                # 超过最大缓存数量时，先移除最旧的条目（FIFO淘汰），再插入新条目
+                while len(ChatAgent._agent_cache) >= ChatAgent._agent_cache_max_size:
+                    ChatAgent._agent_cache.popitem(last=False)
                 ChatAgent._agent_cache[chat_id] = []
             if not any(
                 a.agentid == self.agentid for a in ChatAgent._agent_cache[chat_id]
