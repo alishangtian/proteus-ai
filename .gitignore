@@ -188,3 +188,6 @@ agent_history.gif
 /proteus/uploads/
 /proteus/chroma_db/
 /proteus/ssl
+
+# Gradle
+.gradle/
