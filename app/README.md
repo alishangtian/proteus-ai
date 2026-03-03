@@ -101,7 +101,7 @@ AAB 文件位于 `app/build/outputs/bundle/release/app-release.aab`。
 
 ### 修改 API 基础地址
 
-默认 API 地址为 `http://10.0.2.2:8000/`（适用于 Android 模拟器访问本地服务器）。如需更改，请修改 `ApiClient.kt` 中的 `BASE_URL` 常量：
+默认 API 地址为 `http://10.0.2.2:8888/`（适用于 Android 模拟器访问本地服务器）。如需更改，请修改 `ApiClient.kt` 中的 `BASE_URL` 常量：
 
 ```kotlin
 private const val BASE_URL = "https://your-server.com/"
@@ -111,18 +111,11 @@ private const val BASE_URL = "https://your-server.com/"
 
 侧边栏默认宽度为 `300.dp`，可在 `MainScreen.kt` 中修改 `width(300.dp)` 参数。
 
-## 已知限制
-
-- SSE 流式响应目前仅模拟实现，实际需对接后端 `/replay/stream/{chat_id}` 端点。
-- 消息渲染暂不支持 Markdown 和图片（可后续集成 `compose-markdown` 库）。
-- 会话历史加载功能待完善（目前仅显示示例消息）。
-
 ## 后续扩展建议
 
-1. **SSE 流式接收**：使用 OkHttp EventSource 或 `ktor-sse` 实现真正的流式消息推送。
-2. **Markdown 渲染**：集成 `compose-markdown` 库，支持富文本显示。
-3. **文件上传**：扩展 `submit_task` 接口，支持图片、文档等附件。
-4. **离线存储**：使用 Room 数据库缓存会话和消息。
+1. **文件上传**：扩展 `submit_task` 接口，支持图片、文档等附件。
+2. **离线存储**：使用 Room 数据库缓存会话和消息。
+3. **推送通知**：集成 FCM，支持后台消息提醒。
 
 ## 许可证
 

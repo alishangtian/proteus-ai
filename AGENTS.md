@@ -8,6 +8,7 @@ Proteus AI 提供了功能强大的 Chat 智能体，支持工具调用、上下
 - [🔧 工具系统](#-工具系统)
 - [📚 技能系统](#-技能系统)
 - [💾 记忆系统](#-记忆系统)
+- [🚀 智能体模式](#-智能体模式)
 - [📱 Android 客户端](#-android-客户端)
 
 ---
@@ -93,7 +94,7 @@ ChatAgent.clear_agents(chat_id)
 
 ## 🔧 工具系统
 
-Chat 智能体可以动态调用多种工具来完成复杂任务。工具定义自动从 `proteus/src/nodes/agent_node_config.yaml` 和 `proteus/src/nodes/node_config.py` 加载。
+Chat 智能体可以动态调用多种工具来完成复杂任务。工具定义自动从 `proteus/src/nodes/agent_node_config.yaml` 加载。
 
 ### 内置工具
 
@@ -162,6 +163,26 @@ Chat 智能体可以动态调用多种工具来完成复杂任务。工具定义
 ### 技能记忆
 
 启用技能记忆后，智能体会将选中的技能信息纳入上下文，帮助更好地理解和执行特定任务。
+
+---
+
+## 🚀 智能体模式
+
+Proteus AI 支持多种智能体运行模式，适用于不同的使用场景：
+
+| 模式 | 说明 |
+|------|------|
+| `chat` | 纯对话模式，支持工具调用和多轮对话，适合日常查询和交互 |
+| `task` | 任务模式，自动规划并完成复杂任务 |
+| `workflow` | 工作流模式，执行可视化工作流 |
+| `super-agent` | 超级智能体，具备更强的规划与执行能力 |
+| `mcp-agent` | MCP 模式，通过 Model Context Protocol 调用外部工具 |
+| `browser-agent` | 浏览器操作模式，支持自动化网页交互 |
+| `deep-research` | 深度研究模式，对指定主题进行系统性深度研究 |
+| `deep-research-multi` | 多智能体协作深度研究模式 |
+| `codeact-agent` | 代码执行智能体，通过编写和运行代码解决问题 |
+
+各模式通过 `/submit_task` 接口的 `modul` 字段指定。
 
 ---
 
