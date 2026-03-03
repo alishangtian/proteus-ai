@@ -322,10 +322,9 @@ async def extract_and_save_tool_memory(
     try:
         from src.api.llm_api import call_llm_api
         from src.agent.prompt.tool_memory_prompt import TOOL_MEMORY_ANALYSIS_PROMPT
-        from string import Template
 
         context_info = f"工具执行结果摘要（前500字）：\n{tool_result[:500]}" if tool_result else ""
-        prompt = Template(TOOL_MEMORY_ANALYSIS_PROMPT).safe_substitute(
+        prompt = TOOL_MEMORY_ANALYSIS_PROMPT.format_map(
             {
                 "tool_name": tool_name,
                 "execution_status": execution_status,
@@ -371,10 +370,9 @@ async def extract_and_save_sop_memory(
             SOP_MEMORY_ANALYSIS_PROMPT,
             PROBLEM_TYPE_INFERENCE_PROMPT,
         )
-        from string import Template
 
         # 1. 推断问题类型
-        type_prompt = Template(PROBLEM_TYPE_INFERENCE_PROMPT).safe_substitute(
+        type_prompt = PROBLEM_TYPE_INFERENCE_PROMPT.format_map(
             {"user_query": user_query[:300], "tool_chain": tool_chain[:300]}
         )
         problem_type, _ = await call_llm_api(
@@ -386,7 +384,7 @@ async def extract_and_save_sop_memory(
         problem_type = (problem_type or "通用问题").strip()
 
         # 2. 提取 SOP
-        sop_prompt = Template(SOP_MEMORY_ANALYSIS_PROMPT).safe_substitute(
+        sop_prompt = SOP_MEMORY_ANALYSIS_PROMPT.format_map(
             {
                 "user_query": user_query[:300],
                 "problem_type": problem_type,

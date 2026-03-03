@@ -202,5 +202,53 @@ class TestMemoryManagerLTM(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+class TestPromptTemplateSubstitution(unittest.TestCase):
+    """验证 prompt 模板使用 .format_map() 正确替换变量（回归测试：fix Template vs format_map 冲突）"""
+
+    def test_tool_memory_prompt_substitution(self):
+        """TOOL_MEMORY_ANALYSIS_PROMPT 使用 .format_map() 后不含原始变量名"""
+        from agent.prompt.tool_memory_prompt import TOOL_MEMORY_ANALYSIS_PROMPT
+
+        result = TOOL_MEMORY_ANALYSIS_PROMPT.format_map({
+            "tool_name": "serper_search",
+            "execution_status": "成功",
+            "param_types": "str",
+            "user_query": "search for python",
+            "context_info": "result snippet",
+        })
+        self.assertNotIn("{tool_name}", result)
+        self.assertNotIn("{execution_status}", result)
+        self.assertIn("serper_search", result)
+        self.assertIn("成功", result)
+
+    def test_sop_memory_prompt_substitution(self):
+        """SOP_MEMORY_ANALYSIS_PROMPT 使用 .format_map() 后不含原始变量名"""
+        from agent.prompt.sop_memory_prompt import SOP_MEMORY_ANALYSIS_PROMPT
+
+        result = SOP_MEMORY_ANALYSIS_PROMPT.format_map({
+            "user_query": "how to search",
+            "problem_type": "信息检索类问题",
+            "tool_chain": "serper_search->web_crawler",
+            "final_result": "got the answer",
+            "resolution_status": "成功",
+            "context_info": "",
+        })
+        self.assertNotIn("{user_query}", result)
+        self.assertNotIn("{tool_chain}", result)
+        self.assertIn("信息检索类问题", result)
+
+    def test_problem_type_prompt_substitution(self):
+        """PROBLEM_TYPE_INFERENCE_PROMPT 使用 .format_map() 后不含原始变量名"""
+        from agent.prompt.sop_memory_prompt import PROBLEM_TYPE_INFERENCE_PROMPT
+
+        result = PROBLEM_TYPE_INFERENCE_PROMPT.format_map({
+            "user_query": "what is python",
+            "tool_chain": "serper_search",
+        })
+        self.assertNotIn("{user_query}", result)
+        self.assertNotIn("{tool_chain}", result)
+        self.assertIn("what is python", result)
+
+
 if __name__ == "__main__":
     unittest.main()
