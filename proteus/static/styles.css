@@ -233,6 +233,55 @@
     color: var(--red);
 }
 
+/* 运行中会话区域 */
+.conversation-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-color-lighter);
+    padding: 8px 4px 4px;
+    margin-top: 4px;
+}
+
+.conversation-section-label.running {
+    color: var(--green-text);
+}
+
+.conversation-item.running {
+    border-color: var(--green-border);
+    background: linear-gradient(135deg, var(--green-bg-light) 0%, var(--bg-color-success) 100%);
+}
+
+.conversation-item.running:hover {
+    border-color: var(--green);
+    background: linear-gradient(135deg, var(--bg-color-success) 0%, #bbf7d0 100%);
+    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.15);
+}
+
+.running-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--green-text);
+    font-weight: 500;
+}
+
+.running-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
     .conversation-list-container {
@@ -310,6 +359,9 @@ mark {
     --red-darker: #b91c1c;
     --green: #22c55e;
     --green-dark: #166534;
+    --green-text: #16a34a;
+    --green-border: #86efac;
+    --green-bg-light: #f0fdf4;
     --yellow: #facc15;
 
     --text-color-dark: #1a1a1a;

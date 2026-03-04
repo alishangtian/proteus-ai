@@ -144,6 +144,8 @@ class ChatAgent:
         try:
             redis_conn = get_redis_connection()
             redis_conn.set(self._status_redis_key(), status, ex=AGENT_STATUS_TTL)
+            if self.chat_id:
+                redis_conn.set(f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL)
             logger.info(f"Agent {self.agentid} 状态更新为: {status}")
         except Exception as e:
             logger.error(f"Agent {self.agentid} 设置状态失败: {e}")
@@ -519,10 +521,19 @@ class ChatAgent:
                                 await create_compress_start_event(original_tokens),
                             )
 
-                        # 执行压缩（强制压缩，跳过 token 检查）
-                        messages = await self._compress_messages(
-                            chat_id, messages, must_compress=True
-                        )
+                        # 执行压缩（强制压缩，跳过 token 检查）；失败时退化为简单消息移除
+                        try:
+                            messages = await self._compress_messages(
+                                chat_id, messages, must_compress=True
+                            )
+                        except Exception as compress_err:
+                            logger.warning(
+                                f"[{chat_id}] 压缩失败，退化为简单消息移除: {compress_err}"
+                            )
+                            context_window = self._get_context_window_for_model()
+                            messages = await self._fallback_compression(
+                                chat_id, messages, context_window
+                            )
 
                         compressed_tokens = count_tokens(messages)
                         logger.info(
@@ -556,7 +567,17 @@ class ChatAgent:
                                     chat_id,
                                     await create_compress_start_event(original_tokens),
                                 )
-                            messages = await self._compress_messages(chat_id, messages)
+                            # 失败时退化为简单消息移除
+                            try:
+                                messages = await self._compress_messages(chat_id, messages)
+                            except Exception as compress_err:
+                                logger.warning(
+                                    f"[{chat_id}] 压缩失败，退化为简单消息移除: {compress_err}"
+                                )
+                                context_window = self._get_context_window_for_model()
+                                messages = await self._fallback_compression(
+                                    chat_id, messages, context_window
+                                )
                             compressed_tokens = count_tokens(messages)
                             logger.info(
                                 f"[{chat_id}] 压缩完成: {original_tokens} -> {compressed_tokens} tokens"
@@ -640,7 +661,7 @@ class ChatAgent:
                     )
 
                 except Exception as e:
-                    logger.error(f"[{chat_id}] 压缩消息失败: {str(e)}", exc_info=True)
+                    logger.error(f"[{chat_id}] 迭代执行失败: {str(e)}", exc_info=True)
                     raise e
 
             # 发送完成事件

@@ -177,10 +177,25 @@ async def get_conversations(
                     for k, v in conv_data.items()
                 }
 
-                # 获取该会话的chat数量
+                # 获取该会话的chat数量，并检查最新chat是否正在运行
                 conv_chats_key = f"conversation:{conv_id_str}:chats"
                 chat_count = redis_conn.llen(conv_chats_key)
                 conv_info["chat_count"] = chat_count
+
+                # 检查最新 chat 的运行状态
+                last_chat_ids = redis_conn.lrange(conv_chats_key, -1, -1)
+                is_running = False
+                if last_chat_ids:
+                    last_chat_id = (
+                        last_chat_ids[0].decode("utf-8")
+                        if isinstance(last_chat_ids[0], bytes)
+                        else last_chat_ids[0]
+                    )
+                    chat_status = redis_conn.get(f"chat:{last_chat_id}:status")
+                    if isinstance(chat_status, bytes):
+                        chat_status = chat_status.decode("utf-8")
+                    is_running = chat_status == "running"
+                conv_info["is_running"] = is_running
 
                 conversations.append(conv_info)
 

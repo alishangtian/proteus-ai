@@ -732,9 +732,13 @@ async function loadConversationList() {
 
         if (data.success && data.conversations && data.conversations.length > 0) {
             conversationList.innerHTML = '';
-            data.conversations.forEach(conv => {
+
+            const running = data.conversations.filter(c => c.is_running);
+            const history = data.conversations.filter(c => !c.is_running);
+
+            const buildConvItem = (conv) => {
                 const convItem = document.createElement('div');
-                convItem.className = 'conversation-item';
+                convItem.className = conv.is_running ? 'conversation-item running' : 'conversation-item';
                 convItem.dataset.conversationId = conv.conversation_id;
 
                 const convTitle = document.createElement('div');
@@ -744,20 +748,26 @@ async function loadConversationList() {
 
                 const convMeta = document.createElement('div');
                 convMeta.className = 'conversation-meta';
-                const createdDate = new Date(conv.updated_at);
 
-                // 判断是否为当天
-                const now = new Date();
-                const isToday = createdDate.getFullYear() === now.getFullYear() &&
-                    createdDate.getMonth() === now.getMonth() &&
-                    createdDate.getDate() === now.getDate();
-
-                // 当天显示时分秒，非当天显示日期
-                const timeStr = isToday
-                    ? createdDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    : createdDate.toLocaleDateString('zh-CN');
-
-                convMeta.textContent = `${timeStr} · ${conv.chat_count || 0} 条消息`;
+                if (conv.is_running) {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'running-indicator';
+                    const dot = document.createElement('span');
+                    dot.className = 'running-dot';
+                    indicator.appendChild(dot);
+                    indicator.appendChild(document.createTextNode('运行中'));
+                    convMeta.appendChild(indicator);
+                } else {
+                    const createdDate = new Date(conv.updated_at);
+                    const now = new Date();
+                    const isToday = createdDate.getFullYear() === now.getFullYear() &&
+                        createdDate.getMonth() === now.getMonth() &&
+                        createdDate.getDate() === now.getDate();
+                    const timeStr = isToday
+                        ? createdDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        : createdDate.toLocaleDateString('zh-CN');
+                    convMeta.textContent = `${timeStr} · ${conv.chat_count || 0} 条消息`;
+                }
 
                 // 创建按钮容器
                 const buttonContainer = document.createElement('div');
@@ -792,25 +802,38 @@ async function loadConversationList() {
 
                 // 添加点击事件，处理选中状态
                 convItem.onclick = (e) => {
-                    // 如果点击的是编辑或删除按钮，不处理选中状态
                     if (e.target.closest('.conversation-buttons')) {
                         return;
                     }
-
-                    // 移除所有其他会话项的选中状态
                     document.querySelectorAll('.conversation-item').forEach(item => {
                         item.classList.remove('active');
                     });
-
-                    // 为当前点击的会话项添加选中状态
                     convItem.classList.add('active');
-
-                    // 加载会话内容
                     loadConversation(conv.conversation_id);
                 };
 
-                conversationList.appendChild(convItem);
-            });
+                return convItem;
+            };
+
+            // 渲染运行中区域
+            if (running.length > 0) {
+                const runningLabel = document.createElement('div');
+                runningLabel.className = 'conversation-section-label running';
+                runningLabel.textContent = '运行中';
+                conversationList.appendChild(runningLabel);
+                running.forEach(conv => conversationList.appendChild(buildConvItem(conv)));
+            }
+
+            // 渲染历史会话区域
+            if (history.length > 0) {
+                if (running.length > 0) {
+                    const historyLabel = document.createElement('div');
+                    historyLabel.className = 'conversation-section-label';
+                    historyLabel.textContent = '历史会话';
+                    conversationList.appendChild(historyLabel);
+                }
+                history.forEach(conv => conversationList.appendChild(buildConvItem(conv)));
+            }
         } else {
             conversationList.innerHTML = '<div class="conversation-list-empty">暂无会话历史</div>';
         }

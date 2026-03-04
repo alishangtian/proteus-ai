@@ -260,7 +260,13 @@ private fun AiMessageContent(message: Message) {
                                 items.add(MergedEvent.Message(currentMessageContent.toString()))
                                 currentMessageContent = StringBuilder()
                             }
-                            items.add(MergedEvent.Compress(event))
+                            // Replace any existing compress event rather than adding a new one
+                            val existingIdx = items.indexOfFirst { it is MergedEvent.Compress }
+                            if (existingIdx >= 0) {
+                                items[existingIdx] = MergedEvent.Compress(event)
+                            } else {
+                                items.add(MergedEvent.Compress(event))
+                            }
                         }
                         else -> {}
                     }

@@ -3,6 +3,7 @@ package com.proteus.ai.api
 import android.content.Context
 import com.proteus.ai.storage.TokenManager
 import com.google.gson.GsonBuilder
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -56,6 +57,7 @@ object ApiClient {
             .readTimeout(10, TimeUnit.MINUTES) // 保持长连接用于 SSE
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .connectionPool(ConnectionPool(5, 60, TimeUnit.SECONDS)) // 60s < 服务端 keep-alive 75s，避免使用过期连接
             // 移除自定义 TrustManager 和 HostnameVerifier，回归系统安全标准
             .build()
     }

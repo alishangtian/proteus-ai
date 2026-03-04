@@ -115,6 +115,8 @@ class StreamManager:
             logger.warning(f"No messages found for chat: {chat_id}")
             return
 
+        chat_status = self._redis_client.hget(CHAT_META_KEY, f"{chat_id}_status")
+
         # 获取用户查询用于agent_start事件
         user_query = self._redis_client.hget(CHAT_META_KEY, chat_id)
         if user_query is None:
@@ -132,7 +134,7 @@ class StreamManager:
             agent_start_event = await create_agent_start_event(user_query)
             # 创建临时流用于回放
             self.create_stream(chat_id)
-            await self.send_message(chat_id, agent_start_event, False)
+            await self.send_message(chat_id, agent_start_event, True)
             await asyncio.sleep(0.001)
         else:
             # 创建临时流用于回放
@@ -140,12 +142,12 @@ class StreamManager:
 
         # 回放所有消息
         for message in time_ordered:
-            await self.send_message(chat_id, message, False)
+            await self.send_message(chat_id, message, True)
             await asyncio.sleep(0.001)
 
-        # 检查最后一条消息是否为complete
+        # 完成的 chat 需要检查最后一条消息是否为complete
         last_event = time_ordered[-1].get("event") if time_ordered else None
-        if last_event != "complete":
+        if chat_status == "complete" and last_event != "complete":
             # 追加complete事件
             complete_event = await create_complete_event()
             await self.send_message(chat_id, complete_event, False)
