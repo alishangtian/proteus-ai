@@ -219,6 +219,8 @@ fun ConversationList(
     }
 }
 
+private const val RUNNING_DOT_ANIMATION_DURATION_MS = 1500
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConversationItem(
@@ -247,9 +249,9 @@ fun ConversationItem(
     val infiniteTransition = rememberInfiniteTransition(label = "running")
     val dotAlpha by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 0.3f,
+        targetValue = 0.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(750),
+            animation = tween(RUNNING_DOT_ANIMATION_DURATION_MS, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "dotAlpha"

@@ -179,8 +179,13 @@ class MainViewModel(
                 
                 chatIds.forEach { chatId ->
                     val msgId = "replay_$chatId"
-                    chatRepository.replayStream(token, chatId).collect { event ->
-                        updateMessageWithEvent(msgId, event)
+                    try {
+                        chatRepository.replayStream(token, chatId).collect { event ->
+                            updateMessageWithEvent(msgId, event)
+                        }
+                    } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+                        Timber.e(e, "Replay failed for chatId: $chatId, continuing with next")
                     }
                 }
                 _uiState.value = UiState.Success
