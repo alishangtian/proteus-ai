@@ -162,8 +162,10 @@ class RedisStorage(StorageBase):
             session_key = self._get_session_key(session_id)
             expire_minutes = int(os.getenv("SESSION_EXPIRE_MINUTES", 30))
 
-            client.hmset(session_key, session_data)
-            client.expire(session_key, expire_minutes * 60)
+            pipe = client.pipeline()
+            pipe.hmset(session_key, session_data)
+            pipe.expire(session_key, expire_minutes * 60)
+            pipe.execute()
             return True
         except redis.RedisError as e:
             logger.error(f"保存会话数据失败: {e}")

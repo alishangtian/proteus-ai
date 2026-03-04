@@ -212,6 +212,10 @@ class ConversationManager:
             title = await self._generate_conversation_title_with_llm(initial_question)
 
             # 检查会话是否已存在
+            user_conversations_key = f"user:{user_name}:conversations"
+            conv_chats_key = f"conversation:{conversation_id}:chats"
+            timestamp = time.time()
+            pipe = self.redis_conn.pipeline()
             if not self.redis_conn.exists(conversation_key):
                 # 新建会话：保存完整信息
                 conversation_data = {
@@ -224,39 +228,19 @@ class ConversationManager:
                     "updated_at": datetime.now().isoformat(),
                     "first_chat_id": chat_id,
                 }
-                self.redis_conn.hmset(conversation_key, mapping=conversation_data)
-
-                # 添加到用户的会话列表（有序集合，按时间戳排序）
-                user_conversations_key = f"user:{user_name}:conversations"
-                timestamp = time.time()
-                self.redis_conn.zadd(
-                    user_conversations_key, {conversation_id: timestamp}
-                )
+                pipe.hmset(conversation_key, mapping=conversation_data)
                 self.logger.info(f"已创建会话摘要: {conversation_id}, 标题: {title}")
             else:
                 # 已存在会话：更新标题和时间戳
-                self.redis_conn.hset(conversation_key, "title", title)
-                self.redis_conn.hset(
-                    conversation_key, "updated_at", datetime.now().isoformat()
-                )
-
-                # 更新用户在有序集合中的时间戳，确保按更新时间排序
-                user_conversations_key = f"user:{user_name}:conversations"
-                timestamp = time.time()
-                self.redis_conn.zadd(
-                    user_conversations_key, {conversation_id: timestamp}
-                )
-
+                pipe.hset(conversation_key, "title", title)
+                pipe.hset(conversation_key, "updated_at", datetime.now().isoformat())
                 self.logger.info(f"已更新会话摘要: {conversation_id}, 新标题: {title}")
 
-            # 保存 conversation_id 和 chat_id 的关系
-            conv_chats_key = f"conversation:{conversation_id}:chats"
-            self.redis_conn.rpush(conv_chats_key, chat_id)
-
-            # 保存反向映射关系
-            self.redis_conn.set(
-                f"chat:{chat_id}:conversation", conversation_id, ex=None
-            )
+            # 添加/更新用户会话有序集合，保存 chat_id 关联和反向映射
+            pipe.zadd(user_conversations_key, {conversation_id: timestamp})
+            pipe.rpush(conv_chats_key, chat_id)
+            pipe.set(f"chat:{chat_id}:conversation", conversation_id, ex=None)
+            pipe.execute()
             return True
         except Exception as e:
             self.logger.error(f"保存会话摘要失败: {str(e)}", exc_info=True)
@@ -284,29 +268,38 @@ class ConversationManager:
             )
 
             conversations = []
+            if not conversation_ids:
+                return conversations
+
+            # 使用 pipeline 批量获取会话信息和 chat 数量
+            pipe = self.redis_conn.pipeline()
             for conv_id in conversation_ids:
                 conv_id_str = (
                     conv_id.decode("utf-8")
                     if isinstance(conv_id, bytes)
                     else str(conv_id)
                 )
-                conversation_key = f"conversation:{conv_id_str}:info"
-                conv_data = self.redis_conn.hgetall(conversation_key)
+                pipe.hgetall(f"conversation:{conv_id_str}:info")
+                pipe.llen(f"conversation:{conv_id_str}:chats")
+            results = pipe.execute()
+
+            for i, conv_id in enumerate(conversation_ids):
+                conv_id_str = (
+                    conv_id.decode("utf-8")
+                    if isinstance(conv_id, bytes)
+                    else str(conv_id)
+                )
+                conv_data = results[i * 2]
+                chat_count = results[i * 2 + 1]
 
                 if conv_data:
-                    # 转换字节数据为字符串
                     conv_info = {
                         k.decode("utf-8") if isinstance(k, bytes) else k: (
                             v.decode("utf-8") if isinstance(v, bytes) else v
                         )
                         for k, v in conv_data.items()
                     }
-
-                    # 获取该会话的chat数量
-                    conv_chats_key = f"conversation:{conv_id_str}:chats"
-                    chat_count = self.redis_conn.llen(conv_chats_key)
                     conv_info["chat_count"] = chat_count
-
                     conversations.append(conv_info)
 
             return conversations
@@ -395,20 +388,16 @@ class ConversationManager:
                 self.logger.warning(f"用户 {user_name} 无权删除会话 {conversation_id}")
                 return False
 
-            # 删除会话信息
-            self.redis_conn.delete(conversation_key)
-
-            # 删除会话的chat列表
+            # 删除会话信息、chat列表、对话历史，并从用户会话列表中移除
             conv_chats_key = f"conversation:{conversation_id}:chats"
-            self.redis_conn.delete(conv_chats_key)
-
-            # 删除对话历史
             conversation_history_key = f"conversation:{conversation_id}"
-            self.redis_conn.delete(conversation_history_key)
-
-            # 从用户会话列表中移除
             user_conversations_key = f"user:{user_name}:conversations"
-            self.redis_conn.zrem(user_conversations_key, conversation_id)
+            pipe = self.redis_conn.pipeline()
+            pipe.delete(conversation_key)
+            pipe.delete(conv_chats_key)
+            pipe.delete(conversation_history_key)
+            pipe.zrem(user_conversations_key, conversation_id)
+            pipe.execute()
 
             self.logger.info(f"用户 {user_name} 删除了会话 {conversation_id}")
             return True
