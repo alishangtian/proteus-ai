@@ -431,7 +431,7 @@ async def stop_chat(
         redis_conn.lpush(blocking_key, completion_message)
 
         # 删除流相关的Redis键（可选）
-        redis_conn.delete(stream_key, blocking_key)
+        # redis_conn.delete(stream_key, blocking_key)
 
         # 构建停止任务负载，推送到任务队列
         auth_header = http_request.headers.get("Authorization")
