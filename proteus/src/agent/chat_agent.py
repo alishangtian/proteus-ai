@@ -695,8 +695,12 @@ class ChatAgent:
                 await self.stream_manager.send_message(
                     chat_id, await create_error_event(error_msg)
                 )
+            self._set_status(AGENT_STATUS_COMPLETE)
             raise
         finally:
+            # 确保状态不会停留在 running
+            if self._get_status() == AGENT_STATUS_RUNNING:
+                self._set_status(AGENT_STATUS_COMPLETE)
             # 从缓存中移除当前 agent，防止内存泄漏
             self._remove_from_cache()
 

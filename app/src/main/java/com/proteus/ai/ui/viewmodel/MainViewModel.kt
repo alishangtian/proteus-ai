@@ -162,6 +162,15 @@ class MainViewModel(
         loadConversationHistory(token, cid)
     }
 
+    fun refreshConversation() {
+        val token = _tokenState.value ?: return
+        val cid = _selectedConversationId.value ?: return
+        streamingJob?.cancel()
+        _messages.value = emptyList()
+        _uiState.value = UiState.Success
+        loadConversationHistory(token, cid)
+    }
+
     fun newConversation() {
         streamingJob?.cancel()
         _selectedConversationId.value = null
@@ -189,6 +198,8 @@ class MainViewModel(
                     }
                 }
                 _uiState.value = UiState.Success
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                Timber.d("History load cancelled for conversation: $conversationId")
             } catch (e: Exception) {
                 Timber.e(e, "History load failed")
                 _uiState.value = UiState.Error("加载历史记录失败: ${e.message}")
@@ -327,6 +338,7 @@ class MainViewModel(
     fun setSkillCall(v: Boolean) { _skillCall.value = v }
     fun showTokenDialog() { _showTokenDialog.value = true }
     fun hideTokenDialog() { _showTokenDialog.value = false }
+    fun dismissError() { _uiState.value = UiState.Success }
     
     fun saveSettings(token: String, serverUrl: String) {
         viewModelScope.launch {

@@ -115,7 +115,9 @@ class StreamManager:
             logger.warning(f"No messages found for chat: {chat_id}")
             return
 
-        chat_status = self._redis_client.hget(CHAT_META_KEY, f"{chat_id}_status")
+        chat_status = self._redis_client.get(f"chat:{chat_id}:status")
+        if isinstance(chat_status, bytes):
+            chat_status = chat_status.decode("utf-8")
 
         # 获取用户查询用于agent_start事件
         user_query = self._redis_client.hget(CHAT_META_KEY, chat_id)
@@ -145,12 +147,17 @@ class StreamManager:
             await self.send_message(chat_id, message, True)
             await asyncio.sleep(0.001)
 
-        # 完成的 chat 需要检查最后一条消息是否为complete
+        # 检查最后一条消息是否为complete或error
         last_event = time_ordered[-1].get("event") if time_ordered else None
-        if chat_status == "complete" and last_event != "complete":
-            # 追加complete事件
+        if last_event not in ("complete", "error"):
+            # 非运行中的chat或状态异常的chat，追加complete事件使回放正常结束
             complete_event = await create_complete_event()
-            await self.send_message(chat_id, complete_event, False)
+            # 如果chat_status不是running，同时将complete事件持久化到redis
+            persist = chat_status != "running"
+            await self.send_message(chat_id, complete_event, not persist)
+            if persist and chat_status != "complete":
+                # 更新状态为complete
+                self._redis_client.set(f"chat:{chat_id}:status", "complete")
             await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:
