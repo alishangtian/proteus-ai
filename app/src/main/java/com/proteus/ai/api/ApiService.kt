@@ -13,6 +13,12 @@ interface ApiService {
         @Query("limit") limit: Int = 50
     ): ConversationsResponse
 
+    @DELETE("conversations/{conversation_id}")
+    suspend fun deleteConversation(
+        @Header("Authorization") authorization: String,
+        @Path("conversation_id") conversationId: String
+    ): SimpleResponse
+
     @GET("models")
     suspend fun getModels(): ModelsResponse
 

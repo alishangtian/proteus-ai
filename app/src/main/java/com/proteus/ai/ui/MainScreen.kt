@@ -79,6 +79,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                         viewModel.selectConversation(it)
                         scope.launch { drawerState.close() }
                     },
+                    onConversationDelete = {
+                        viewModel.deleteConversation(it)
+                    },
                     onNewConversation = {
                         viewModel.newConversation()
                         scope.launch { drawerState.close() }

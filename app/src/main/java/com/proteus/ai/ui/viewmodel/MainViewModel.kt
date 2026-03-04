@@ -1,9 +1,7 @@
 package com.proteus.ai.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.*
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.proteus.ai.ProteusAIApplication
@@ -121,6 +119,32 @@ class MainViewModel(
             } catch (e: Exception) {
                 Timber.e(e, "Failed to load conversations")
                 _uiState.value = UiState.Error("获取会话列表失败: ${e.message}")
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
+    fun deleteConversation(conversation: Conversation) {
+        val token = _tokenState.value ?: return
+        val cid = conversation.conversationId ?: return
+
+        viewModelScope.launch {
+            _loading.value = true
+            try {
+                val success = conversationRepository.deleteConversation(token, cid)
+                if (success) {
+                    _conversations.value = _conversations.value.filter { it.conversationId != cid }
+                    if (_selectedConversationId.value == cid) {
+                        newConversation()
+                    }
+                    _uiState.value = UiState.Success
+                } else {
+                    _uiState.value = UiState.Error("删除会话失败")
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to delete conversation")
+                _uiState.value = UiState.Error("删除失败: ${e.message}")
             } finally {
                 _loading.value = false
             }
