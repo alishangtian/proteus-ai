@@ -28,7 +28,7 @@ from sse_starlette.sse import EventSourceResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.utils.logger import setup_logger
-from src.agent.chat_agent import ChatAgent
+from src.agent.chat_agent import ChatAgent, AGENT_STATUS_TTL
 from src.tasks.task_processor import TaskProcessor
 from src.utils.langfuse_wrapper import langfuse_wrapper
 from src.login.login_router import get_user_from_token
@@ -554,14 +554,12 @@ async def create_chat(
 
 @app.get("/stop/{model}/{chat_id}")
 async def stop_chat(model: str, chat_id: str):
-    agents = ChatAgent.get_agents(chat_id)
-    if agents:
-        for agent in agents:
-            agent.stop()
-        ChatAgent.clear_agents(chat_id)
-        logger.info(f"[{chat_id}] 已经停止并清理")
-    else:
-        logger.info(f"[{chat_id}] 没有找到任何代理")
+    try:
+        redis_conn = get_redis_connection()
+        redis_conn.set(f"chat:{chat_id}:stopped", "1", ex=AGENT_STATUS_TTL)
+        logger.info(f"[{chat_id}] 已直接写入 Redis 停止标志")
+    except Exception as e:
+        logger.error(f"[{chat_id}] 写入 Redis 停止标志失败: {e}")
     stream_manager.close_stream(chat_id)
     return {"success": True, "chat_id": chat_id}
 
@@ -823,14 +821,12 @@ async def process_task(task_data: dict):
                     logger.error(f"token 验证失败: {token[:10]}...")
                     raise ValueError("token 验证不通过")
                 logger.info(f"从 token 中获取用户: {token_user}")
-            agents = ChatAgent.get_agents(chat_id)
-            if agents:
-                for agent in agents:
-                    agent.stop()
-                ChatAgent.clear_agents(chat_id)
-                logger.info(f"已停止聊天: {chat_id}")
-            else:
-                logger.info(f"未找到活跃的 agent: {chat_id}")
+            try:
+                redis_conn = get_redis_connection()
+                redis_conn.set(f"chat:{chat_id}:stopped", "1", ex=AGENT_STATUS_TTL)
+                logger.info(f"已直接写入 Redis 停止标志: {chat_id}")
+            except Exception as e:
+                logger.error(f"写入 Redis 停止标志失败: {e}")
             # 停止任务处理完毕，无需继续执行
             return
 

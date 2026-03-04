@@ -104,17 +104,39 @@ class ChatAgent:
                     del ChatAgent._agent_cache[self.chat_id]
 
     def stop(self) -> None:
-        """停止 agent：先从 Redis 获取当前状态，再设置停止标志并从缓存中移除自身，防止内存泄漏"""
-        current_status = self._get_status()
-        logger.info(f"Agent {self.agentid} 当前状态: {current_status}，执行停止操作")
+        """停止 agent：设置停止标志并从缓存中移除自身，防止内存泄漏"""
+        logger.info(f"Agent {self.agentid} 执行停止操作")
         self.stopped = True
         self._set_status(AGENT_STATUS_STOPPED)
+        if self.chat_id:
+            try:
+                redis_conn = get_redis_connection()
+                redis_conn.set(self._chat_stopped_redis_key(), "1", ex=AGENT_STATUS_TTL)
+            except Exception as e:
+                logger.error(f"Agent {self.agentid} 设置 chat stopped 标志失败: {e}")
         self._remove_from_cache()
         logger.info(f"Agent {self.agentid} 已停止并清理")
 
     def _status_redis_key(self) -> str:
         """返回该 agent 在 Redis 中存储状态的键名"""
         return f"agent:{self.agentid}:status"
+
+    def _chat_stopped_redis_key(self) -> str:
+        """返回该会话在 Redis 中的停止标志键名"""
+        return f"chat:{self.chat_id}:stopped"
+
+    def _is_stopped(self) -> bool:
+        """直接从 Redis 读取停止状态，失败时回退到内存属性"""
+        if self.stopped:
+            return True
+        if not self.chat_id:
+            return False
+        try:
+            redis_conn = get_redis_connection()
+            return redis_conn.exists(self._chat_stopped_redis_key()) > 0
+        except Exception as e:
+            logger.error(f"Agent {self.agentid} 读取停止状态失败: {e}")
+            return False
 
     def _set_status(self, status: str) -> None:
         """将智能体状态写入 Redis，并更新内存属性"""
@@ -457,7 +479,7 @@ class ChatAgent:
             # 标记是否需要保存最终助手消息（仅当最后一轮无工具调用时才保存）
             _save_final_message = False
             while tool_iteration < max_iterations:
-                if self.stopped:
+                if self._is_stopped():
                     logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
                     break
                 try:
@@ -481,7 +503,7 @@ class ChatAgent:
                         tool_iteration=tool_iteration,
                     )
 
-                    if self.stopped:
+                    if self._is_stopped():
                         logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
                         break
 
@@ -758,7 +780,7 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
-                            if self.stopped:
+                            if self._is_stopped():
                                 logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
                                 break
                             chunk_type = chunk.get("type")
@@ -905,7 +927,7 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
-                            if self.stopped:
+                            if self._is_stopped():
                                 logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
                                 break
                             chunk_type = chunk.get("type")
