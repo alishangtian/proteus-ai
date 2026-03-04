@@ -74,7 +74,7 @@ class ToolExecutor:
                 progress_event = await create_tool_progress_event(
                     tool=tool_name,
                     status="running",
-                    result=tool_args,
+                    result="",
                     action_id=tool_call_id,
                 )
                 await self.stream_manager.send_message(chat_id, progress_event)

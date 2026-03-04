@@ -235,6 +235,7 @@ private fun AiMessageContent(message: Message) {
                             val actionId = when (event) {
                                 is SseEvent.ActionStart -> event.actionId
                                 is SseEvent.ActionComplete -> event.actionId
+                                is SseEvent.ToolProgress -> event.actionId
                                 else -> null
                             }
                             if (actionId != null) {
@@ -519,6 +520,7 @@ private fun ThinkingProcessCard(events: List<SseEvent.AgentStreamThinking>) {
 private fun ToolExecutionCard(events: List<SseEvent>) {
     val start = events.filterIsInstance<SseEvent.ActionStart>().firstOrNull()
     val complete = events.filterIsInstance<SseEvent.ActionComplete>().firstOrNull()
+    val progresses = events.filterIsInstance<SseEvent.ToolProgress>()
     var expanded by remember { mutableStateOf(false) }
 
     Card(
@@ -558,12 +560,16 @@ private fun ToolExecutionCard(events: List<SseEvent>) {
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
+                    val toolName = start?.action ?: progresses.lastOrNull()?.tool ?: "处理中"
                     Text(
-                        text = "工具调用: ${start?.action ?: "处理中"}",
+                        text = "工具调用: $toolName",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                     )
+                    val statusText = complete?.let { "执行完毕" } 
+                        ?: progresses.lastOrNull()?.status 
+                        ?: "正在运行..."
                     Text(
-                        text = if (complete != null) "执行完毕" else "正在运行...",
+                        text = statusText,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -579,6 +585,25 @@ private fun ToolExecutionCard(events: List<SseEvent>) {
             AnimatedVisibility(visible = expanded) {
                 Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
                     if (start?.input != null) ToolInfoSection(title = "输入 (Input)", content = start.input.toString())
+                    
+                    if (progresses.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column {
+                            Text(
+                                text = "执行进度",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            progresses.forEach { prog ->
+                                Text(
+                                    text = "• ${prog.status}",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
                     if (complete?.result != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         ToolInfoSection(title = "输出 (Output)", content = complete.result)

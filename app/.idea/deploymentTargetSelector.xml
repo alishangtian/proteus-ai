@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="ProteusAI">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-03-04T01:18:59.812535Z">
+        <DropdownSelection timestamp="2026-03-04T05:35:29.462155Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=/Users/alishangtian/.android/avd/Medium_Phone.avd" />
+              <DeviceId pluginId="LocalEmulator" identifier="path=/Users/alishangtian/.android/avd/Pixel_Tablet.avd" />
             </handle>
           </Target>
         </DropdownSelection>

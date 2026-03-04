@@ -107,7 +107,6 @@ fun ConversationList(
                     }
                 }
 
-                // 加载中进度条（置顶展示，更轻量）
                 if (isLoading) {
                     LinearProgressIndicator(
                         modifier = Modifier
