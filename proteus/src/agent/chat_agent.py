@@ -68,10 +68,9 @@ class ChatAgent:
         返回:
             该chat_id下的agent列表副本(浅拷贝)
         """
-        with cls._cache_lock:
-            agents = cls._agent_cache.get(chat_id, [])
-            logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
-            return list(agents)
+        agents = cls._agent_cache.get(chat_id, [])
+        logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
+        return list(agents)
 
     @classmethod
     def set_agents(cls, chat_id: str, agents: List["ChatAgent"]) -> None:
@@ -82,34 +81,11 @@ class ChatAgent:
     @classmethod
     def clear_agents(cls, chat_id: str) -> None:
         """清除指定chat_id的agent缓存"""
-        with cls._cache_lock:
-            cls._agent_cache.pop(chat_id, None)
+        cls._agent_cache.pop(chat_id, None)
 
-    async def stop(self) -> None:
+    def stop(self) -> None:
         """停止 agent：设置停止标志、取消监听任务并从 role_agents 列表移除自身"""
         self.stopped = True
-        # 取消所有待处理任务
-        if hasattr(self, "_pending_tasks"):
-            for task in self._pending_tasks:
-                if not task.done():
-                    task.cancel()
-            self._pending_tasks.clear()
-        # 从缓存中移除自身
-        if self.chat_id:
-            with ChatAgent._cache_lock:
-                agents = ChatAgent._agent_cache.get(self.chat_id)
-                if agents:
-                    # 移除所有 agentid 匹配的 agent（通常只有一个）
-                    ChatAgent._agent_cache[self.chat_id] = [
-                        a for a in agents if a.agentid != self.agentid
-                    ]
-                    # 如果列表为空，删除该 chat_id 的条目
-                    if not ChatAgent._agent_cache[self.chat_id]:
-                        ChatAgent._agent_cache.pop(self.chat_id, None)
-        # 清理工具执行器
-        if self._tool_executor is not None:
-            # ToolExecutor 没有显式的清理方法，但可以置空以帮助垃圾回收
-            self._tool_executor = None
         logger.info(f"Agent {self.agentid} 已停止并清理")
 
     async def _register_agent(self, chat_id: str) -> None:
@@ -346,6 +322,13 @@ class ChatAgent:
                 )
             all_values["SKILLS_PROMPT"] = skills_prompt
 
+            if self.workspace_path:
+                all_values["WORKSPACE_PATH"] = (
+                    f"- WORKSPACE_PATH: {self.workspace_path}"
+                )
+            else:
+                all_values["WORKSPACE_PATH"] = ""
+
             if not messages:
                 system_message = {
                     "role": "system",
@@ -447,6 +430,10 @@ class ChatAgent:
                         enable_thinking=enable_thinking,
                         tool_iteration=tool_iteration,
                     )
+
+                    if self.stopped:
+                        logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
+                        break
 
                     # 检查是否需要压缩
 
@@ -604,7 +591,6 @@ class ChatAgent:
                 logger.info(f"[{chat_id}] 已保存最终助手回答到 Redis")
 
             logger.info(f"[{chat_id}] chat 模式请求完成（流式）")
-
             return final_response_text
 
         except Exception as e:
