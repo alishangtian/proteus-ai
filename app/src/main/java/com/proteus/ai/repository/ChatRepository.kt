@@ -150,7 +150,7 @@ class ChatRepository {
                 )
                 "action_start" -> SseEvent.ActionStart(raw.action, raw.actionId, raw.input, raw.timestamp)
                 "action_complete" -> SseEvent.ActionComplete(raw.action, raw.actionId, raw.result, raw.timestamp)
-                "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.status, raw.result, raw.timestamp)
+                "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.actionId, raw.status, raw.result, raw.timestamp)
                 "message", "agent_complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
                 "usage" -> SseEvent.Usage(raw.totalTokens, raw.timestamp)
                 "compress_start" -> SseEvent.CompressStart(raw.original_length, raw.timestamp)

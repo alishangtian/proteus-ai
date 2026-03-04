@@ -235,6 +235,7 @@ private fun AiMessageContent(message: Message) {
                             val actionId = when (event) {
                                 is SseEvent.ActionStart -> event.actionId
                                 is SseEvent.ActionComplete -> event.actionId
+                                is SseEvent.ToolProgress -> event.actionId
                                 else -> null
                             }
                             if (actionId != null) {
