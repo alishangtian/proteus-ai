@@ -40,11 +40,13 @@ class ConversationRepository {
         conversationId: String
     ): ConversationDetail? = withContext(Dispatchers.IO) {
         try {
-            val response = ApiClient.apiService.getConversationDetail(
-                "Bearer $token",
-                conversationId
-            )
-            if (response.success) response.conversation else null
+            withRetry(MAX_RETRIES) {
+                val response = ApiClient.apiService.getConversationDetail(
+                    "Bearer $token",
+                    conversationId
+                )
+                if (response.success) response.conversation else null
+            }
         } catch (e: Exception) {
             Timber.e(e, "Failed to get conversation detail: $conversationId")
             null
