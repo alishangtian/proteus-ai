@@ -22,4 +22,7 @@
     <string name="streaming">AI 正在回复…</string>
     <string name="new_chat_hint">新对话</string>
     <string name="settings_saved">设置已保存</string>
+    <string name="delete">删除</string>
+    <string name="delete_conversation_title">删除会话</string>
+    <string name="delete_conversation_confirm">确定要删除会话 \"%1$s\" 吗？</string>
 </resources>

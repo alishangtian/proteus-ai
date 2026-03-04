@@ -24,6 +24,17 @@ class ConversationRepository {
             }
         }
 
+    suspend fun deleteConversation(token: String, conversationId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val response = ApiClient.apiService.deleteConversation("Bearer $token", conversationId)
+                response.success
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to delete conversation: $conversationId")
+                false
+            }
+        }
+
     suspend fun getConversationDetail(
         token: String,
         conversationId: String
