@@ -431,7 +431,6 @@ async def stop_chat(
             logger.info(f"已直接写入 Redis 停止标志: {request.chat_id}")
         except Exception as e:
             logger.error(f"写入 Redis 停止标志失败: {e}")
-        stream_key = f"chat_stream:{request.chat_id}"
         blocking_key = f"chat_stream_b:{request.chat_id}"
 
         # 向阻塞队列发送完成事件，以便消费者正常退出
@@ -439,9 +438,6 @@ async def stop_chat(
             {"event": "complete", "data": "stopped by user"}
         )
         redis_conn.lpush(blocking_key, completion_message)
-
-        # 删除流相关的Redis键（可选）
-        redis_conn.delete(stream_key, blocking_key)
 
         # 构建停止任务负载，推送到任务队列
         auth_header = http_request.headers.get("Authorization")
