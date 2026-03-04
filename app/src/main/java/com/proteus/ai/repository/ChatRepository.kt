@@ -153,6 +153,8 @@ class ChatRepository {
                 "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.status, raw.result, raw.timestamp)
                 "message", "agent_complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
                 "usage" -> SseEvent.Usage(raw.totalTokens, raw.timestamp)
+                "compress_start" -> SseEvent.CompressStart(raw.original_length, raw.timestamp)
+                "compress_complete" -> SseEvent.CompressComplete(raw.original_length, raw.compressed_length, raw.timestamp)
                 else -> SseEvent.Unknown(event, data, raw.timestamp)
             }
         } catch (e: Exception) {

@@ -557,12 +557,10 @@ async def stop_chat(model: str, chat_id: str):
     agents = ChatAgent.get_agents(chat_id)
     if agents:
         for agent in agents:
-            await agent.stop()
-    # 清除残留的代理缓存
-    ChatAgent.clear_agents(chat_id)
-    # 关闭对应的流
-    stream_manager.close_stream(chat_id)
-    logger.info(f"[{chat_id}] 已经停止并清理")
+            agent.stop()
+        logger.info(f"[{chat_id}] 已经停止并清理")
+    else:
+        logger.info(f"[{chat_id}] 没有找到任何代理")
     return {"success": True, "chat_id": chat_id}
 
 

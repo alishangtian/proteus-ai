@@ -1,7 +1,6 @@
 package com.proteus.ai.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -12,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
@@ -19,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -32,6 +33,7 @@ import com.proteus.ai.api.model.SseEvent
 import com.proteus.ai.ui.theme.Typography
 import com.halilibo.richtext.markdown.Markdown
 import com.halilibo.richtext.ui.material3.Material3RichText
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 
@@ -189,6 +191,7 @@ sealed class MergedEvent {
     data class Thinking(val events: List<SseEvent.AgentStreamThinking>) : MergedEvent()
     data class Tool(val actionId: String, val events: List<SseEvent>) : MergedEvent()
     data class Message(val content: String) : MergedEvent()
+    data class Compress(val event: SseEvent) : MergedEvent()
 }
 
 @Composable
@@ -207,7 +210,6 @@ private fun AiMessageContent(message: Message) {
                 var currentThinkingGroup = mutableListOf<SseEvent.AgentStreamThinking>()
                 var currentMessageContent = StringBuilder()
 
-                // 统一处理 events 逻辑（无论是实时流还是历史回放）
                 message.events.forEach { event ->
                     when (event) {
                         is SseEvent.AgentStreamThinking -> {
@@ -252,6 +254,13 @@ private fun AiMessageContent(message: Message) {
                             }
                             currentMessageContent.append(event.content ?: "")
                         }
+                        is SseEvent.CompressStart, is SseEvent.CompressComplete -> {
+                            if (currentMessageContent.isNotEmpty()) {
+                                items.add(MergedEvent.Message(currentMessageContent.toString()))
+                                currentMessageContent = StringBuilder()
+                            }
+                            items.add(MergedEvent.Compress(event))
+                        }
                         else -> {}
                     }
                 }
@@ -261,7 +270,6 @@ private fun AiMessageContent(message: Message) {
                     items.add(MergedEvent.Message(currentMessageContent.toString()))
                 }
                 
-                // 兜底逻辑：如果 events 解析没有产生任何正文，或者这是通过 content 传入的纯文本消息
                 if (items.none { it is MergedEvent.Message } && message.content.isNotEmpty()) {
                     items.add(MergedEvent.Message(message.content))
                 }
@@ -274,8 +282,67 @@ private fun AiMessageContent(message: Message) {
                     is MergedEvent.Thinking -> ThinkingProcessCard(item.events)
                     is MergedEvent.Tool -> ToolExecutionCard(item.events)
                     is MergedEvent.Message -> AiTextMessage(item.content)
+                    is MergedEvent.Compress -> CompressEventBar(item.event)
                 }
                 if (index < displayItems.size - 1) Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompressEventBar(event: SseEvent) {
+    var visible by remember { mutableStateOf(true) }
+    
+    // 如果是完成事件，3秒后自动消失
+    if (event is SseEvent.CompressComplete) {
+        LaunchedEffect(Unit) {
+            delay(3000)
+            visible = false
+        }
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = expandVertically() + fadeIn(),
+        exit = shrinkVertically() + fadeOut()
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (event is SseEvent.CompressStart) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "📏 Token 超限(${event.originalLength})，正在压缩历史...",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                } else if (event is SseEvent.CompressComplete) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "✅ 压缩完成！(${event.originalLength} -> ${event.compressedLength})",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
         }
     }
