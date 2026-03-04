@@ -144,17 +144,17 @@ class ChatRepository {
             when (event) {
                 "agent_start" -> SseEvent.AgentStart(raw.query, raw.timestamp)
                 "agent_stream_thinking" -> SseEvent.AgentStreamThinking(
-                    raw.thinking, 
-                    raw.timestamp,
-                    raw.thinking == "[THINKING_DONE]"
+                    thinking = raw.thinking,
+                    isDone = raw.isDone || (raw.thinking == "[THINKING_DONE]"),
+                    timestamp = raw.timestamp
                 )
                 "action_start" -> SseEvent.ActionStart(raw.action, raw.actionId, raw.input, raw.timestamp)
-                "action_complete" -> SseEvent.ActionComplete(raw.action, raw.actionId, raw.result, raw.timestamp)
-                "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.status, raw.result, raw.timestamp)
+                "action_complete" -> SseEvent.ActionComplete(raw.action, raw.actionId, raw.result, raw.isDone, raw.timestamp)
+                "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.actionId, raw.status, raw.timestamp)
                 "message", "agent_complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
                 "usage" -> SseEvent.Usage(raw.totalTokens, raw.timestamp)
-                "compress_start" -> SseEvent.CompressStart(raw.original_length, raw.timestamp)
-                "compress_complete" -> SseEvent.CompressComplete(raw.original_length, raw.compressed_length, raw.timestamp)
+                "compress_start" -> SseEvent.CompressStart(raw.originalLength, raw.timestamp)
+                "compress_complete" -> SseEvent.CompressComplete(raw.originalLength, raw.compressedLength, raw.timestamp)
                 else -> SseEvent.Unknown(event, data, raw.timestamp)
             }
         } catch (e: Exception) {
