@@ -309,6 +309,65 @@ async def submit_task(
         raise HTTPException(status_code=500, detail=f"提交任务失败: {str(e)}")
 
 
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str, request: Request, user: dict = Depends(require_auth)
+):
+    """删除指定会话及其所有相关数据
+
+    Args:
+        conversation_id: 会话ID
+        request: 请求对象
+
+    Returns:
+        dict: 包含操作结果的响应
+    """
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+        conversation_key = f"conversation:{conversation_id}:info"
+        conv_data = redis_conn.hgetall(conversation_key)
+
+        if not conv_data:
+            raise HTTPException(status_code=404, detail="会话不存在")
+
+        # 将字节转换为字符串
+        conv_info = {
+            k.decode("utf-8") if isinstance(k, bytes) else k: (
+                v.decode("utf-8") if isinstance(v, bytes) else v
+            )
+            for k, v in conv_data.items()
+        }
+
+        # 验证用户权限
+        if conv_info.get("user_name") != user_name:
+            raise HTTPException(status_code=403, detail="无权删除此会话")
+
+        # 删除会话信息
+        redis_conn.delete(conversation_key)
+
+        # 删除会话的chat列表
+        conv_chats_key = f"conversation:{conversation_id}:chats"
+        redis_conn.delete(conv_chats_key)
+
+        # 删除对话历史
+        conversation_history_key = f"conversation:{conversation_id}"
+        redis_conn.delete(conversation_history_key)
+
+        # 从用户会话列表中移除
+        user_conversations_key = f"user:{user_name}:conversations"
+        redis_conn.zrem(user_conversations_key, conversation_id)
+
+        logger.info(f"用户 {user_name} 删除了会话 {conversation_id}")
+        return {"success": True, "message": "会话已删除", "conversation_id": conversation_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除会话失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除会话失败: {str(e)}")
+
+
 @app.get("/conversations/{conversation_id}")
 async def get_conversation_detail(
     conversation_id: str, request: Request, user: dict = Depends(require_auth)
