@@ -200,6 +200,7 @@ class MainViewModel(
                 _uiState.value = UiState.Success
             } catch (e: kotlinx.coroutines.CancellationException) {
                 Timber.d("History load cancelled for conversation: $conversationId")
+                throw e
             } catch (e: Exception) {
                 Timber.e(e, "History load failed")
                 _uiState.value = UiState.Error("加载历史记录失败: ${e.message}")

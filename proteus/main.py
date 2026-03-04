@@ -890,7 +890,10 @@ async def process_task(task_data: dict):
                         # agent还在运行，标记为stopped
                         logger.info(f"上一条chat {prev_chat_id} 仍有agent运行，标记为stopped")
                         for agent in prev_agents:
-                            agent.stop()
+                            try:
+                                agent.stop()
+                            except Exception as stop_err:
+                                logger.warning(f"停止agent失败: {stop_err}")
                         redis_conn.set(f"chat:{prev_chat_id}:status", "stopped", ex=AGENT_STATUS_TTL)
                     else:
                         # agent已不存在，标记为complete并发送完成消息
