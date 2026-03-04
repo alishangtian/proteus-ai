@@ -51,7 +51,7 @@ AGENT_STATUS_RUNNING = "running"
 AGENT_STATUS_STOPPED = "stopped"
 AGENT_STATUS_COMPLETE = "complete"
 # 智能体状态在 Redis 中的默认过期时间（秒）
-AGENT_STATUS_TTL = 86400
+AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
 
 
 class ChatAgent:
