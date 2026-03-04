@@ -29,6 +29,9 @@ load_dotenv()
 # 获取日志文件路径
 log_file_path = os.getenv("LOG_FILE", "logs/server.log")
 
+# Agent 状态键 TTL（秒），默认 1 天
+AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
+
 # 配置日志
 setup_logger(log_file_path)
 logger = logging.getLogger(__name__)
@@ -421,6 +424,13 @@ async def stop_chat(
 
         # 清理Redis中的相关数据
         redis_conn = get_redis_client()
+
+        # 直接写入停止标志，让正在运行的 Agent 立即感知并停止
+        try:
+            redis_conn.set(f"chat:{request.chat_id}:stopped", "1", ex=AGENT_STATUS_TTL)
+            logger.info(f"已直接写入 Redis 停止标志: {request.chat_id}")
+        except Exception as e:
+            logger.error(f"写入 Redis 停止标志失败: {e}")
         stream_key = f"chat_stream:{request.chat_id}"
         blocking_key = f"chat_stream_b:{request.chat_id}"
 
