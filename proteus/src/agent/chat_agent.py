@@ -144,6 +144,8 @@ class ChatAgent:
         try:
             redis_conn = get_redis_connection()
             redis_conn.set(self._status_redis_key(), status, ex=AGENT_STATUS_TTL)
+            if self.chat_id:
+                redis_conn.set(f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL)
             logger.info(f"Agent {self.agentid} 状态更新为: {status}")
         except Exception as e:
             logger.error(f"Agent {self.agentid} 设置状态失败: {e}")

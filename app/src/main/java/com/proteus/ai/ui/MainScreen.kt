@@ -89,7 +89,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                     onRefresh = {
                         viewModel.loadConversations(tokenState ?: "")
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    isStreaming = isStreaming,
+                    currentConversationId = selectedConversationId
                 )
             }
         },

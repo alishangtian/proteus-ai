@@ -11,7 +11,8 @@ data class Conversation(
     @SerializedName("user_name") val userName: String? = null,
     @SerializedName("modul") val module: String? = null,
     @SerializedName("first_chat_id") val firstChatId: String? = null,
-    @SerializedName("chat_count") val chatCount: Int = 0
+    @SerializedName("chat_count") val chatCount: Int = 0,
+    @SerializedName("is_running") val isRunning: Boolean = false
 ) {
     // 兼容之前的代码使用 id
     val id: String? get() = conversationId

@@ -880,6 +880,9 @@ async def process_task(task_data: dict):
             # 保存反向映射关系
             redis_conn.set(f"chat:{chat_id}:conversation", conversation_id, ex=None)
 
+            # 标记 chat 为运行中状态
+            redis_conn.set(f"chat:{chat_id}:status", "running", ex=AGENT_STATUS_TTL)
+
             # 异步保存会话摘要信息
             asyncio.create_task(
                 save_conversation_summary(

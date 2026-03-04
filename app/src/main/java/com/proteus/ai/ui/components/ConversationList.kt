@@ -1,12 +1,14 @@
 package com.proteus.ai.ui.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -20,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.proteus.ai.R
 import com.proteus.ai.api.model.Conversation
 import java.text.SimpleDateFormat
@@ -35,9 +38,18 @@ fun ConversationList(
     onConversationDelete: (Conversation) -> Unit,
     onNewConversation: () -> Unit,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isStreaming: Boolean = false,
+    currentConversationId: String? = null
 ) {
     var conversationToDelete by remember { mutableStateOf<Conversation?>(null) }
+
+    // A conversation is running if the API reports it OR it's the current streaming conversation
+    val (runningConversations, historyConversations) = remember(conversations, isStreaming, currentConversationId) {
+        conversations.partition { conv ->
+            conv.isRunning || (isStreaming && conv.conversationId == currentConversationId)
+        }
+    }
 
     Surface(
         modifier = modifier,
@@ -102,16 +114,60 @@ fun ConversationList(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
-                        items(
-                            items = conversations,
-                            key = { it.id ?: it.hashCode().toString() }
-                        ) { conv ->
-                            ConversationItem(
-                                conversation = conv,
-                                isSelected = conv.id == selectedConversationId,
-                                onClick = { onConversationClick(conv) },
-                                onLongClick = { conversationToDelete = conv }
-                            )
+                        // 运行中区域
+                        if (runningConversations.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = stringResource(R.string.running_conversations),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        letterSpacing = 0.05.sp
+                                    ),
+                                    color = Color(0xFF16A34A),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(
+                                items = runningConversations,
+                                key = { "running_${it.id ?: it.hashCode()}" }
+                            ) { conv ->
+                                ConversationItem(
+                                    conversation = conv,
+                                    isSelected = conv.id == selectedConversationId,
+                                    isRunning = true,
+                                    onClick = { onConversationClick(conv) },
+                                    onLongClick = { conversationToDelete = conv }
+                                )
+                            }
+                        }
+
+                        // 历史会话区域
+                        if (historyConversations.isNotEmpty()) {
+                            if (runningConversations.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = stringResource(R.string.history_conversations),
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            letterSpacing = 0.05.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            items(
+                                items = historyConversations,
+                                key = { it.id ?: it.hashCode().toString() }
+                            ) { conv ->
+                                ConversationItem(
+                                    conversation = conv,
+                                    isSelected = conv.id == selectedConversationId,
+                                    isRunning = false,
+                                    onClick = { onConversationClick(conv) },
+                                    onLongClick = { conversationToDelete = conv }
+                                )
+                            }
                         }
                     }
                 }
@@ -168,21 +224,41 @@ fun ConversationList(
 fun ConversationItem(
     conversation: Conversation,
     isSelected: Boolean,
+    isRunning: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val bgColor = if (isSelected)
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-    else
-        Color.Transparent
+    val bgColor = when {
+        isSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        isRunning -> Color(0xFFF0FDF4)
+        else -> Color.Transparent
+    }
+    val borderColor = when {
+        isSelected -> MaterialTheme.colorScheme.primary
+        isRunning -> Color(0xFF86EFAC)
+        else -> Color.Transparent
+    }
 
     val formattedTime = remember(conversation.updatedAt) {
         formatConversationTime(conversation.updatedAt)
     }
 
+    // Animated dot for running state
+    val infiniteTransition = rememberInfiniteTransition(label = "running")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(750),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dotAlpha"
+    )
+
     Surface(
         color = bgColor,
         shape = RoundedCornerShape(12.dp),
+        border = if (isRunning || isSelected) androidx.compose.foundation.BorderStroke(1.dp, borderColor) else null,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 2.dp)
@@ -199,7 +275,11 @@ fun ConversationItem(
                 fontWeight = if (isSelected) FontWeight.SemiBold else null,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                color = when {
+                    isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+                    isRunning -> Color(0xFF15803D)
+                    else -> MaterialTheme.colorScheme.onSurface
+                }
             )
             Row(
                 modifier = Modifier
@@ -208,22 +288,44 @@ fun ConversationItem(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${stringResource(R.string.message_count)}: ${conversation.chatCount}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isSelected) 
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) 
-                    else 
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = formattedTime,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isSelected) 
-                        MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f) 
-                    else 
-                        MaterialTheme.colorScheme.outline
-                )
+                if (isRunning) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(
+                                    Color(0xFF22C55E).copy(alpha = dotAlpha),
+                                    shape = CircleShape
+                                )
+                        )
+                        Text(
+                            text = stringResource(R.string.running_conversations),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF16A34A),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "${stringResource(R.string.message_count)}: ${conversation.chatCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) 
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) 
+                        else 
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = formattedTime,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isSelected) 
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f) 
+                        else 
+                            MaterialTheme.colorScheme.outline
+                    )
+                }
             }
         }
     }
