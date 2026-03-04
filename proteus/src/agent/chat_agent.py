@@ -83,9 +83,21 @@ class ChatAgent:
         """清除指定chat_id的agent缓存"""
         cls._agent_cache.pop(chat_id, None)
 
+    def _remove_from_cache(self) -> None:
+        """从缓存中移除当前 agent（线程安全），防止内存泄漏"""
+        with ChatAgent._cache_lock:
+            if self.chat_id and self.chat_id in ChatAgent._agent_cache:
+                ChatAgent._agent_cache[self.chat_id] = [
+                    a for a in ChatAgent._agent_cache[self.chat_id]
+                    if a.agentid != self.agentid
+                ]
+                if not ChatAgent._agent_cache[self.chat_id]:
+                    del ChatAgent._agent_cache[self.chat_id]
+
     def stop(self) -> None:
-        """停止 agent：设置停止标志、取消监听任务并从 role_agents 列表移除自身"""
+        """停止 agent：设置停止标志并从缓存中移除自身，防止内存泄漏"""
         self.stopped = True
+        self._remove_from_cache()
         logger.info(f"Agent {self.agentid} 已停止并清理")
 
     async def _register_agent(self, chat_id: str) -> None:
@@ -602,6 +614,9 @@ class ChatAgent:
                     chat_id, await create_error_event(error_msg)
                 )
             raise
+        finally:
+            # 从缓存中移除当前 agent，防止内存泄漏
+            self._remove_from_cache()
 
     @langfuse_wrapper.dynamic_observe()
     async def _load_tools_with_tracking(
@@ -704,6 +719,9 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
+                            if self.stopped:
+                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
@@ -848,6 +866,9 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
+                            if self.stopped:
+                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":

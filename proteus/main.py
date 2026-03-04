@@ -558,9 +558,11 @@ async def stop_chat(model: str, chat_id: str):
     if agents:
         for agent in agents:
             agent.stop()
+        ChatAgent.clear_agents(chat_id)
         logger.info(f"[{chat_id}] 已经停止并清理")
     else:
         logger.info(f"[{chat_id}] 没有找到任何代理")
+    stream_manager.close_stream(chat_id)
     return {"success": True, "chat_id": chat_id}
 
 
@@ -824,7 +826,8 @@ async def process_task(task_data: dict):
             agents = ChatAgent.get_agents(chat_id)
             if agents:
                 for agent in agents:
-                    await agent.stop()
+                    agent.stop()
+                ChatAgent.clear_agents(chat_id)
                 logger.info(f"已停止聊天: {chat_id}")
             else:
                 logger.info(f"未找到活跃的 agent: {chat_id}")

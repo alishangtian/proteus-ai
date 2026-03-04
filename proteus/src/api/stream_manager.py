@@ -75,7 +75,8 @@ class StreamManager:
             chat_id: 聊天会话ID
             message: 要发送的消息
         """
-        asyncio.create_task(self.send_to_redis(chat_id, message))
+        if chat_id in self._streams:
+            asyncio.create_task(self.send_to_redis(chat_id, message))
 
     async def send_to_redis(self, chat_id: str, message: dict) -> None:
         redis_key = f"chat_stream:{chat_id}"  #  全量式replay
@@ -117,6 +118,11 @@ class StreamManager:
             chat_id: 聊天会话ID
         """
         if chat_id in self._streams:
+            try:
+                # 向队列推送完成事件，使 get_messages 生成器能正常退出
+                self._streams[chat_id].put_nowait({"event": "complete", "data": "stream_closed"})
+            except asyncio.QueueFull:
+                pass
             del self._streams[chat_id]
 
     async def replay_chat(self, chat_id: str) -> None:
