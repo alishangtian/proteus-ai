@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 from src.utils.redis_cache import RedisCache, get_redis_connection
 from src.utils.langfuse_wrapper import langfuse_wrapper
+from src.api.events import create_agent_start_event, create_complete_event
 
 
 logger = logging.getLogger(__name__)
@@ -131,12 +132,40 @@ class StreamManager:
             logger.warning(f"No messages found for chat: {chat_id}")
             return
 
-        # 创建临时流用于回放
-        self.create_stream(chat_id)
+        # 获取用户查询用于agent_start事件
+        user_query = self._redis_client.hget(CHAT_META_KEY, chat_id)
+        if user_query is None:
+            user_query = ""
 
-        for msg in reversed(messages):
-            message = json.loads(msg)
+        # 解析消息
+        parsed_messages = [json.loads(msg) for msg in messages]
+        # 按时间顺序排列（从旧到新）
+        time_ordered = list(reversed(parsed_messages))
+
+        # 检查第一条消息是否为agent_start
+        first_event = time_ordered[0].get("event") if time_ordered else None
+        if first_event != "agent_start":
+            # 添加agent_start事件
+            agent_start_event = await create_agent_start_event(user_query)
+            # 创建临时流用于回放
+            self.create_stream(chat_id)
+            await self.send_message(chat_id, agent_start_event, False)
+            await asyncio.sleep(0.001)
+        else:
+            # 创建临时流用于回放
+            self.create_stream(chat_id)
+
+        # 回放所有消息
+        for message in time_ordered:
             await self.send_message(chat_id, message, False)
+            await asyncio.sleep(0.001)
+
+        # 检查最后一条消息是否为complete
+        last_event = time_ordered[-1].get("event") if time_ordered else None
+        if last_event != "complete":
+            # 追加complete事件
+            complete_event = await create_complete_event()
+            await self.send_message(chat_id, complete_event, False)
             await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:

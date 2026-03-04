@@ -255,23 +255,40 @@ class MainViewModel(
         val idx = current.indexOfFirst { it.id == messageId }
         
         if (idx == -1) {
-            // 如果事件是 AgentStart 且包含 query，可以尝试更新前一条用户消息（可选，通常用于回显）
+            // 如果是回放历史，且收到了 AgentStart 且带 query，
+            // 此时可能没有对应的用户消息（replay 模式下通常只推 AI 的 SSE）
+            // 我们在 AI 消息前插入一个用户消息
             if (event is SseEvent.AgentStart && !event.query.isNullOrBlank()) {
-                // 逻辑上回放时可能需要重建用户消息，但这里简单处理 AI 消息
+                val userMsgId = "u_$messageId"
+                if (current.none { it.id == userMsgId }) {
+                    current.add(Message(id = userMsgId, isUser = true, content = event.query, timestamp = currentTime()))
+                }
             }
             current.add(Message(id = messageId, isUser = false, timestamp = currentTime(), events = listOf(event)))
         } else {
             val oldMsg = current[idx]
-            val newEvents = oldMsg.events + event
             
-            // 同步维护 content 字段，这样即便 UI 不解析 events 也能显示基本文本
+            // 如果是在线聊天，且收到了 AgentStart 的 query，尝试更新前一条用户消息
+            if (event is SseEvent.AgentStart && !event.query.isNullOrBlank()) {
+                val userMsgIdx = idx - 1
+                if (userMsgIdx >= 0 && current[userMsgIdx].isUser) {
+                    current[userMsgIdx] = current[userMsgIdx].copy(content = event.query)
+                } else if (idx == 0) {
+                     // 容错：如果 AI 消息排在第一位，则前面补个用户消息
+                     current.add(0, Message(id = "u_$messageId", isUser = true, content = event.query, timestamp = currentTime()))
+                }
+            }
+
+            val newEvents = oldMsg.events + event
             val newContent = if (event is SseEvent.Message) {
                 oldMsg.content + (event.content ?: "")
             } else {
                 oldMsg.content
             }
             
-            current[idx] = oldMsg.copy(events = newEvents, content = newContent)
+            // 重新计算索引，因为可能插入了用户消息
+            val newIdx = current.indexOfFirst { it.id == messageId }
+            current[newIdx] = oldMsg.copy(events = newEvents, content = newContent)
         }
         _messages.value = current
     }
