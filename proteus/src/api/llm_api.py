@@ -81,15 +81,26 @@ def _create_connector(force_dns_refresh: bool = False) -> aiohttp.TCPConnector:
     Returns:
         aiohttp.TCPConnector 实例
     """
-    return aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=0 if force_dns_refresh else 300,
-        use_dns_cache=not force_dns_refresh,
-        keepalive_timeout=30,
-        enable_cleanup_closed=True,
-        force_close=force_dns_refresh,
-    )
+    if force_dns_refresh:
+        # 重试时：禁用 DNS 缓存，强制关闭旧连接以建立新连接
+        return aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=5,
+            ttl_dns_cache=0,
+            use_dns_cache=False,
+            enable_cleanup_closed=True,
+            force_close=True,
+        )
+    else:
+        # 首次请求：使用 DNS 缓存和保持连接
+        return aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=5,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            keepalive_timeout=30,
+            enable_cleanup_closed=True,
+        )
 
 
 class RequestLogManager:
