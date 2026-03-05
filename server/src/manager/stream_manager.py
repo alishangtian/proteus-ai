@@ -34,24 +34,32 @@ class StreamManager:
             cls._instance = cls()
         return cls._instance
 
-    def create_stream(self, chat_id: str, user_query: str = "") -> str:
+    def create_stream(
+        self, chat_id: str, user_query: str = "", queue_key_prefix: str = "stream"
+    ) -> str:
         """创建新的流式响应队列并记录问题
 
         Args:
             chat_id: 聊天会话ID
             user_query: 用户原始问题
+            queue_key_prefix: 队列键前缀
 
         Returns:
             str: 返回chat_id
         """
-        if chat_id not in self._streams:
-            self._streams[chat_id] = asyncio.Queue()
+        queue_key = f"{queue_key_prefix}:{chat_id}"
+        if queue_key not in self._streams:
+            self._streams[queue_key] = asyncio.Queue()
             if user_query:
                 self._redis_client.hset(CHAT_META_KEY, chat_id, user_query)
         return chat_id
 
     async def send_message(
-        self, chat_id: str, message: dict, need_replay: bool = True
+        self,
+        chat_id: str,
+        message: dict,
+        need_replay: bool = True,
+        queue_key_prefix: str = "stream",
     ) -> None:
         """发送消息到指定的流，并存入redis
 
@@ -59,14 +67,17 @@ class StreamManager:
             chat_id: 聊天会话ID
             message: 要发送的消息
         """
-        if chat_id in self._streams:
-            await self._streams[chat_id].put(message)
+        queue_key = f"{queue_key_prefix}:{chat_id}"
+        if queue_key in self._streams:
+            await self._streams[queue_key].put(message)
             # 同时存入redis，key格式为chat_stream:{chat_id}
             if need_replay:
                 redis_key = f"chat_stream:{chat_id}"
                 self._redis_client.lpush(redis_key, json.dumps(message))
 
-    async def get_messages(self, chat_id: str) -> AsyncGenerator[dict, None]:
+    async def get_messages(
+        self, chat_id: str, queue_key_prefix: str = "stream"
+    ) -> AsyncGenerator[dict, None]:
         """获取指定流的消息生成器
 
         Args:
@@ -75,10 +86,11 @@ class StreamManager:
         Yields:
             dict: 消息内容
         """
-        if chat_id not in self._streams:
-            raise ValueError(f"Stream {chat_id} not found")
+        queue_key = f"{queue_key_prefix}:{chat_id}"
+        if queue_key not in self._streams:
+            raise ValueError(f"Stream {queue_key} not found")
 
-        queue = self._streams[chat_id]
+        queue = self._streams[queue_key]
         try:
             while True:
                 message = await queue.get()
@@ -90,19 +102,22 @@ class StreamManager:
                     break
         finally:
             # 清理资源
-            if chat_id in self._streams:
-                del self._streams[chat_id]
+            if queue_key in self._streams:
+                del self._streams[queue_key]
 
-    def close_stream(self, chat_id: str) -> None:
+    def close_stream(self, chat_id: str, queue_key_prefix: str = "stream") -> None:
         """关闭指定的流
 
         Args:
             chat_id: 聊天会话ID
         """
-        if chat_id in self._streams:
-            del self._streams[chat_id]
+        queue_key = f"{queue_key_prefix}:{chat_id}"
+        if queue_key in self._streams:
+            del self._streams[queue_key]
 
-    async def replay_chat(self, chat_id: str) -> None:
+    async def replay_chat(
+        self, chat_id: str, queue_key_prefix: str = "replay_stream"
+    ) -> None:
         """回放指定chat_id的历史消息
 
         Args:
@@ -133,26 +148,34 @@ class StreamManager:
             # 添加agent_start事件
             agent_start_event = await create_agent_start_event(user_query)
             # 创建临时流用于回放
-            self.create_stream(chat_id)
-            await self.send_message(chat_id, agent_start_event, False)
+            self.create_stream(chat_id, queue_key_prefix=queue_key_prefix)
+            await self.send_message(
+                chat_id, agent_start_event, False, queue_key_prefix=queue_key_prefix
+            )
         else:
             # 创建临时流用于回放
-            self.create_stream(chat_id)
+            self.create_stream(chat_id, queue_key_prefix=queue_key_prefix)
 
         # 回放所有消息
         for message in time_ordered:
-            await self.send_message(chat_id, message, False)
+            await self.send_message(
+                chat_id, message, False, queue_key_prefix=queue_key_prefix
+            )
 
         # 检查最后一条消息是否为complete
         last_event = time_ordered[-1].get("event") if time_ordered else None
         if chat_status == "complete" and last_event != "complete":
             # 追加complete事件
             complete_event = await create_complete_event()
-            await self.send_message(chat_id, complete_event, True)
+            await self.send_message(
+                chat_id, complete_event, True, queue_key_prefix=queue_key_prefix
+            )
         if chat_status != "complete" and last_event != "complete":
             # 追加complete事件
             complete_event = await create_complete_event()
-            await self.send_message(chat_id, complete_event, False)
+            await self.send_message(
+                chat_id, complete_event, False, queue_key_prefix=queue_key_prefix
+            )
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题

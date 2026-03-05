@@ -262,7 +262,6 @@ def start_subtask(task_dir, subtask, api_config, max_retries=3, initial_delay=2)
     # Build workspace path
     workspace_path = os.path.join(task_dir, "sub_tasks", subtask_dir_name)
     
-    print(f"
     print(f"\n🚀 启动子任务: {subtask_name}")
     print(f"   📁 工作目录: {workspace_path}")
     
@@ -516,8 +515,7 @@ def start_subtasks_sequential(task_dir, wait_for_completion=False, check_interva
         # Sort tasks by dependencies
         sorted_tasks = topological_sort(pending_tasks)
         
-        print("
-📊 依赖执行顺序:")
+        print("📊 依赖执行顺序:")
         for i, task in enumerate(sorted_tasks, 1):
             deps = task.get("dependencies", [])
             deps_str = f" (依赖: {', '.join(deps)})" if deps else ""

@@ -607,11 +607,15 @@ async def replay_stream_request(chat_id: str):
         EventSourceResponse: SSE响应
     """
 
-    asyncio.create_task(stream_manager.replay_chat(chat_id))
+    asyncio.create_task(
+        stream_manager.replay_chat(chat_id, queue_key_prefix="replay_stream")
+    )
 
     async def event_generator():
         try:
-            async for message in stream_manager.get_messages(chat_id):
+            async for message in stream_manager.get_messages(
+                chat_id, queue_key_prefix="replay_stream"
+            ):
                 yield message
                 # await asyncio.sleep(0.1)  # 小延迟减少CPU使用
         except ValueError as e:

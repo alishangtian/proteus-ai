@@ -383,23 +383,27 @@ class EnvironmentChecker:
             report_lines.append(f"⚠ 发现 {error_count} 个错误，{warning_count} 个警告")
         
         # 详细结果
-        report_lines.append("详细检查记录:")
+        report_lines.append("
+详细检查记录:")
         for result in self.results:
             report_lines.append(f"  {result}")
         
         # 问题列表
         if self.issues:
-            report_lines.append("❌ 需要修复的问题:")
+            report_lines.append("
+❌ 需要修复的问题:")
             for issue in self.issues:
                 report_lines.append(f"  • {issue}")
         
         if self.warnings:
-            report_lines.append("⚠ 需要注意的警告:")
+            report_lines.append("
+⚠ 需要注意的警告:")
             for warning in self.warnings:
                 report_lines.append(f"  • {warning}")
         
         # 建议
-        report_lines.append("💡 建议:")
+        report_lines.append("
+💡 建议:")
         if self.issues:
             report_lines.append("  1. 首先解决上述错误问题")
             report_lines.append("  2. 然后处理警告问题")
@@ -408,13 +412,15 @@ class EnvironmentChecker:
         else:
             report_lines.append("  1. 环境状态良好，可以正常使用多任务深度研究技能")
         
-        report_lines.append("📋 使用建议:")
+        report_lines.append("
+📋 使用建议:")
         report_lines.append("  1. 定期运行此脚本检查环境")
         report_lines.append("  2. 查看 /app/data/tasks/ 目录权限")
         report_lines.append("  3. 确保API服务正常运行（如果使用外部API）")
         
-        report_lines.append("=" * 60)
-        report_text = "\n".join(report_lines)
+        report_lines.append("" + "=" * 60)")SKIP_THIS_LINE        
+        report_text = "
+".join(report_lines)
         
         # 保存报告到文件
         report_dir = self.skill_dir / "reports"

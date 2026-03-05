@@ -532,12 +532,10 @@ def enrich_all_task_files(task_dir):
         
         # 1. 丰富主任务文件
         print("\n📄 步骤1: 丰富主任务文件")
-        enrich_master_task_plan(task_dir, task_name, task_description)
         
         # 2. 丰富所有子任务文件
         print("📄 步骤2: 丰富子任务文件")
         
-        subtasks = config.get('subtasks', [])
         if not subtasks:
             print("ℹ 没有子任务需要丰富")
             return True
@@ -566,6 +564,7 @@ def enrich_all_task_files(task_dir):
         import traceback
         traceback.print_exc()
         return False
+
 if __name__ == "__main__":
     import sys
     import argparse

@@ -28,10 +28,19 @@ NETWORK_EXCEPTIONS = (
 )
 
 # 网络错误关键词（用于从通用 Exception 中识别网络相关错误）
-NETWORK_ERROR_KEYWORDS = ["disconnected", "connection", "network", "timeout", "unreachable", "reset"]
+NETWORK_ERROR_KEYWORDS = [
+    "disconnected",
+    "connection",
+    "network",
+    "timeout",
+    "unreachable",
+    "reset",
+]
 
 
-def _calculate_retry_delay(attempt: int, base_delay: float = 1.0, max_delay: float = 30.0) -> float:
+def _calculate_retry_delay(
+    attempt: int, base_delay: float = 1.0, max_delay: float = 30.0
+) -> float:
     """
     计算指数退避重试延迟（含随机抖动）
 
@@ -48,7 +57,7 @@ def _calculate_retry_delay(attempt: int, base_delay: float = 1.0, max_delay: flo
     Returns:
         实际等待的延迟时间（秒）
     """
-    delay = min(base_delay * (2 ** attempt), max_delay)
+    delay = min(base_delay * (2**attempt), max_delay)
     jitter = random.uniform(0, delay * 0.5)
     return delay + jitter
 
@@ -63,10 +72,7 @@ def _is_network_error(error: Exception) -> bool:
     Returns:
         是否为网络错误
     """
-    return any(
-        keyword in str(error).lower()
-        for keyword in NETWORK_ERROR_KEYWORDS
-    )
+    return any(keyword in str(error).lower() for keyword in NETWORK_ERROR_KEYWORDS)
 
 
 def _create_connector(force_dns_refresh: bool = False) -> aiohttp.TCPConnector:
