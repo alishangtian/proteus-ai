@@ -208,11 +208,11 @@ class StreamManager:
     async def consume_blocking_queue(
         self, key: str, timeout: int = 1
     ) -> AsyncGenerator[dict, None]:
-        """从阻塞队列中消费消息
+        """从阻塞队列中消费消息（sorted set + bzpopmin）
 
         Args:
             key: Redis 键名
-            timeout: BRPOP 超时时间（秒），默认为1，0表示无限阻塞
+            timeout: BZPOPMIN 超时时间（秒），默认为1，0表示无限阻塞
 
         Yields:
             dict: 消息内容
@@ -220,15 +220,15 @@ class StreamManager:
         while True:
             # 检查 key 是否存在，不存在则停止消费
             try:
-                # 使用 to_thread 执行阻塞的 BRPOP 操作
+                # 使用 to_thread 执行阻塞的 BZPOPMIN 操作
                 result = await asyncio.to_thread(
-                    self._redis_client.brpop, key, timeout=timeout
+                    self._redis_client.bzpopmin, key, timeout=timeout
                 )
                 if result is None:
                     # 超时，继续循环
                     continue
-                # result 是 (key, value) 元组
-                _, value = result
+                # result 是 (key, value, score) 元组
+                _, value, _ = result
                 try:
                     message = json.loads(value)
                 except json.JSONDecodeError as e:

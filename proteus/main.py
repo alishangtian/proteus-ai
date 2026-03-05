@@ -902,7 +902,7 @@ async def process_task(task_data: dict):
                         # 向阻塞队列发送完成事件
                         blocking_key = f"chat_stream_b:{prev_chat_id}"
                         completion_message = json.dumps({"event": "complete", "data": "auto completed"})
-                        redis_conn.lpush(blocking_key, completion_message)
+                        redis_conn.zadd(blocking_key, {completion_message: time.time()})
 
             # 使用 List 存储一个 conversation_id 对应的多个 chat_id
             redis_conn.rpush(conv_chats_key, chat_id)

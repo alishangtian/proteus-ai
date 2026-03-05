@@ -106,11 +106,11 @@ class StreamManager:
 
     async def send_to_redis(self, chat_id: str, message: dict) -> None:
         redis_key = f"chat_stream:{chat_id}"  # 全量式replay (sorted set)
-        redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay (list)
+        redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay (sorted set)
         msg_json = json.dumps(message)
         score = self._extract_timestamp(message)
         self._redis_client.zadd(redis_key, {msg_json: score})
-        self._redis_client.lpush(redis_key_b, msg_json)
+        self._redis_client.zadd(redis_key_b, {msg_json: score})
 
     async def get_messages(self, chat_id: str) -> AsyncGenerator[dict, None]:
         """获取指定流的消息生成器

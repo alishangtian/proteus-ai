@@ -8,6 +8,7 @@ import os
 import logging
 import json
 import asyncio
+import time
 import yaml
 import redis
 import uuid
@@ -511,7 +512,7 @@ async def stop_chat(
         completion_message = json.dumps(
             {"event": "complete", "data": "stopped by user"}
         )
-        redis_conn.lpush(blocking_key, completion_message)
+        redis_conn.zadd(blocking_key, {completion_message: time.time()})
 
         # 构建停止任务负载，推送到任务队列
         auth_header = http_request.headers.get("Authorization")
