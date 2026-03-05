@@ -51,7 +51,7 @@ class StreamManager:
         return chat_id
 
     async def send_message(
-        self, chat_id: str, message: dict, replay: bool = False
+        self, chat_id: str, message: dict, need_replay: bool = True
     ) -> None:
         """发送消息到指定的流，并存入redis
 
@@ -62,7 +62,7 @@ class StreamManager:
         if chat_id in self._streams:
             await self._streams[chat_id].put(message)
             # 同时存入redis，key格式为chat_stream:{chat_id}
-            if not replay:
+            if need_replay:
                 redis_key = f"chat_stream:{chat_id}"
                 self._redis_client.lpush(redis_key, json.dumps(message))
 
@@ -134,21 +134,21 @@ class StreamManager:
             agent_start_event = await create_agent_start_event(user_query)
             # 创建临时流用于回放
             self.create_stream(chat_id)
-            await self.send_message(chat_id, agent_start_event, True)
+            await self.send_message(chat_id, agent_start_event, False)
         else:
             # 创建临时流用于回放
             self.create_stream(chat_id)
 
         # 回放所有消息
         for message in time_ordered:
-            await self.send_message(chat_id, message, True)
+            await self.send_message(chat_id, message, False)
 
         # 检查最后一条消息是否为complete
         last_event = time_ordered[-1].get("event") if time_ordered else None
         if chat_status == "complete" and last_event != "complete":
             # 追加complete事件
             complete_event = await create_complete_event()
-            await self.send_message(chat_id, complete_event, False)
+            await self.send_message(chat_id, complete_event, True)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题
