@@ -1060,12 +1060,23 @@ async def get_conversations(request: Request, limit: int = 50):
 
         # 批量获取 chat 状态
         status_pipe = redis_conn.pipeline()
+        has_chat_status = []
         for chat_id_val in chat_status_queries:
             if chat_id_val:
                 status_pipe.get(f"chat:{chat_id_val}:status")
+                has_chat_status.append(True)
             else:
-                status_pipe.get("__nonexistent_key__")
-        status_results = status_pipe.execute()
+                has_chat_status.append(False)
+        status_results_raw = status_pipe.execute() if any(has_chat_status) else []
+
+        # 将 pipeline 结果按索引还原（无 chat_id 的位置补 None）
+        status_results = []
+        status_iter = iter(status_results_raw)
+        for has in has_chat_status:
+            if has:
+                status_results.append(next(status_iter))
+            else:
+                status_results.append(None)
 
         for i, conv_id in enumerate(conversation_ids):
             conv_data = results[i * 3]
