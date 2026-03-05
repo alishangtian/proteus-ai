@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -75,6 +76,8 @@ class MainViewModel(
     val currentChatId: StateFlow<String?> = _currentChatId.asStateFlow()
 
     private var streamingJob: Job? = null
+    private var contentRefreshJob: Job? = null
+    private val _loadedChatIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     init {
@@ -98,6 +101,18 @@ class MainViewModel(
                 val effectiveUrl = url ?: TokenManager.DEFAULT_SERVER_URL
                 _serverUrlState.value = effectiveUrl
                 ApiClient.setBaseUrl(effectiveUrl)
+            }
+        }
+        // 会话列表每 10 秒自动刷新一次
+        viewModelScope.launch {
+            while (true) {
+                delay(10_000L)
+                val token = _tokenState.value ?: continue
+                try {
+                    _conversations.value = conversationRepository.getConversations(token)
+                } catch (e: Exception) {
+                    Timber.e(e, "Auto-refresh conversations failed")
+                }
             }
         }
     }
@@ -156,17 +171,24 @@ class MainViewModel(
         val cid = conversation.conversationId ?: return
         if (_selectedConversationId.value == cid && _messages.value.isNotEmpty()) return
         
+        contentRefreshJob?.cancel()
         streamingJob?.cancel()
+        _loadedChatIds.clear()
+        _isStreaming.value = false
+        _currentChatId.value = null
         _selectedConversationId.value = cid
         _messages.value = emptyList()
         loadConversationHistory(token, cid)
     }
 
     fun newConversation() {
+        contentRefreshJob?.cancel()
         streamingJob?.cancel()
         _selectedConversationId.value = null
         _messages.value = emptyList()
         _currentChatId.value = null
+        _isStreaming.value = false
+        _loadedChatIds.clear()
     }
 
     private fun loadConversationHistory(token: String, conversationId: String) {
@@ -178,6 +200,7 @@ class MainViewModel(
                 _loading.value = false
                 
                 chatIds.forEach { chatId ->
+                    _loadedChatIds.add(chatId)
                     val msgId = "replay_$chatId"
                     try {
                         chatRepository.replayStream(token, chatId).collect { event ->
@@ -189,11 +212,68 @@ class MainViewModel(
                     }
                 }
                 _uiState.value = UiState.Success
+
+                // 如果当前会话在后端仍处于 running 状态，启动内容区自动刷新（每 3 秒）
+                val conv = _conversations.value.find { it.conversationId == conversationId }
+                if (conv?.isRunning == true) {
+                    _currentChatId.value = chatIds.lastOrNull()
+                    _isStreaming.value = true
+                    startContentAutoRefresh(token, conversationId)
+                }
             } catch (e: Exception) {
                 Timber.e(e, "History load failed")
                 _uiState.value = UiState.Error("加载历史记录失败: ${e.message}")
             } finally {
                 _loading.value = false
+            }
+        }
+    }
+
+    /** 当选中会话仍处于 running 状态时，每 3 秒刷新一次内容区，加载新出现的 chatId。 */
+    private fun startContentAutoRefresh(token: String, conversationId: String) {
+        contentRefreshJob?.cancel()
+        contentRefreshJob = viewModelScope.launch {
+            while (true) {
+                delay(3_000L)
+
+                // 若用户已切换到其它会话，停止刷新
+                if (_selectedConversationId.value != conversationId) break
+
+                try {
+                    // 重新拉取会话列表以更新 isRunning 状态
+                    val newConversations = conversationRepository.getConversations(token)
+                    _conversations.value = newConversations
+
+                    val conv = newConversations.find { it.conversationId == conversationId }
+                    if (conv?.isRunning != true) {
+                        // 任务已完成，停止自动刷新
+                        _isStreaming.value = false
+                        _currentChatId.value = null
+                        break
+                    }
+
+                    // 检查是否有新的 chatId 出现
+                    val detail = conversationRepository.getConversationDetail(token, conversationId)
+                    val chatIds = detail?.chatIds ?: emptyList()
+                    _currentChatId.value = chatIds.lastOrNull()
+
+                    val newChatIds = chatIds.filter { it !in _loadedChatIds }
+                    newChatIds.forEach { chatId ->
+                        _loadedChatIds.add(chatId)
+                        val msgId = "replay_$chatId"
+                        try {
+                            chatRepository.replayStream(token, chatId).collect { event ->
+                                updateMessageWithEvent(msgId, event)
+                            }
+                        } catch (e: Exception) {
+                            if (e is kotlinx.coroutines.CancellationException) throw e
+                            Timber.e(e, "Content refresh replay failed for chatId: $chatId")
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    Timber.e(e, "Content auto-refresh check failed")
+                }
             }
         }
     }
@@ -260,6 +340,7 @@ class MainViewModel(
         val conversationId = _selectedConversationId.value ?: return
         val chatId = _currentChatId.value ?: return
 
+        contentRefreshJob?.cancel()
         viewModelScope.launch {
             try {
                 streamingJob?.cancel()
