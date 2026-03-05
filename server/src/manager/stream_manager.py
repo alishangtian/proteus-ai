@@ -57,6 +57,7 @@ class StreamManager:
                 pass
         elif isinstance(data, dict) and "timestamp" in data:
             return float(data["timestamp"])
+        logger.debug(f"消息中未找到timestamp字段，使用当前时间: event={message.get('event')}")
         return time.time()
 
     def create_stream(self, chat_id: str, user_query: str = "") -> str:
