@@ -50,6 +50,7 @@ AGENT_STATUS_INIT = "init"
 AGENT_STATUS_RUNNING = "running"
 AGENT_STATUS_STOPPED = "stopped"
 AGENT_STATUS_COMPLETE = "complete"
+AGENT_STATUS_ERROR = "error"
 # 智能体状态在 Redis 中的默认过期时间（秒）
 AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
 
@@ -132,6 +133,24 @@ class ChatAgent:
         except Exception as e:
             logger.error(f"Agent {self.agentid} 读取停止状态失败: {e}")
             return False
+
+    def _check_and_handle_stopped(self, chat_id: str) -> bool:
+        """检查是否需要停止，如果是则执行停止操作并返回 True
+
+        统一的停止检查入口，合并了内存标志和 Redis 状态的检查逻辑，
+        避免在工具调用循环中重复编写停止检查代码。
+
+        Args:
+            chat_id: 聊天会话ID
+
+        Returns:
+            bool: 如果 agent 已停止返回 True，否则返回 False
+        """
+        if self._is_stopped():
+            logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
+            self.stop()
+            return True
+        return False
 
     def _set_status(self, status: str) -> None:
         """将智能体状态写入 Redis，并更新内存属性"""
@@ -478,9 +497,7 @@ class ChatAgent:
             # 标记是否需要保存最终助手消息（仅当最后一轮无工具调用时才保存）
             _save_final_message = False
             while tool_iteration < max_iterations:
-                if self.stopped or self._is_stopped():
-                    logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
-                    self.stop()
+                if self._check_and_handle_stopped(chat_id):
                     break
                 try:
                     # 执行一次 LLM 生成迭代
@@ -503,9 +520,7 @@ class ChatAgent:
                         tool_iteration=tool_iteration,
                     )
 
-                    if self.stopped or self._is_stopped():
-                        logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
-                        self.stop()
+                    if self._check_and_handle_stopped(chat_id):
                         break
 
                     # 检查是否需要压缩
@@ -691,16 +706,23 @@ class ChatAgent:
         except Exception as e:
             error_msg = f"chat 模式处理失败: {str(e)}"
             logger.error(f"[{chat_id}] {error_msg}", exc_info=True)
+            self._set_status(AGENT_STATUS_ERROR)
 
             if self.stream_manager:
                 await self.stream_manager.send_message(
-                    chat_id, await create_complete_event(error_msg)
+                    chat_id, await create_error_event(error_msg)
                 )
                 await self.stream_manager.send_message(
-                    chat_id, await create_error_event(error_msg)
+                    chat_id, await create_complete_event()
                 )
             raise
         finally:
+            # 确保状态不会遗留为 RUNNING
+            if self.status == AGENT_STATUS_RUNNING:
+                logger.warning(
+                    f"Agent {self.agentid} 状态仍为 RUNNING，自动修正为 ERROR"
+                )
+                self._set_status(AGENT_STATUS_ERROR)
             # 从缓存中移除当前 agent，防止内存泄漏
             self._remove_from_cache()
 
