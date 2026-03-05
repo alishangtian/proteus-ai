@@ -105,9 +105,13 @@ fun MermaidWebView(mermaidCode: String, modifier: Modifier = Modifier) {
             update = { webView ->
                 webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
             },
-            modifier = modifier
-                .fillMaxWidth()
-                .heightIn(min = 100.dp, max = 500.dp)
+            modifier = if (modifier == Modifier) {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 100.dp, max = 500.dp)
+            } else {
+                modifier
+            }
         )
     }
 }
