@@ -113,10 +113,6 @@ class ChatAgent:
         self._remove_from_cache()
         logger.info(f"Agent {self.agentid} 已停止并清理")
 
-    def _status_redis_key(self) -> str:
-        """返回该 agent 在 Redis 中存储状态的键名"""
-        return f"agent:{self.agentid}:status"
-
     def _chat_stopped_redis_key(self) -> str:
         """返回该会话在 Redis 中的停止标志键名"""
         return f"chat:{self.chat_id}:stopped"
@@ -153,28 +149,17 @@ class ChatAgent:
         return False
 
     def _set_status(self, status: str) -> None:
-        """将智能体状态写入 Redis，并更新内存属性"""
+        """将智能体状态写入 Redis（chat 级别），并更新内存属性"""
         self.status = status
         try:
-            redis_conn = get_redis_connection()
-            redis_conn.set(self._status_redis_key(), status, ex=AGENT_STATUS_TTL)
             if self.chat_id:
+                redis_conn = get_redis_connection()
                 redis_conn.set(
                     f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL
                 )
             logger.info(f"Agent {self.agentid} 状态更新为: {status}")
         except Exception as e:
             logger.error(f"Agent {self.agentid} 设置状态失败: {e}")
-
-    def _get_status(self) -> str:
-        """从 Redis 读取智能体状态，失败时回退到内存属性"""
-        try:
-            redis_conn = get_redis_connection()
-            status = redis_conn.get(self._status_redis_key())
-            return status if status else self.status
-        except Exception as e:
-            logger.error(f"Agent {self.agentid} 获取状态失败: {e}")
-            return self.status
 
     async def _register_agent(self, chat_id: str) -> None:
         """注册当前agent到缓存"""

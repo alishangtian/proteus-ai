@@ -103,15 +103,15 @@ class TestChatAgentStatusManagement(unittest.TestCase):
         """验证初始状态为 INIT"""
         self.assertEqual(self.agent.status, AGENT_STATUS_INIT)
 
-    def test_set_status_updates_memory_and_redis(self):
-        """验证 _set_status 同时更新内存和 Redis"""
+    def test_set_status_updates_memory_and_chat_redis(self):
+        """验证 _set_status 同时更新内存和 chat 级别 Redis 状态"""
         self.agent._set_status(AGENT_STATUS_RUNNING)
         self.assertEqual(self.agent.status, AGENT_STATUS_RUNNING)
-        redis_key = f"agent:{self.agent.agentid}:status"
-        self.assertEqual(self.store[redis_key], AGENT_STATUS_RUNNING)
+        chat_key = f"chat:{self.agent.chat_id}:status"
+        self.assertEqual(self.store[chat_key], AGENT_STATUS_RUNNING)
 
     def test_set_status_updates_chat_status_in_redis(self):
-        """验证 _set_status 同时更新 chat 级别的 Redis 状态"""
+        """验证 _set_status 更新 chat 级别的 Redis 状态"""
         self.agent._set_status(AGENT_STATUS_COMPLETE)
         chat_key = f"chat:{self.agent.chat_id}:status"
         self.assertEqual(self.store[chat_key], AGENT_STATUS_COMPLETE)
@@ -120,24 +120,8 @@ class TestChatAgentStatusManagement(unittest.TestCase):
         """验证可以设置 ERROR 状态"""
         self.agent._set_status(AGENT_STATUS_ERROR)
         self.assertEqual(self.agent.status, AGENT_STATUS_ERROR)
-        redis_key = f"agent:{self.agent.agentid}:status"
-        self.assertEqual(self.store[redis_key], AGENT_STATUS_ERROR)
-
-    def test_get_status_from_redis(self):
-        """验证 _get_status 从 Redis 读取"""
-        self.agent._set_status(AGENT_STATUS_RUNNING)
-        status = self.agent._get_status()
-        self.assertEqual(status, AGENT_STATUS_RUNNING)
-
-    def test_get_status_fallback_to_memory(self):
-        """验证 Redis 失败时回退到内存"""
-        self.agent.status = AGENT_STATUS_COMPLETE
-        with patch(
-            "agent.chat_agent.get_redis_connection",
-            side_effect=Exception("Redis error"),
-        ):
-            status = self.agent._get_status()
-        self.assertEqual(status, AGENT_STATUS_COMPLETE)
+        chat_key = f"chat:{self.agent.chat_id}:status"
+        self.assertEqual(self.store[chat_key], AGENT_STATUS_ERROR)
 
 
 class TestChatAgentCheckAndHandleStopped(unittest.TestCase):
