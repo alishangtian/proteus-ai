@@ -872,8 +872,39 @@ async def process_task(task_data: dict):
         # 保存 conversation_id 和 chat_id 的关系到 Redis（类似 /chat 接口中的逻辑）
         if conversation_id:
             redis_conn = get_redis_connection()
-            # 使用 List 存储一个 conversation_id 对应的多个 chat_id
+
+            # 检查上一条chat是否仍在运行，如果是则标记为停止/完成
             conv_chats_key = f"conversation:{conversation_id}:chats"
+            prev_chat_ids = redis_conn.lrange(conv_chats_key, -1, -1)
+            if prev_chat_ids:
+                prev_chat_id = prev_chat_ids[0]
+                if isinstance(prev_chat_id, bytes):
+                    prev_chat_id = prev_chat_id.decode("utf-8")
+                prev_status = redis_conn.get(f"chat:{prev_chat_id}:status")
+                if isinstance(prev_status, bytes):
+                    prev_status = prev_status.decode("utf-8")
+                if prev_status == "running":
+                    # 检查agent是否还存在
+                    prev_agents = ChatAgent.get_agents(prev_chat_id)
+                    if prev_agents:
+                        # agent还在运行，标记为stopped
+                        logger.info(f"上一条chat {prev_chat_id} 仍有agent运行，标记为stopped")
+                        for agent in prev_agents:
+                            try:
+                                agent.stop()
+                            except Exception as stop_err:
+                                logger.warning(f"停止agent失败: {stop_err}")
+                        redis_conn.set(f"chat:{prev_chat_id}:status", "stopped", ex=AGENT_STATUS_TTL)
+                    else:
+                        # agent已不存在，标记为complete并发送完成消息
+                        logger.info(f"上一条chat {prev_chat_id} agent已不存在，标记为complete")
+                        redis_conn.set(f"chat:{prev_chat_id}:status", "complete", ex=AGENT_STATUS_TTL)
+                        # 向阻塞队列发送完成事件
+                        blocking_key = f"chat_stream_b:{prev_chat_id}"
+                        completion_message = json.dumps({"event": "complete", "data": "auto completed"})
+                        redis_conn.zadd(blocking_key, {completion_message: time.time()})
+
+            # 使用 List 存储一个 conversation_id 对应的多个 chat_id
             redis_conn.rpush(conv_chats_key, chat_id)
             # redis_conn.expire(conv_chats_key, 7 * 24 * 3600)  # 7天过期
 

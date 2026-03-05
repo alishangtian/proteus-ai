@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import time
 from typing import Dict, Optional, AsyncGenerator, List
 from datetime import datetime
 import logging
@@ -14,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _instance = None
 CHAT_META_KEY = "chat_metas"  # 存储chatid与问题的映射
+REPLAY_BATCH_SIZE = int(os.getenv("REPLAY_BATCH_SIZE", "50"))
 
 
 class StreamManager:
@@ -36,6 +39,29 @@ class StreamManager:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
+
+    @staticmethod
+    def _extract_timestamp(message: dict) -> float:
+        """从消息中提取时间戳作为sorted set的score
+
+        Args:
+            message: 消息字典，包含event和data字段
+
+        Returns:
+            float: 时间戳
+        """
+        data = message.get("data", "")
+        if isinstance(data, str):
+            try:
+                parsed = json.loads(data)
+                if isinstance(parsed, dict) and "timestamp" in parsed:
+                    return float(parsed["timestamp"])
+            except (json.JSONDecodeError, ValueError, TypeError):
+                pass
+        elif isinstance(data, dict) and "timestamp" in data:
+            return float(data["timestamp"])
+        logger.debug(f"消息中未找到timestamp字段，使用当前时间: event={message.get('event')}")
+        return time.time()
 
     def create_stream(self, chat_id: str, user_query: str = "") -> str:
         """创建新的流式响应队列并记录问题
@@ -79,10 +105,12 @@ class StreamManager:
             asyncio.create_task(self.send_to_redis(chat_id, message))
 
     async def send_to_redis(self, chat_id: str, message: dict) -> None:
-        redis_key = f"chat_stream:{chat_id}"  #  全量式replay
-        redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay
-        self._redis_client.lpush(redis_key, json.dumps(message))
-        self._redis_client.lpush(redis_key_b, json.dumps(message))
+        redis_key = f"chat_stream:{chat_id}"  # 全量式replay (sorted set)
+        redis_key_b = f"chat_stream_b:{chat_id}"  # 阻塞式replay (sorted set)
+        msg_json = json.dumps(message)
+        score = self._extract_timestamp(message)
+        self._redis_client.zadd(redis_key, {msg_json: score})
+        self._redis_client.zadd(redis_key_b, {msg_json: score})
 
     async def get_messages(self, chat_id: str) -> AsyncGenerator[dict, None]:
         """获取指定流的消息生成器
@@ -128,32 +156,32 @@ class StreamManager:
             del self._streams[chat_id]
 
     async def replay_chat(self, chat_id: str) -> None:
-        """回放指定chat_id的历史消息
+        """回放指定chat_id的历史消息（批量获取）
 
         Args:
             chat_id: 要回放的聊天会话ID
         """
         redis_key = f"chat_stream:{chat_id}"
-        messages = self._redis_client.lrange(redis_key, 0, -1)
+        total = self._redis_client.zcard(redis_key)
 
-        if not messages:
+        if total == 0:
             logger.warning(f"No messages found for chat: {chat_id}")
             return
 
-        chat_status = self._redis_client.hget(CHAT_META_KEY, f"{chat_id}_status")
+        chat_status = self._redis_client.get(f"chat:{chat_id}:status")
+        if isinstance(chat_status, bytes):
+            chat_status = chat_status.decode("utf-8")
 
         # 获取用户查询用于agent_start事件
         user_query = self._redis_client.hget(CHAT_META_KEY, chat_id)
         if user_query is None:
             user_query = ""
 
-        # 解析消息
-        parsed_messages = [json.loads(msg) for msg in messages]
-        # 按时间顺序排列（从旧到新）
-        time_ordered = list(reversed(parsed_messages))
+        # 获取第一条消息检查是否为agent_start
+        first_batch = self._redis_client.zrange(redis_key, 0, 0)
+        first_msg = json.loads(first_batch[0]) if first_batch else None
+        first_event = first_msg.get("event") if first_msg else None
 
-        # 检查第一条消息是否为agent_start
-        first_event = time_ordered[0].get("event") if time_ordered else None
         if first_event != "agent_start":
             # 添加agent_start事件
             agent_start_event = await create_agent_start_event(user_query)
@@ -165,17 +193,32 @@ class StreamManager:
             # 创建临时流用于回放
             self.create_stream(chat_id)
 
-        # 回放所有消息
-        for message in time_ordered:
-            await self.send_message(chat_id, message, True)
-            await asyncio.sleep(0.001)
+        # 批量回放消息
+        offset = 0
+        last_event = None
+        while offset < total:
+            batch = self._redis_client.zrange(
+                redis_key, offset, offset + REPLAY_BATCH_SIZE - 1
+            )
+            if not batch:
+                break
+            for msg_json in batch:
+                message = json.loads(msg_json)
+                last_event = message.get("event")
+                await self.send_message(chat_id, message, True)
+                await asyncio.sleep(0.001)
+            offset += len(batch)
 
-        # 检查最后一条消息是否为complete
-        last_event = time_ordered[-1].get("event") if time_ordered else None
-        if chat_status == "complete" and last_event != "complete":
-            # 追加complete事件
+        # 检查最后一条消息是否为complete或error
+        if last_event not in ("complete", "error"):
+            # 非运行中的chat或状态异常的chat，追加complete事件使回放正常结束
             complete_event = await create_complete_event()
-            await self.send_message(chat_id, complete_event, False)
+            # 如果chat_status不是running，同时将complete事件持久化到redis
+            persist = chat_status != "running"
+            await self.send_message(chat_id, complete_event, persist)
+            if persist and chat_status != "complete":
+                # 更新状态为complete
+                self._redis_client.set(f"chat:{chat_id}:status", "complete")
             await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:

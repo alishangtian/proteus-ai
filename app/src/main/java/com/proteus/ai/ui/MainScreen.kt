@@ -321,15 +321,14 @@ private fun ErrorMessageBar(uiState: UiState, viewModel: MainViewModel) {
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                     if (uiState.retryable) {
-                        val token = viewModel.tokenState.collectAsState().value ?: ""
                         TextButton(
-                            onClick = { viewModel.loadConversations(token) },
+                            onClick = { viewModel.refreshConversation() },
                             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                         ) {
                             Text(stringResource(R.string.retry), fontWeight = FontWeight.Bold)
                         }
                     }
-                    IconButton(onClick = { /* ViewModel action */ }) {
+                    IconButton(onClick = { viewModel.dismissError() }) {
                         Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
                     }
                 }
