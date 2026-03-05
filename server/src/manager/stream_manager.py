@@ -115,7 +115,7 @@ class StreamManager:
             logger.warning(f"No messages found for chat: {chat_id}")
             return
 
-        chat_status = self._redis_client.hget(CHAT_META_KEY, f"{chat_id}_status")
+        chat_status = self._redis_client.get(f"chat:{chat_id}:status")
 
         # 获取用户查询用于agent_start事件
         user_query = self._redis_client.hget(CHAT_META_KEY, chat_id)
@@ -135,7 +135,6 @@ class StreamManager:
             # 创建临时流用于回放
             self.create_stream(chat_id)
             await self.send_message(chat_id, agent_start_event, True)
-            await asyncio.sleep(0.001)
         else:
             # 创建临时流用于回放
             self.create_stream(chat_id)
@@ -143,15 +142,13 @@ class StreamManager:
         # 回放所有消息
         for message in time_ordered:
             await self.send_message(chat_id, message, True)
-            await asyncio.sleep(0.001)
 
-        # 完成的 chat 需要检查最后一条消息是否为complete
+        # 检查最后一条消息是否为complete
         last_event = time_ordered[-1].get("event") if time_ordered else None
         if chat_status == "complete" and last_event != "complete":
             # 追加complete事件
             complete_event = await create_complete_event()
             await self.send_message(chat_id, complete_event, False)
-            await asyncio.sleep(0.001)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题
