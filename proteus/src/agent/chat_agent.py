@@ -97,7 +97,8 @@ class ChatAgent:
         with ChatAgent._cache_lock:
             if self.chat_id and self.chat_id in ChatAgent._agent_cache:
                 ChatAgent._agent_cache[self.chat_id] = [
-                    a for a in ChatAgent._agent_cache[self.chat_id]
+                    a
+                    for a in ChatAgent._agent_cache[self.chat_id]
                     if a.agentid != self.agentid
                 ]
                 if not ChatAgent._agent_cache[self.chat_id]:
@@ -108,12 +109,6 @@ class ChatAgent:
         logger.info(f"Agent {self.agentid} 执行停止操作")
         self.stopped = True
         self._set_status(AGENT_STATUS_STOPPED)
-        if self.chat_id:
-            try:
-                redis_conn = get_redis_connection()
-                redis_conn.set(self._chat_stopped_redis_key(), "1", ex=AGENT_STATUS_TTL)
-            except Exception as e:
-                logger.error(f"Agent {self.agentid} 设置 chat stopped 标志失败: {e}")
         self._remove_from_cache()
         logger.info(f"Agent {self.agentid} 已停止并清理")
 
@@ -145,7 +140,9 @@ class ChatAgent:
             redis_conn = get_redis_connection()
             redis_conn.set(self._status_redis_key(), status, ex=AGENT_STATUS_TTL)
             if self.chat_id:
-                redis_conn.set(f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL)
+                redis_conn.set(
+                    f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL
+                )
             logger.info(f"Agent {self.agentid} 状态更新为: {status}")
         except Exception as e:
             logger.error(f"Agent {self.agentid} 设置状态失败: {e}")
@@ -481,8 +478,9 @@ class ChatAgent:
             # 标记是否需要保存最终助手消息（仅当最后一轮无工具调用时才保存）
             _save_final_message = False
             while tool_iteration < max_iterations:
-                if self._is_stopped():
+                if self.stopped or self._is_stopped():
                     logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
+                    self.stop()
                     break
                 try:
                     # 执行一次 LLM 生成迭代
@@ -505,8 +503,9 @@ class ChatAgent:
                         tool_iteration=tool_iteration,
                     )
 
-                    if self._is_stopped():
+                    if self.stopped or self._is_stopped():
                         logger.info(f"[{chat_id}] Agent 已停止，退出工具调用循环")
+                        self.stop()
                         break
 
                     # 检查是否需要压缩
@@ -569,7 +568,9 @@ class ChatAgent:
                                 )
                             # 失败时退化为简单消息移除
                             try:
-                                messages = await self._compress_messages(chat_id, messages)
+                                messages = await self._compress_messages(
+                                    chat_id, messages
+                                )
                             except Exception as compress_err:
                                 logger.warning(
                                     f"[{chat_id}] 压缩失败，退化为简单消息移除: {compress_err}"
@@ -802,7 +803,9 @@ class ChatAgent:
                             enable_thinking=enable_thinking,
                         ):
                             if self._is_stopped():
-                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                logger.info(
+                                    f"[{chat_id}] Agent 已停止，中断 LLM 流式输出"
+                                )
                                 break
                             chunk_type = chunk.get("type")
 
@@ -949,7 +952,9 @@ class ChatAgent:
                             enable_thinking=enable_thinking,
                         ):
                             if self._is_stopped():
-                                logger.info(f"[{chat_id}] Agent 已停止，中断 LLM 流式输出")
+                                logger.info(
+                                    f"[{chat_id}] Agent 已停止，中断 LLM 流式输出"
+                                )
                                 break
                             chunk_type = chunk.get("type")
 
