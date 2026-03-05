@@ -99,7 +99,8 @@ def continuous_monitor(task_dir, interval_seconds=300, max_checks=None, adaptive
             
             # 详细状态（每5次检查显示一次，或进度变化大时）
             if check_count % 5 == 0 or abs(progress_change) > 10:
-                print("📝 详细状态:")
+                print("
+📝 详细状态:")
                 for i, subtask in enumerate(subtasks, 1):
                     name = subtask.get('name', f'子任务{i}')
                     status = subtask.get('status', 'unknown')
@@ -139,11 +140,14 @@ def continuous_monitor(task_dir, interval_seconds=300, max_checks=None, adaptive
                             pass
             
             if newly_completed:
-                print(f"🎉 新完成的任务: {', '.join(newly_completed)}")
+                print(f"
+🎉 新完成的任务: {', '.join(newly_completed)}")
             
             # 检查依赖关系
             if check_count % 3 == 0:
-                print("🔗 依赖关系检查:")
+                print("
+🔗 依赖关系检查:")
+                valid = True
                 name_to_task = {task['name']: task for task in subtasks}
                 
                 for subtask in subtasks:

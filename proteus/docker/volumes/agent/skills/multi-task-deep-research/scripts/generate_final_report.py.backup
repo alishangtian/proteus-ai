@@ -59,7 +59,9 @@ def extract_key_findings(findings_content):
     # 如果没有提取到结构化的发现，尝试提取段落
     if not key_findings:
         # 提取看起来像发现的段落（包含数据、结论等）
-        paragraphs = re.split(r'\n\s*\n', findings_content)
+        paragraphs = re.split(r'
+\s*
+', findings_content)
         for para in paragraphs:
             para = para.strip()
             if len(para) > 50 and len(para) < 500:  # 合理长度的段落
@@ -88,7 +90,8 @@ def extract_recommendations(findings_content):
         r'行动建议\s*[:：]?\s*(.+)',         # 行动建议: xxx
     ]
     
-    lines = findings_content.split('\n')
+    lines = findings_content.split('
+')
     for line in lines:
         line = line.strip()
         if not line:
@@ -104,7 +107,9 @@ def extract_recommendations(findings_content):
     
     # 如果没有提取到结构化的建议，尝试提取包含"建议"的段落
     if not recommendations:
-        paragraphs = re.split(r'\n\s*\n', findings_content)
+        paragraphs = re.split(r'
+\s*
+', findings_content)
         for para in paragraphs:
             para = para.strip()
             if '建议' in para and len(para) > 30 and len(para) < 300:
@@ -621,7 +626,8 @@ def generate_final_report(task_dir, output_dir=None):
 """
             f.write(action_plan)
         
-        print(f"✅ 报告生成完成!")
+        print(f"
+✅ 报告生成完成!")
         print(f"📁 输出目录: {output_dir}")
         print(f"📄 综合研究报告: {comprehensive_report_path}")
         print(f"📄 执行摘要: {executive_summary_path}")
@@ -672,8 +678,10 @@ if __name__ == "__main__":
     success = generate_final_report(args.task_dir, args.output)
     
     if success:
-        print("🎉 最终报告生成完成!")
+        print("
+🎉 最终报告生成完成!")
         print("💡 下一步建议: 审议报告内容，制定具体的实施计划")
     else:
-        print("❌ 最终报告生成失败")
+        print("
+❌ 最终报告生成失败")
         sys.exit(1)

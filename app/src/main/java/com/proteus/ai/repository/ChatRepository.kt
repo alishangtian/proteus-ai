@@ -151,7 +151,7 @@ class ChatRepository {
                 "action_start" -> SseEvent.ActionStart(raw.action, raw.actionId, raw.input, raw.timestamp)
                 "action_complete" -> SseEvent.ActionComplete(raw.action, raw.actionId, raw.result, raw.isDone, raw.timestamp)
                 "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.actionId, raw.status, raw.timestamp)
-                "message", "agent_complete", "complete" -> SseEvent.Message(raw.content ?: raw.result ?: data, raw.timestamp)
+                "message", "agent_complete", "complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
                 "usage" -> SseEvent.Usage(raw.totalTokens, raw.timestamp)
                 "compress_start" -> SseEvent.CompressStart(raw.originalLength, raw.timestamp)
                 "compress_complete" -> SseEvent.CompressComplete(raw.originalLength, raw.compressedLength, raw.timestamp)
@@ -159,9 +159,10 @@ class ChatRepository {
             }
         } catch (e: Exception) {
             Timber.w("GSON parse failed for event [$event], attempting fallback. Error: ${e.message}")
-            // 兼容非 JSON 格式所在的 message 或 agent_complete/complete
+            // 优化：不再直接将无法解析的 data 放入 Message 渲染，而是归类为 Unknown，仅记录日志
             if (event == "message" || event == "agent_complete" || event == "complete" || event == "") {
-                SseEvent.Message(data, null)
+                // 如果是这些核心事件但又不是 JSON，且不符合特定预期，标记为 Unknown，UI 层可以忽略 Unknown
+                SseEvent.Unknown(event, data)
             } else {
                 SseEvent.Unknown(event, data)
             }

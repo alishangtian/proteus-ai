@@ -8,11 +8,105 @@ import uuid
 import base64
 import threading
 import time
+import random
 from pathlib import Path
 from typing import List, Dict, Union, AsyncGenerator, Tuple
 
 from src.api.model_manager import ModelManager
 from src.utils.langfuse_wrapper import langfuse_wrapper
+
+
+# 网络重试相关异常类型
+NETWORK_EXCEPTIONS = (
+    asyncio.TimeoutError,
+    ConnectionError,
+    OSError,
+    aiohttp.ClientConnectionError,
+    aiohttp.ServerDisconnectedError,
+    aiohttp.ClientError,
+    aiohttp.ClientPayloadError,
+)
+
+# 网络错误关键词（用于从通用 Exception 中识别网络相关错误）
+NETWORK_ERROR_KEYWORDS = [
+    "disconnected",
+    "connection",
+    "network",
+    "timeout",
+    "unreachable",
+    "reset",
+]
+
+
+def _calculate_retry_delay(
+    attempt: int, base_delay: float = 1.0, max_delay: float = 30.0
+) -> float:
+    """
+    计算指数退避重试延迟（含随机抖动）
+
+    网络切换场景下，指数退避比线性退避更合理：
+    - 初始延迟较短，快速尝试恢复
+    - 后续延迟指数增长，避免频繁重试
+    - 随机抖动避免多个客户端同时重试导致的惊群效应
+
+    Args:
+        attempt: 当前重试次数（从0开始）
+        base_delay: 基础延迟时间（秒），默认1秒
+        max_delay: 最大延迟时间（秒），默认30秒
+
+    Returns:
+        实际等待的延迟时间（秒）
+    """
+    delay = min(base_delay * (2**attempt), max_delay)
+    jitter = random.uniform(0, delay * 0.5)
+    return delay + jitter
+
+
+def _is_network_error(error: Exception) -> bool:
+    """
+    判断异常是否为网络相关错误
+
+    Args:
+        error: 异常实例
+
+    Returns:
+        是否为网络错误
+    """
+    return any(keyword in str(error).lower() for keyword in NETWORK_ERROR_KEYWORDS)
+
+
+def _create_connector(force_dns_refresh: bool = False) -> aiohttp.TCPConnector:
+    """
+    创建 TCP 连接器
+
+    每次重试时创建新的连接器，确保网络切换后使用新的连接池和 DNS 缓存。
+
+    Args:
+        force_dns_refresh: 是否强制刷新 DNS 缓存（重试时设为True）
+
+    Returns:
+        aiohttp.TCPConnector 实例
+    """
+    if force_dns_refresh:
+        # 重试时：禁用 DNS 缓存，强制关闭旧连接以建立新连接
+        return aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=5,
+            ttl_dns_cache=0,
+            use_dns_cache=False,
+            enable_cleanup_closed=True,
+            force_close=True,
+        )
+    else:
+        # 首次请求：使用 DNS 缓存和保持连接
+        return aiohttp.TCPConnector(
+            limit=10,
+            limit_per_host=5,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            keepalive_timeout=30,
+            enable_cleanup_closed=True,
+        )
 
 
 class RequestLogManager:
@@ -217,71 +311,62 @@ async def call_llm_api(
     except Exception as e:
         current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
-    # 优化连接配置，提高稳定性
-    conn = aiohttp.TCPConnector(
-        limit=10,  # 连接池大小
-        limit_per_host=5,  # 每个主机的连接数
-        ttl_dns_cache=300,  # DNS缓存时间
-        use_dns_cache=True,
-        keepalive_timeout=30,  # 保持连接时间
-        enable_cleanup_closed=True,  # 自动清理关闭的连接
-    )
+    # 请求参数（在重试循环外准备，避免重复构造）
+    api_key = model_config["api_key"]
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "proteus-ai",
+    }
+
+    data = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+        "temperature": temperature,
+    }
+    if model_config["extra_params"] is not None:
+        data.update(model_config["extra_params"])
+
+    if output_json:
+        data["response_format"] = {"type": "json_object"}
+
+    url = f"{base_url}/chat/completions"
+
+    # 重试配置
+    max_retries = 5
+    base_delay = 1.0  # 初始延迟1秒（指数退避）
+
     client_timeout = aiohttp.ClientTimeout(
-        total=120,  # 总超时时间
-        connect=10,  # 连接超时时间
-        sock_read=60,  # 读取超时时间
+        total=120,
+        connect=10,
+        sock_read=60,
     )
-    async with aiohttp.ClientSession(
-        connector=conn,
-        timeout=client_timeout,
-        read_bufsize=2**17,  # 128KB buffer size
-        headers={"Connection": "keep-alive"},  # 保持连接
-    ) as session:
-        # 根据模型类型构建不同请求
-        # 默认OpenAI格式
-        api_key = model_config["api_key"]
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "proteus-ai",
-        }
 
-        data = {
-            "model": model_name,
-            "messages": messages,
-            "stream": False,
-            "temperature": temperature,
-        }
-        if model_config["extra_params"] is not None:
-            data.update(model_config["extra_params"])
-
-        if output_json:
-            data["response_format"] = {"type": "json_object"}
-
-        url = f"{base_url}/chat/completions"
-
-        # 重试配置
-        max_retries = 10
-        base_delay = 10  # 初始延迟10秒
-
-        for attempt in range(max_retries + 1):
-            try:
+    for attempt in range(max_retries + 1):
+        # 每次重试创建新的连接器和会话，确保网络切换后使用新的连接池
+        conn = _create_connector(force_dns_refresh=(attempt > 0))
+        try:
+            async with aiohttp.ClientSession(
+                connector=conn,
+                timeout=client_timeout,
+                read_bufsize=2**17,
+                headers={"Connection": "keep-alive"},
+            ) as session:
                 async with session.post(
                     url,
-                    headers=headers,
+                    headers=req_headers,
                     json=data,
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"HTTP状态码: {response.status}")
                         current_logger.error(f"API调用失败: {error_text}")
-                        # 对于HTTP错误，不重试，直接抛出异常
                         raise ValueError(f"API调用失败: {error_text}")
 
                     result = await response.json()
                     current_logger.info(f"API调用成功")
 
-                    # 根据模型类型解析不同响应格式并提取usage信息（若存在）
                     usage: Dict = {}
                     if isinstance(result, dict):
                         usage = result.get("usage", {}) or {}
@@ -289,50 +374,37 @@ async def call_llm_api(
                     text = result["choices"][0]["message"]["content"]
                     return text, usage
 
-            except (
-                asyncio.TimeoutError,
-                ConnectionError,
-                aiohttp.ClientConnectionError,
-                aiohttp.ServerDisconnectedError,
-                aiohttp.ClientError,
-            ) as e:
-                # 这些是网络相关异常，进行重试
+        except NETWORK_EXCEPTIONS as e:
+            if attempt < max_retries:
+                delay = _calculate_retry_delay(attempt, base_delay)
+                current_logger.warning(
+                    f"API调用失败，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
+                )
+                await asyncio.sleep(delay)
+            else:
+                current_logger.error(
+                    f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                )
+                if isinstance(e, asyncio.TimeoutError):
+                    raise ValueError("API调用超时")
+                else:
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+        except Exception as e:
+            current_logger.error(f"API调用异常: {str(e)}")
+            if _is_network_error(e):
                 if attempt < max_retries:
-                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    delay = _calculate_retry_delay(attempt, base_delay)
                     current_logger.warning(
-                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        f"网络异常，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
                     )
                     await asyncio.sleep(delay)
                 else:
-                    # 达到最大重试次数，抛出异常
                     current_logger.error(
                         f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
                     )
-                    if isinstance(e, asyncio.TimeoutError):
-                        raise ValueError("API调用超时")
-                    else:
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-            except Exception as e:
-                current_logger.error(f"API调用异常: {str(e)}")
-                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
-                if any(
-                    keyword in str(e).lower()
-                    for keyword in ["disconnected", "connection", "network", "timeout"]
-                ):
-                    if attempt < max_retries:
-                        delay = base_delay * (attempt + 1)
-                        current_logger.warning(
-                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        current_logger.error(
-                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
-                        )
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-                else:
-                    # 非网络异常，不重试，直接抛出
-                    raise
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+            else:
+                raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -379,94 +451,85 @@ async def call_multimodal_llm_api(
     except Exception as e:
         current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
-    # 优化连接配置，提高稳定性
-    conn = aiohttp.TCPConnector(
-        limit=10,  # 连接池大小
-        limit_per_host=5,  # 每个主机的连接数
-        ttl_dns_cache=300,  # DNS缓存时间
-        use_dns_cache=True,
-        keepalive_timeout=30,  # 保持连接时间
-        enable_cleanup_closed=True,  # 自动清理关闭的连接
-    )
+    # 请求参数（在重试循环外准备，避免重复构造）
+    api_key = model_config["api_key"]
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "proteus-ai",
+    }
+
+    processed_messages = []
+    for message in messages:
+        if isinstance(message.get("content"), list):
+            new_content = []
+            for item in message["content"]:
+                if item.get("type") == "image_url" and not item["image_url"][
+                    "url"
+                ].startswith("data:"):
+                    image_path = item["image_url"]["url"]
+                    base64_image = encode_image_to_base64(image_path)
+                    new_content.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            },
+                        }
+                    )
+                else:
+                    new_content.append(item)
+            processed_messages.append({**message, "content": new_content})
+        else:
+            processed_messages.append(message)
+
+    data = {
+        "model": model_name,
+        "messages": processed_messages,
+        "stream": False,
+        "temperature": temperature,
+    }
+    if model_config["extra_params"] is not None:
+        data.update(model_config["extra_params"])
+    if output_json:
+        data["response_format"] = {"type": "json_object"}
+
+    url = f"{base_url}/chat/completions"
+
+    # 重试配置
+    max_retries = 5
+    base_delay = 1.0  # 初始延迟1秒（指数退避）
+
     client_timeout = aiohttp.ClientTimeout(
-        total=120,  # 总超时时间
-        connect=10,  # 连接超时时间
-        sock_read=60,  # 读取超时时间
+        total=120,
+        connect=10,
+        sock_read=60,
     )
-    async with aiohttp.ClientSession(
-        connector=conn,
-        timeout=client_timeout,
-        read_bufsize=2**17,  # 128KB buffer size
-        headers={"Connection": "keep-alive"},  # 保持连接
-    ) as session:
-        # 根据模型类型构建不同请求
-        # 默认OpenAI格式
-        api_key = model_config["api_key"]
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "proteus-ai",
-        }
 
-        processed_messages = []
-        for message in messages:
-            if isinstance(message.get("content"), list):
-                new_content = []
-                for item in message["content"]:
-                    if item.get("type") == "image_url" and not item["image_url"][
-                        "url"
-                    ].startswith("data:"):
-                        image_path = item["image_url"]["url"]
-                        base64_image = encode_image_to_base64(image_path)
-                        new_content.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
-                            }
-                        )
-                    else:
-                        new_content.append(item)
-                processed_messages.append({**message, "content": new_content})
-            else:
-                processed_messages.append(message)
-
-        data = {
-            "model": model_name,
-            "messages": processed_messages,
-            "stream": False,
-            "temperature": temperature,
-        }
-        if model_config["extra_params"] is not None:
-            data.update(model_config["extra_params"])
-        if output_json:
-            data["response_format"] = {"type": "json_object"}
-
-        url = f"{base_url}/chat/completions"
-
-        # 重试配置
-        max_retries = 10
-        base_delay = 10  # 初始延迟10秒
-
-        for attempt in range(max_retries + 1):
-            try:
+    for attempt in range(max_retries + 1):
+        # 每次重试创建新的连接器和会话，确保网络切换后使用新的连接池
+        conn = _create_connector(force_dns_refresh=(attempt > 0))
+        try:
+            async with aiohttp.ClientSession(
+                connector=conn,
+                timeout=client_timeout,
+                read_bufsize=2**17,
+                headers={"Connection": "keep-alive"},
+            ) as session:
                 async with session.post(
                     url,
-                    headers=headers,
+                    headers=req_headers,
                     json=data,
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"HTTP状态码: {response.status}")
                         current_logger.error(f"API调用失败: {error_text}")
-                        # 对于HTTP错误，不重试，直接抛出异常
                         raise ValueError(f"API调用失败: {error_text}")
 
                     result = await response.json()
                     current_logger.info(f"API调用成功")
 
-                    # 根据模型类型解析不同响应格式并提取usage信息（若存在）
                     usage: Dict = {}
                     if isinstance(result, dict):
                         usage = result.get("usage", {}) or {}
@@ -474,50 +537,37 @@ async def call_multimodal_llm_api(
                     text = result["choices"][0]["message"]["content"]
                     return text, usage
 
-            except (
-                asyncio.TimeoutError,
-                ConnectionError,
-                aiohttp.ClientConnectionError,
-                aiohttp.ServerDisconnectedError,
-                aiohttp.ClientError,
-            ) as e:
-                # 这些是网络相关异常，进行重试
+        except NETWORK_EXCEPTIONS as e:
+            if attempt < max_retries:
+                delay = _calculate_retry_delay(attempt, base_delay)
+                current_logger.warning(
+                    f"API调用失败，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
+                )
+                await asyncio.sleep(delay)
+            else:
+                current_logger.error(
+                    f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                )
+                if isinstance(e, asyncio.TimeoutError):
+                    raise ValueError("API调用超时")
+                else:
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+        except Exception as e:
+            current_logger.error(f"API调用异常: {str(e)}")
+            if _is_network_error(e):
                 if attempt < max_retries:
-                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    delay = _calculate_retry_delay(attempt, base_delay)
                     current_logger.warning(
-                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        f"网络异常，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
                     )
                     await asyncio.sleep(delay)
                 else:
-                    # 达到最大重试次数，抛出异常
                     current_logger.error(
                         f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
                     )
-                    if isinstance(e, asyncio.TimeoutError):
-                        raise ValueError("API调用超时")
-                    else:
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-            except Exception as e:
-                current_logger.error(f"API调用异常: {str(e)}")
-                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
-                if any(
-                    keyword in str(e).lower()
-                    for keyword in ["disconnected", "connection", "network", "timeout"]
-                ):
-                    if attempt < max_retries:
-                        delay = base_delay * (attempt + 1)
-                        current_logger.warning(
-                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        current_logger.error(
-                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
-                        )
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-                else:
-                    # 非网络异常，不重试，直接抛出
-                    raise
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+            else:
+                raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -572,57 +622,51 @@ async def call_llm_api_stream(
         current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
-    # 优化连接配置，提高稳定性
-    conn = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=300,
-        use_dns_cache=True,
-        keepalive_timeout=30,
-        enable_cleanup_closed=True,
-    )
+    # 请求参数（在重试循环外准备，避免重复构造）
+    api_key = model_config["api_key"]
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "proteus-ai",
+    }
+
+    data = {
+        "model": model_name,
+        "messages": messages,
+        "stream": True,
+        "temperature": temperature,
+    }
+    if model_config["extra_params"] is not None:
+        data.update(model_config["extra_params"])
+
+    if output_json:
+        data["response_format"] = {"type": "json_object"}
+
+    url = f"{base_url}/chat/completions"
+
+    # 重试配置
+    max_retries = 5
+    base_delay = 1.0  # 初始延迟1秒（指数退避）
+
     client_timeout = aiohttp.ClientTimeout(
         total=300,  # 流式调用需要更长的超时时间
         connect=10,
         sock_read=120,
     )
 
-    async with aiohttp.ClientSession(
-        connector=conn,
-        timeout=client_timeout,
-        read_bufsize=2**17,
-        headers={"Connection": "keep-alive"},
-    ) as session:
-        api_key = model_config["api_key"]
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "proteus-ai",
-        }
-
-        data = {
-            "model": model_name,
-            "messages": messages,
-            "stream": True,
-            "temperature": temperature,
-        }
-        if model_config["extra_params"] is not None:
-            data.update(model_config["extra_params"])
-
-        if output_json:
-            data["response_format"] = {"type": "json_object"}
-
-        url = f"{base_url}/chat/completions"
-
-        # 重试配置
-        max_retries = 10
-        base_delay = 10  # 初始延迟10秒
-
-        for attempt in range(max_retries + 1):
-            try:
+    for attempt in range(max_retries + 1):
+        # 每次重试创建新的连接器和会话，确保网络切换后使用新的连接池
+        conn = _create_connector(force_dns_refresh=(attempt > 0))
+        try:
+            async with aiohttp.ClientSession(
+                connector=conn,
+                timeout=client_timeout,
+                read_bufsize=2**17,
+                headers={"Connection": "keep-alive"},
+            ) as session:
                 async with session.post(
                     url,
-                    headers=headers,
+                    headers=req_headers,
                     json=data,
                 ) as response:
                     if response.status != 200:
@@ -728,62 +772,49 @@ async def call_llm_api_stream(
                             }
                             continue
 
-            except (
-                asyncio.TimeoutError,
-                ConnectionError,
-                aiohttp.ClientConnectionError,
-                aiohttp.ServerDisconnectedError,
-                aiohttp.ClientError,
-            ) as e:
-                # 这些是网络相关异常，进行重试
+        except NETWORK_EXCEPTIONS as e:
+            if attempt < max_retries:
+                delay = _calculate_retry_delay(attempt, base_delay)
+                current_logger.warning(
+                    f"流式API调用失败，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
+                )
+                yield {
+                    "type": "retry",
+                    "error": f"网络异常，{delay:.1f}秒后重试。",
+                }
+                await asyncio.sleep(delay)
+            else:
+                current_logger.error(
+                    f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                )
+                if isinstance(e, asyncio.TimeoutError):
+                    yield {"type": "error", "error": "流式API调用超时"}
+                else:
+                    yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                return
+        except Exception as e:
+            current_logger.error(f"流式API调用异常: {str(e)}")
+            if _is_network_error(e):
                 if attempt < max_retries:
-                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    delay = _calculate_retry_delay(attempt, base_delay)
                     current_logger.warning(
-                        f"流式API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        f"网络异常，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
                     )
                     yield {
                         "type": "retry",
-                        "error": f"网络异常，{delay}秒后重试。",
+                        "error": f"网络异常，{delay:.1f}秒后重试。",
                     }
                     await asyncio.sleep(delay)
                 else:
-                    # 达到最大重试次数，抛出异常
                     current_logger.error(
                         f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
                     )
-                    if isinstance(e, asyncio.TimeoutError):
-                        yield {"type": "error", "error": "流式API调用超时"}
-                    else:
-                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                    yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
                     return
-            except Exception as e:
-                current_logger.error(f"流式API调用异常: {str(e)}")
-                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
-                if any(
-                    keyword in str(e).lower()
-                    for keyword in ["disconnected", "connection", "network", "timeout"]
-                ):
-                    if attempt < max_retries:
-                        delay = base_delay * (attempt + 1)
-                        current_logger.warning(
-                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
-                        )
-                        yield {
-                            "type": "retry",
-                            "error": f"网络异常，{delay}秒后重试。",
-                        }
-                        await asyncio.sleep(delay)
-                    else:
-                        current_logger.error(
-                            f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
-                        )
-                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
-                        return
-                else:
-                    # 非网络异常，不重试，直接抛出
-                    current_logger.error(f"非网络异常: {str(e)}")
-                    yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
-                    return
+            else:
+                current_logger.error(f"非网络异常: {str(e)}")
+                yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+                return
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -834,123 +865,101 @@ async def call_llm_api_with_tools(
         current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
-    # 优化连接配置，提高稳定性
-    conn = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=300,
-        use_dns_cache=True,
-        keepalive_timeout=30,
-        enable_cleanup_closed=True,
-    )
+    # 请求参数（在重试循环外准备，避免重复构造）
+    api_key = model_config["api_key"]
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "proteus-ai",
+    }
+
+    data = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+        "temperature": temperature,
+    }
+    if model_config["extra_params"] is not None:
+        data.update(model_config["extra_params"])
+
+    # 如果提供了工具定义，添加到请求中
+    if tools:
+        data["tools"] = tools
+
+    url = f"{base_url}/chat/completions"
+
+    # 重试配置
+    max_retries = 5
+    base_delay = 1.0  # 初始延迟1秒（指数退避）
+
     client_timeout = aiohttp.ClientTimeout(
         total=120,
         connect=10,
         sock_read=60,
     )
 
-    async with aiohttp.ClientSession(
-        connector=conn,
-        timeout=client_timeout,
-        read_bufsize=2**17,
-        headers={"Connection": "keep-alive"},
-    ) as session:
-        api_key = model_config["api_key"]
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "proteus-ai",
-        }
-
-        data = {
-            "model": model_name,
-            "messages": messages,
-            "stream": False,
-            "temperature": temperature,
-        }
-        if model_config["extra_params"] is not None:
-            data.update(model_config["extra_params"])
-
-        # 如果提供了工具定义，添加到请求中
-        if tools:
-            data["tools"] = tools
-
-        url = f"{base_url}/chat/completions"
-
-        # 重试配置
-        max_retries = 10
-        base_delay = 10  # 初始延迟10秒
-
-        for attempt in range(max_retries + 1):
-            try:
+    for attempt in range(max_retries + 1):
+        # 每次重试创建新的连接器和会话，确保网络切换后使用新的连接池
+        conn = _create_connector(force_dns_refresh=(attempt > 0))
+        try:
+            async with aiohttp.ClientSession(
+                connector=conn,
+                timeout=client_timeout,
+                read_bufsize=2**17,
+                headers={"Connection": "keep-alive"},
+            ) as session:
                 async with session.post(
                     url,
-                    headers=headers,
+                    headers=req_headers,
                     json=data,
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"HTTP状态码: {response.status}")
                         current_logger.error(f"API调用失败: {error_text}")
-                        # 对于HTTP错误，不重试，直接抛出异常
                         raise ValueError(f"API调用失败: {error_text}")
 
                     result = await response.json()
                     current_logger.info(f"API调用成功")
 
-                    # 提取usage信息
                     usage: Dict = {}
                     if isinstance(result, dict):
                         usage = result.get("usage", {}) or {}
 
-                    # 返回完整的消息对象
                     message = result["choices"][0]["message"]
                     return message, usage
 
-            except (
-                asyncio.TimeoutError,
-                ConnectionError,
-                aiohttp.ClientConnectionError,
-                aiohttp.ServerDisconnectedError,
-                aiohttp.ClientError,
-            ) as e:
-                # 这些是网络相关异常，进行重试
+        except NETWORK_EXCEPTIONS as e:
+            if attempt < max_retries:
+                delay = _calculate_retry_delay(attempt, base_delay)
+                current_logger.warning(
+                    f"API调用失败，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
+                )
+                await asyncio.sleep(delay)
+            else:
+                current_logger.error(
+                    f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                )
+                if isinstance(e, asyncio.TimeoutError):
+                    raise ValueError("API调用超时")
+                else:
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+        except Exception as e:
+            current_logger.error(f"API调用异常: {str(e)}")
+            if _is_network_error(e):
                 if attempt < max_retries:
-                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    delay = _calculate_retry_delay(attempt, base_delay)
                     current_logger.warning(
-                        f"API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        f"网络异常，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
                     )
                     await asyncio.sleep(delay)
                 else:
-                    # 达到最大重试次数，抛出异常
                     current_logger.error(
                         f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
                     )
-                    if isinstance(e, asyncio.TimeoutError):
-                        raise ValueError("API调用超时")
-                    else:
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-            except Exception as e:
-                current_logger.error(f"API调用异常: {str(e)}")
-                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
-                if any(
-                    keyword in str(e).lower()
-                    for keyword in ["disconnected", "connection", "network", "timeout"]
-                ):
-                    if attempt < max_retries:
-                        delay = base_delay * (attempt + 1)
-                        current_logger.warning(
-                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
-                        )
-                        await asyncio.sleep(delay)
-                    else:
-                        current_logger.error(
-                            f"API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
-                        )
-                        raise ConnectionError(f"网络连接异常: {str(e)}")
-                else:
-                    # 非网络异常，不重试，直接抛出
-                    raise
+                    raise ConnectionError(f"网络连接异常: {str(e)}")
+            else:
+                raise
 
 
 @langfuse_wrapper.dynamic_observe()
@@ -1041,65 +1050,58 @@ async def call_llm_api_with_tools_stream(
         current_logger.error(f"模型配置有误，model_name:{model_name} \n{str(e)}")
         raise ValueError(f"模型配置有误，model_name:{model_name}")
 
-    # 优化连接配置，提高稳定性
-    conn = aiohttp.TCPConnector(
-        limit=10,
-        limit_per_host=5,
-        ttl_dns_cache=300,
-        use_dns_cache=True,
-        keepalive_timeout=30,
-        enable_cleanup_closed=True,
-    )
+    # 请求参数（在重试循环外准备，避免重复构造）
+    api_key = model_config["api_key"]
+    req_headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "X-Title": "proteus-ai",
+    }
+
+    data = {
+        "model": model_name,
+        "messages": messages,
+        "stream": True,
+        "temperature": temperature,
+    }
+    if model_config["extra_params"] is not None:
+        data.update(model_config["extra_params"])
+
+    # 如果提供了工具定义，添加到请求中
+    if tools:
+        data["tools"] = tools
+
+    url = f"{base_url}/chat/completions"
+
+    # 重试配置
+    max_retries = 5
+    base_delay = 1.0  # 初始延迟1秒（指数退避）
+
     client_timeout = aiohttp.ClientTimeout(
         total=300,  # 流式调用需要更长的超时时间
         connect=10,
         sock_read=120,
     )
 
-    async with aiohttp.ClientSession(
-        connector=conn,
-        timeout=client_timeout,
-        read_bufsize=2**17,
-        headers={"Connection": "keep-alive"},
-    ) as session:
-        api_key = model_config["api_key"]
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "X-Title": "proteus-ai",
-        }
-
-        data = {
-            "model": model_name,
-            "messages": messages,
-            "stream": True,
-            "temperature": temperature,
-        }
-        if model_config["extra_params"] is not None:
-            data.update(model_config["extra_params"])
-
-        # 如果提供了工具定义，添加到请求中
-        if tools:
-            data["tools"] = tools
-
-        url = f"{base_url}/chat/completions"
-
-        # 重试配置
-        max_retries = 10
-        base_delay = 10  # 初始延迟10秒
-
-        for attempt in range(max_retries + 1):
-            try:
+    for attempt in range(max_retries + 1):
+        # 每次重试创建新的连接器和会话，确保网络切换后使用新的连接池
+        conn = _create_connector(force_dns_refresh=(attempt > 0))
+        try:
+            async with aiohttp.ClientSession(
+                connector=conn,
+                timeout=client_timeout,
+                read_bufsize=2**17,
+                headers={"Connection": "keep-alive"},
+            ) as session:
                 async with session.post(
                     url,
-                    headers=headers,
+                    headers=req_headers,
                     json=data,
                 ) as response:
-                    logger.info(f"response.status = {response.status}")
+                    current_logger.info(f"response.status = {response.status}")
                     if response.status != 200:
                         error_text = await response.text()
                         current_logger.error(f"API调用失败: {error_text}")
-                        error_type = await _analyze_error(error_text)
                         # 分析错误类型
                         error_type = await _analyze_error(error_text)
                         current_logger.info(f"错误分析结果: {error_type}")
@@ -1285,59 +1287,46 @@ async def call_llm_api_with_tools_stream(
                             }
                             continue
 
-            except (
-                asyncio.TimeoutError,
-                ConnectionError,
-                aiohttp.ClientConnectionError,
-                aiohttp.ServerDisconnectedError,
-                aiohttp.ClientError,
-            ) as e:
-                # 这些是网络相关异常，进行重试
+        except NETWORK_EXCEPTIONS as e:
+            if attempt < max_retries:
+                delay = _calculate_retry_delay(attempt, base_delay)
+                current_logger.warning(
+                    f"流式API调用失败，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
+                )
+                yield {
+                    "type": "retry",
+                    "error": f"网络异常，{delay:.1f}秒后重试。",
+                }
+                await asyncio.sleep(delay)
+            else:
+                current_logger.error(
+                    f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
+                )
+                if isinstance(e, asyncio.TimeoutError):
+                    yield {"type": "error", "error": "流式API调用超时"}
+                else:
+                    yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                return
+        except Exception as e:
+            current_logger.error(f"流式API调用异常: {str(e)}")
+            if _is_network_error(e):
                 if attempt < max_retries:
-                    delay = base_delay * (attempt + 1)  # 每次重试延迟增加10秒
+                    delay = _calculate_retry_delay(attempt, base_delay)
                     current_logger.warning(
-                        f"流式API调用失败，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
+                        f"网络异常，第{attempt + 1}次重试，{delay:.1f}秒后重试。错误: {str(e)}"
                     )
                     yield {
                         "type": "retry",
-                        "error": f"网络异常，{delay}秒后重试。",
+                        "error": f"网络异常，{delay:.1f}秒后重试。",
                     }
                     await asyncio.sleep(delay)
                 else:
-                    # 达到最大重试次数，抛出异常
                     current_logger.error(
                         f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
                     )
-                    if isinstance(e, asyncio.TimeoutError):
-                        yield {"type": "error", "error": "流式API调用超时"}
-                    else:
-                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
+                    yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
                     return
-            except Exception as e:
-                current_logger.error(f"流式API调用异常: {str(e)}")
-                # 对于其他异常，如果是网络相关的，转换为ConnectionError以便重试
-                if any(
-                    keyword in str(e).lower()
-                    for keyword in ["disconnected", "connection", "network", "timeout"]
-                ):
-                    if attempt < max_retries:
-                        delay = base_delay * (attempt + 1)
-                        current_logger.warning(
-                            f"网络异常，第{attempt + 1}次重试，{delay}秒后重试。错误: {str(e)}"
-                        )
-                        yield {
-                            "type": "retry",
-                            "error": f"网络异常，{delay}秒后重试。",
-                        }
-                        await asyncio.sleep(delay)
-                    else:
-                        current_logger.error(
-                            f"流式API调用失败，已达到最大重试次数{max_retries}。错误: {str(e)}"
-                        )
-                        yield {"type": "error", "error": f"网络连接异常: {str(e)}"}
-                        return
-                else:
-                    # 非网络异常，不重试，直接抛出
-                    current_logger.error(f"非网络异常: {str(e)}")
-                    yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
-                    return
+            else:
+                current_logger.error(f"非网络异常: {str(e)}")
+                yield {"type": "error", "error": f"流式API调用异常: {str(e)}"}
+                return

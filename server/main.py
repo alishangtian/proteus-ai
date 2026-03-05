@@ -451,11 +451,15 @@ async def replay_stream_request(chat_id: str, user: dict = Depends(require_auth)
     Returns:
         EventSourceResponse: SSE响应
     """
-    asyncio.create_task(stream_manager.replay_chat(chat_id))
+    asyncio.create_task(
+        stream_manager.replay_chat(chat_id, queue_key_prefix="replay_stream")
+    )
 
     async def event_generator():
         try:
-            async for message in stream_manager.get_messages(chat_id):
+            async for message in stream_manager.get_messages(
+                chat_id, queue_key_prefix="replay_stream"
+            ):
                 yield message
         except ValueError as e:
             yield {"event": "error", "data": f"Stream not found: {str(e)}"}

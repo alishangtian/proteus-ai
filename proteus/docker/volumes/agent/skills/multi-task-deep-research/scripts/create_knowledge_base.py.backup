@@ -268,7 +268,8 @@ if __name__ == "__main__":
     
     if len(sys.argv) < 2:
         print("用法: python create_knowledge_base.py <任务目录>")
-        print("示例:")
+        print("
+示例:")
         print("  python create_knowledge_base.py /app/data/tasks/我的任务")
         sys.exit(1)
     
@@ -287,8 +288,10 @@ if __name__ == "__main__":
     success = create_knowledge_base(task_dir)
     
     if success:
-        print("🎉 知识库创建完成!")
+        print("
+🎉 知识库创建完成!")
         print("💡 下一步建议: 使用知识库支持未来的研究项目")
     else:
-        print("❌ 知识库创建失败")
+        print("
+❌ 知识库创建失败")
         sys.exit(1)
