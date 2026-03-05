@@ -694,6 +694,9 @@ class ChatAgent:
 
             if self.stream_manager:
                 await self.stream_manager.send_message(
+                    chat_id, await create_complete_event(error_msg)
+                )
+                await self.stream_manager.send_message(
                     chat_id, await create_error_event(error_msg)
                 )
             raise
@@ -810,27 +813,25 @@ class ChatAgent:
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
-                                if chunk.get("is_end"):
-                                    if thinking_buffer and self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
+                                if self.stream_manager:
+                                    if chunk.get("is_end"):
+                                        if thinking_buffer:
+                                            event = await create_agent_stream_thinking_event(
                                                 thinking_buffer
                                             )
-                                        )
-                                        await self.stream_manager.send_stream(
-                                            chat_id, event
-                                        )
-                                        thinking_buffer = ""
-                                    if self.stream_manager:
-                                        event = (
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            thinking_buffer = ""
+                                        done_event = (
                                             await create_agent_stream_thinking_event(
                                                 "[THINKING_DONE]"
                                             )
                                         )
                                         await self.stream_manager.send_message(
-                                            chat_id, event
+                                            chat_id, done_event
                                         )
-                                    continue
+                                        continue
 
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
@@ -839,25 +840,24 @@ class ChatAgent:
                                 thinking_buffer += thinking_content
 
                                 # 检查阈值并发送
-                                if (
-                                    BUFFER_THRESHOLD > 0
-                                    and len(thinking_buffer) >= BUFFER_THRESHOLD
-                                    and self.stream_manager
-                                ):
-                                    event = await create_agent_stream_thinking_event(
-                                        thinking_buffer
-                                    )
-                                    await self.stream_manager.send_stream(
-                                        chat_id, event
-                                    )
-                                    thinking_buffer = ""
-                                if self.stream_manager and thinking_content:
-                                    event = await create_agent_stream_thinking_event(
-                                        thinking_content
-                                    )
-                                    await self.stream_manager.send_message(
-                                        chat_id, event, BUFFER_THRESHOLD <= 0
-                                    )
+                                if self.stream_manager:
+                                    if BUFFER_THRESHOLD > 0:
+                                        if len(thinking_buffer) >= BUFFER_THRESHOLD:
+                                            event = await create_agent_stream_thinking_event(
+                                                thinking_buffer
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            thinking_buffer = ""
+                                    else:
+                                        if thinking_content:
+                                            event = await create_agent_stream_thinking_event(
+                                                thinking_content
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
 
                             elif chunk_type == "reasoning_details":
                                 reasoning_details = chunk.get("content", [])
@@ -868,24 +868,24 @@ class ChatAgent:
                                 # 累积到缓冲区
                                 content_buffer += content
 
-                                # 检查阈值并发送
-                                if (
-                                    BUFFER_THRESHOLD > 0
-                                    and len(content_buffer) >= BUFFER_THRESHOLD
-                                    and self.stream_manager
-                                ):
-                                    event = await create_agent_complete_event(
-                                        content_buffer
-                                    )
-                                    await self.stream_manager.send_stream(
-                                        chat_id, event
-                                    )
-                                    content_buffer = ""
-                                if self.stream_manager and content:
-                                    event = await create_agent_complete_event(content)
-                                    await self.stream_manager.send_message(
-                                        chat_id, event, BUFFER_THRESHOLD <= 0
-                                    )
+                                if self.stream_manager:
+                                    if BUFFER_THRESHOLD > 0:
+                                        if len(content_buffer) >= BUFFER_THRESHOLD:
+                                            event = await create_agent_complete_event(
+                                                content_buffer
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            content_buffer = ""
+                                    else:
+                                        if content:
+                                            event = await create_agent_complete_event(
+                                                content
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
 
                             elif chunk_type == "tool_calls":
                                 tool_calls = chunk.get("tool_calls", [])
@@ -959,19 +959,16 @@ class ChatAgent:
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
-                                if chunk.get("is_end"):
-                                    # 刷新 thinking 缓冲区
-                                    if thinking_buffer and self.stream_manager:
-                                        event = (
-                                            await create_agent_stream_thinking_event(
+                                if self.stream_manager:
+                                    if chunk.get("is_end"):
+                                        if thinking_buffer:
+                                            event = await create_agent_stream_thinking_event(
                                                 thinking_buffer
                                             )
-                                        )
-                                        await self.stream_manager.send_stream(
-                                            chat_id, event
-                                        )
-                                        thinking_buffer = ""
-                                    if self.stream_manager:
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            thinking_buffer = ""
                                         event = (
                                             await create_agent_stream_thinking_event(
                                                 "[THINKING_DONE]"
@@ -980,7 +977,7 @@ class ChatAgent:
                                         await self.stream_manager.send_message(
                                             chat_id, event
                                         )
-                                    continue
+                                        continue
 
                                 thinking_content = chunk.get("content", "")
                                 thinking_text += thinking_content
@@ -990,17 +987,24 @@ class ChatAgent:
                                 thinking_buffer += thinking_content
 
                                 # 检查阈值并发送
-                                if (
-                                    len(thinking_buffer) >= BUFFER_THRESHOLD
-                                    and self.stream_manager
-                                ):
-                                    event = await create_agent_stream_thinking_event(
-                                        thinking_buffer
-                                    )
-                                    await self.stream_manager.send_message(
-                                        chat_id, event
-                                    )
-                                    thinking_buffer = ""
+                                if self.stream_manager:
+                                    if BUFFER_THRESHOLD > 0:
+                                        if len(thinking_buffer) >= BUFFER_THRESHOLD:
+                                            event = await create_agent_stream_thinking_event(
+                                                thinking_buffer
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            thinking_buffer = ""
+                                    else:
+                                        if thinking_content:
+                                            event = await create_agent_stream_thinking_event(
+                                                thinking_content
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
 
                             elif chunk_type == "content":
                                 content = chunk.get("content", "")
@@ -1009,18 +1013,24 @@ class ChatAgent:
                                 # 累积到缓冲区
                                 content_buffer += content
 
-                                # 检查阈值并发送
-                                if (
-                                    len(content_buffer) >= BUFFER_THRESHOLD
-                                    and self.stream_manager
-                                ):
-                                    event = await create_agent_complete_event(
-                                        content_buffer
-                                    )
-                                    await self.stream_manager.send_message(
-                                        chat_id, event
-                                    )
-                                    content_buffer = ""
+                                if self.stream_manager:
+                                    if BUFFER_THRESHOLD > 0:
+                                        if len(content_buffer) >= BUFFER_THRESHOLD:
+                                            event = await create_agent_complete_event(
+                                                content_buffer
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
+                                            content_buffer = ""
+                                    else:
+                                        if content:
+                                            event = await create_agent_complete_event(
+                                                content
+                                            )
+                                            await self.stream_manager.send_message(
+                                                chat_id, event
+                                            )
 
                             elif chunk_type == "usage":
                                 accumulated_usage = chunk.get("usage", {})
@@ -1068,16 +1078,9 @@ class ChatAgent:
                                     )
                                 raise Exception(error_msg)
 
-                    # 刷新剩余缓冲区
-                    if thinking_buffer and self.stream_manager:
-                        event = await create_agent_stream_thinking_event(
-                            thinking_buffer
-                        )
-                        await self.stream_manager.send_stream(chat_id, event)
-                        thinking_buffer = ""
-                    if content_buffer and self.stream_manager:
+                    if content_buffer:
                         event = await create_agent_complete_event(content_buffer)
-                        await self.stream_manager.send_stream(chat_id, event)
+                        await self.stream_manager.send_message(chat_id, event)
                         content_buffer = ""
 
                     # 计算执行时间
