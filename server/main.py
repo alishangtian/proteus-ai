@@ -374,7 +374,11 @@ async def delete_conversation(
         redis_conn.zrem(user_conversations_key, conversation_id)
 
         logger.info(f"用户 {user_name} 删除了会话 {conversation_id}")
-        return {"success": True, "message": "会话已删除", "conversation_id": conversation_id}
+        return {
+            "success": True,
+            "message": "会话已删除",
+            "conversation_id": conversation_id,
+        }
 
     except HTTPException:
         raise
@@ -513,45 +517,45 @@ async def stop_chat(
         )
         redis_conn.lpush(blocking_key, completion_message)
 
-        # 构建停止任务负载，推送到任务队列
-        auth_header = http_request.headers.get("Authorization")
-        token = None
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header[7:].strip()
+        # # 构建停止任务负载，推送到任务队列
+        # auth_header = http_request.headers.get("Authorization")
+        # token = None
+        # if auth_header and auth_header.startswith("Bearer "):
+        #     token = auth_header[7:].strip()
 
-        if not token:
-            raise HTTPException(status_code=400, detail="未提供 Bearer token")
+        # if not token:
+        #     raise HTTPException(status_code=400, detail="未提供 Bearer token")
 
-        task_id = f"task-stop-{uuid.uuid4().hex[:8]}"
-        task_payload = {
-            "query": "",  # 停止任务无需查询文本
-            "modul": "chat",
-            "model_name": None,
-            "itecount": 100,
-            "agentid": None,
-            "team_name": None,
-            "conversation_id": request.conversation_id,
-            "conversation_round": 20,
-            "file_ids": None,
-            "tool_memory_enabled": False,
-            "sop_memory_enabled": True,
-            "enable_tools": True,
-            "tool_choices": None,
-            "selected_skills": None,
-            "chat_id": request.chat_id,
-            "task_type": "stop",
-            "token": token,
-            "user_name": user["user_name"],
-            "submitted_at": datetime.now().isoformat(),
-            "task_id": task_id,
-        }
+        # task_id = f"task-stop-{uuid.uuid4().hex[:8]}"
+        # task_payload = {
+        #     "query": "",  # 停止任务无需查询文本
+        #     "modul": "chat",
+        #     "model_name": None,
+        #     "itecount": 100,
+        #     "agentid": None,
+        #     "team_name": None,
+        #     "conversation_id": request.conversation_id,
+        #     "conversation_round": 20,
+        #     "file_ids": None,
+        #     "tool_memory_enabled": False,
+        #     "sop_memory_enabled": True,
+        #     "enable_tools": True,
+        #     "tool_choices": None,
+        #     "selected_skills": None,
+        #     "chat_id": request.chat_id,
+        #     "task_type": "stop",
+        #     "token": token,
+        #     "user_name": user["user_name"],
+        #     "submitted_at": datetime.now().isoformat(),
+        #     "task_id": task_id,
+        # }
 
-        # 推送到 Redis 任务队列
-        queue_key = "task_queue"
-        redis_conn.rpush(queue_key, json.dumps(task_payload))
-        logger.info(
-            f"已向任务队列发送停止任务: conversation_id={request.conversation_id}, chat_id={request.chat_id}, task_id={task_id}"
-        )
+        # # 推送到 Redis 任务队列
+        # queue_key = "task_queue"
+        # redis_conn.rpush(queue_key, json.dumps(task_payload))
+        # logger.info(
+        #     f"已向任务队列发送停止任务: conversation_id={request.conversation_id}, chat_id={request.chat_id}, task_id={task_id}"
+        # )
 
         logger.info(
             f"已停止聊天: conversation_id={request.conversation_id}, chat_id={request.chat_id}, user={user['user_name']}"
@@ -562,7 +566,7 @@ async def stop_chat(
             "message": "聊天已停止，停止任务已发送",
             "conversation_id": request.conversation_id,
             "chat_id": request.chat_id,
-            "task_id": task_id,
+            "task_id": "",
         }
     except HTTPException:
         raise

@@ -356,7 +356,7 @@ def init_multi_task_research(task_name, task_description, subtasks=None, base_di
             "itecount": 200,
             "conversation_round": 5,
             "tool_choices": ["serper_search", "web_crawler", "python_execute"],
-            "selected_skills": ["planning-with-file"],
+            "selected_skills": ["planning-with-files"],
         }
         
         # Merge with provided API config

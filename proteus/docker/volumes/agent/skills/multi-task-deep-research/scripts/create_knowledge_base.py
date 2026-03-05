@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""
+多任务深度研究知识库创建脚本
+支持第五步：创建结构化的知识归档
+"""
+
+import os
+import json
+import shutil
+from datetime import datetime
+
+def create_knowledge_base(task_dir):
+    """
+    创建知识库
+    
+    Args:
+        task_dir: 任务目录路径
+    """
+    
+    print(f"📚 开始创建知识库: {task_dir}")
+    print("=" * 60)
+    
+    # 创建知识库目录结构
+    kb_dir = os.path.join(task_dir, "knowledge_base")
+    subdirs = [
+        "findings_by_topic",
+        "patterns_insights", 
+        "recommendations",
+        "methodologies",
+        "templates",
+        "references"
+    ]
+    
+    for subdir in subdirs:
+        os.makedirs(os.path.join(kb_dir, subdir), exist_ok=True)
+        print(f"  ✅ 创建目录: {subdir}")
+    
+    # 加载配置
+    config_path = os.path.join(task_dir, "task_config.json")
+    if not os.path.exists(config_path):
+        print(f"⚠ 配置文件未找到: {config_path}")
+        return False
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        task_name = config.get('task_name', '未知任务')
+        task_description = config.get('task_description', '')
+        
+        print(f"📋 任务: {task_name}")
+        
+        # 收集所有子任务文件
+        subtasks = config.get('subtasks', [])
+        if not subtasks:
+            print("ℹ 没有子任务数据")
+            return True
+        
+        print(f"🔍 处理 {len(subtasks)} 个子任务...")
+        
+        # 创建知识库索引
+        index_content = f"""# 知识库索引: {task_name}
+
+## 概述
+**任务名称**: {task_name}
+**任务描述**: {task_description}
+**创建时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**子任务数量**: {len(subtasks)}
+
+## 目录结构
+### 1. findings_by_topic/ - 按主题分类的发现
+- 技术发现
+- 市场发现  
+- 政策发现
+- 应用发现
+- 趋势发现
+
+### 2. patterns_insights/ - 模式和洞察
+- 跨任务模式
+- 关键洞察
+- 趋势分析
+- 矛盾发现
+
+### 3. recommendations/ - 建议库
+- 战略建议
+- 战术建议
+- 操作建议
+- 创新建议
+
+### 4. methodologies/ - 研究方法
+- 研究框架
+- 分析工具
+- 验证方法
+- 质量保证
+
+### 5. templates/ - 模板文件
+- 研究规划模板
+- 分析报告模板
+- 进度跟踪模板
+- 最终报告模板
+
+### 6. references/ - 参考资料
+- 数据来源
+- 参考文献
+- 工具资源
+- 最佳实践
+
+## 子任务映射
+"""
+        
+        for subtask in subtasks:
+            subtask_name = subtask.get('name', '未知子任务')
+            subtask_dir_name = subtask.get('directory', subtask_name.replace(" ", "_").replace("/", "_"))
+            
+            index_content += f"""
+### {subtask_name}
+- **目录**: sub_tasks/{subtask_dir_name}/
+- **状态**: {subtask.get('status', 'unknown')}
+- **发现文件**: sub_tasks/{subtask_dir_name}/findings.md
+- **规划文件**: sub_tasks/{subtask_dir_name}/task_plan.md
+- **进度文件**: sub_tasks/{subtask_dir_name}/progress.md
+"""
+        
+        index_content += f"""
+## 使用说明
+1. **查找发现**: 在 findings_by_topic/ 中按主题查找相关发现
+2. **分析模式**: 在 patterns_insights/ 中查看跨任务模式和洞察  
+3. **获取建议**: 在 recommendations/ 中查找适合的建议
+4. **复用方法**: 在 methodologies/ 中复用成功的研究方法
+5. **使用模板**: 在 templates/ 中使用标准化模板
+6. **参考资源**: 在 references/ 中查找参考资源
+
+## 维护指南
+1. **定期更新**: 当有新的研究发现时，更新知识库
+2. **分类整理**: 保持文件和目录的清晰分类
+3. **版本控制**: 重要变更时创建知识库版本
+4. **质量检查**: 定期检查知识库的完整性和准确性
+
+---
+**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**生成工具**: multi-task-deep-research 知识库创建脚本
+**知识库版本**: 1.0.0
+"""
+        
+        # 保存索引文件
+        index_path = os.path.join(kb_dir, "INDEX.md")
+        with open(index_path, 'w', encoding='utf-8') as f:
+            f.write(index_content)
+        
+        print(f"  ✅ 创建知识库索引: {index_path}")
+        
+        # 复制重要的模板文件
+        template_source = "/app/.proteus/skills/multi-task-deep-research/templates"
+        template_dest = os.path.join(kb_dir, "templates")
+        
+        if os.path.exists(template_source):
+            for template_file in ["master_task_plan.md", "sub_task_template.md", "task_config.json"]:
+                src = os.path.join(template_source, template_file)
+                dst = os.path.join(template_dest, template_file)
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+                    print(f"  ✅ 复制模板: {template_file}")
+        
+        # 创建方法文档
+        methodology_content = """# 研究方法库
+
+## 研究框架
+### 1. 多任务深度研究框架
+**核心原则**:
+- MECE原则: 相互独立，完全穷尽
+- 第一性原理: 追溯问题本质
+- 系统思维: 考虑整体和相互关系
+
+**实施步骤**:
+1. 任务总规划与目录生成
+2. 主任务与子任务文件丰富化  
+3. 子任务API优先下发
+4. 定期休眠监控
+5. 最终结果生成
+
+### 2. 深度研究方法论
+**数据收集**:
+- 多源验证: 从多个独立来源验证信息
+- 三角测量: 使用多种方法收集数据
+- 专家咨询: 引用领域专家观点
+
+**分析技术**:
+- SWOT分析: 优势、劣势、机会、威胁
+- PEST分析: 政治、经济、社会、技术
+- 趋势分析: 历史趋势识别和未来预测
+- 比较分析: 与类似案例或竞争对手比较
+
+**质量保证**:
+- 同行评审: 重要发现请同行评审
+- 交叉验证: 不同方法验证同一结论
+- 敏感性分析: 检查结论对假设的敏感性
+
+## 分析工具
+### 1. 定量分析工具
+- **统计分析**: 描述性统计、相关性分析
+- **趋势预测**: 时间序列分析、回归分析
+- **数据可视化**: 图表、仪表板、信息图
+
+### 2. 定性分析工具
+- **内容分析**: 文本挖掘、主题分析
+- **案例研究**: 深入案例分析
+- **专家访谈**: 结构化访谈、德尔菲法
+
+## 验证方法
+### 1. 数据验证
+- **来源验证**: 检查数据来源的可信度
+- **一致性验证**: 检查数据内部一致性
+- **完整性验证**: 检查数据是否完整
+
+### 2. 结论验证
+- **逻辑验证**: 检查推理过程的逻辑性
+- **实证验证**: 检查是否有实证支持
+- **实用验证**: 检查结论的实用性
+
+## 最佳实践
+### 1. 规划阶段
+- 花费足够时间进行详细规划（15-20%总时间）
+- 明确研究范围和边界
+- 设计可扩展的目录结构
+
+### 2. 执行阶段
+- 优先使用API下发，充分利用外部资源
+- 实现健壮的错误处理和重试机制
+- 保持适中的监控频率
+
+### 3. 整合阶段
+- 预留专门的整合时间（15-20%总时间）
+- 使用系统化的整合框架
+- 生成多种形式的输出
+"""
+        
+        methodology_path = os.path.join(kb_dir, "methodologies", "RESEARCH_METHODOLOGY.md")
+        with open(methodology_path, 'w', encoding='utf-8') as f:
+            f.write(methodology_content)
+        
+        print(f"  ✅ 创建研究方法文档: {methodology_path}")
+        
+        print(f"
+✅ 知识库创建完成!")
+        print(f"📁 知识库目录: {kb_dir}")
+        print(f"📄 索引文件: {index_path}")
+        print(f"📄 方法文档: {methodology_path}")
+        
+        # 更新配置
+        config['knowledge_base_created'] = True
+        config['knowledge_base_path'] = kb_dir
+        config['knowledge_base_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        
+        print(f"📝 配置文件已更新: {config_path}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ 创建知识库时出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("用法: python create_knowledge_base.py <任务目录>")
+        print("
+示例:")
+        print("  python create_knowledge_base.py /app/data/tasks/我的任务")
+        sys.exit(1)
+    
+    task_dir = sys.argv[1]
+    
+    if not os.path.exists(task_dir):
+        print(f"错误: 任务目录不存在: {task_dir}")
+        sys.exit(1)
+    
+    print("=" * 60)
+    print("📚 多任务深度研究知识库创建系统")
+    print("🎯 目标: 支持第五步执行模式 - 创建结构化的知识归档")
+    print("📋 功能: 整理研究成果，支持未来复用和扩展")
+    print("=" * 60)
+    
+    success = create_knowledge_base(task_dir)
+    
+    if success:
+        print("
+🎉 知识库创建完成!")
+        print("💡 下一步建议: 使用知识库支持未来的研究项目")
+    else:
+        print("
+❌ 知识库创建失败")
+        sys.exit(1)

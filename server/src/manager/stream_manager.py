@@ -149,6 +149,10 @@ class StreamManager:
             # 追加complete事件
             complete_event = await create_complete_event()
             await self.send_message(chat_id, complete_event, True)
+        if chat_status != "complete" and last_event != "complete":
+            # 追加complete事件
+            complete_event = await create_complete_event()
+            await self.send_message(chat_id, complete_event, False)
 
     def get_all_chats(self) -> dict:
         """获取所有可回放的chatid及其对应的问题
