@@ -425,9 +425,9 @@ private fun AiTextMessage(content: String) {
         }
     }
 
-    if (fullscreenMermaidCode != null) {
+    fullscreenMermaidCode?.let { code ->
         MermaidFullscreenDialog(
-            mermaidCode = fullscreenMermaidCode!!,
+            mermaidCode = code,
             onDismiss = { fullscreenMermaidCode = null }
         )
     }
@@ -688,6 +688,8 @@ private fun ToolInfoSection(title: String, content: String) {
     }
 }
 
+private const val COPY_FEEDBACK_DURATION_MS = 2000L
+
 @Composable
 private fun MessageActionButtons(messageContent: String) {
     val clipboardManager = LocalClipboardManager.current
@@ -697,7 +699,7 @@ private fun MessageActionButtons(messageContent: String) {
 
     LaunchedEffect(copied) {
         if (copied) {
-            delay(2000)
+            delay(COPY_FEEDBACK_DURATION_MS)
             copied = false
         }
     }
@@ -794,7 +796,8 @@ private fun MermaidFullscreenDialog(mermaidCode: String, onDismiss: () -> Unit) 
                     mermaidCode = mermaidCode,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(top = 56.dp)
+                        .padding(top = 56.dp),
+                    applyHeightConstraints = false
                 )
                 // Close button
                 IconButton(

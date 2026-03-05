@@ -21,7 +21,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MermaidWebView(mermaidCode: String, modifier: Modifier = Modifier) {
+fun MermaidWebView(
+    mermaidCode: String,
+    modifier: Modifier = Modifier,
+    applyHeightConstraints: Boolean = true
+) {
     var hasError by remember { mutableStateOf(false) }
 
     if (hasError) {
@@ -105,8 +109,8 @@ fun MermaidWebView(mermaidCode: String, modifier: Modifier = Modifier) {
             update = { webView ->
                 webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
             },
-            modifier = if (modifier == Modifier) {
-                Modifier
+            modifier = if (applyHeightConstraints) {
+                modifier
                     .fillMaxWidth()
                     .heightIn(min = 100.dp, max = 500.dp)
             } else {
