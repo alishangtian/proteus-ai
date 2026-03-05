@@ -264,7 +264,7 @@ class TestChatAgentRunStatusTransitions(unittest.TestCase):
     @patch("agent.chat_agent.conversation_manager")
     @patch("agent.chat_agent.langfuse_wrapper")
     def test_stopped_during_loop_sets_stopped(self, mock_langfuse, mock_conv_mgr, mock_count):
-        """验证在工具循环中被停止时状态为 STOPPED"""
+        """验证在工具循环中被停止时，最终状态为 COMPLETE（循环退出后继续正常完成）"""
         mock_langfuse.dynamic_observe.return_value = lambda f: f
 
         # 在循环开始前设置停止标志
@@ -274,12 +274,9 @@ class TestChatAgentRunStatusTransitions(unittest.TestCase):
             self.agent.run(chat_id="test-chat-id", text="hello")
         )
 
-        # stop() 先将状态设为 STOPPED，然后 run() 正常退出设为 COMPLETE
-        # 最终状态应为 COMPLETE（因为循环退出后继续执行到 return）
-        self.assertIn(
-            self.agent.status,
-            [AGENT_STATUS_STOPPED, AGENT_STATUS_COMPLETE],
-        )
+        # stop() 先将状态设为 STOPPED，但循环退出后 run() 继续执行到
+        # _set_status(AGENT_STATUS_COMPLETE)，所以最终状态为 COMPLETE
+        self.assertEqual(self.agent.status, AGENT_STATUS_COMPLETE)
 
 
 class TestChatAgentFinallyGuard(unittest.TestCase):
@@ -293,8 +290,11 @@ class TestChatAgentFinallyGuard(unittest.TestCase):
         )
         self.redis_patcher.start()
 
+        self.stream_mock = MagicMock()
+        self.stream_mock.send_message = AsyncMock()
+
         self.agent = ChatAgent(
-            stream_manager=None,
+            stream_manager=self.stream_mock,
             model_name="test-model",
             enable_tools=False,
         )
@@ -304,18 +304,57 @@ class TestChatAgentFinallyGuard(unittest.TestCase):
         self.redis_patcher.stop()
         ChatAgent.clear_agents("test-chat-id")
 
-    def test_running_status_corrected_in_finally(self):
+    def _run_async(self, coro):
+        """辅助方法：运行异步函数"""
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    @patch("agent.chat_agent.count_tokens", return_value=100)
+    @patch("agent.chat_agent.conversation_manager")
+    @patch("agent.chat_agent.langfuse_wrapper")
+    def test_running_status_corrected_in_finally(self, mock_langfuse, mock_conv_mgr, mock_count):
         """验证 finally 块中 RUNNING 状态被修正为 ERROR
 
-        模拟一种极端情况：异常处理中 _set_status 也失败了，
-        状态仍为 RUNNING，finally 块应当兜底修正。
+        模拟异常处理中 _set_status 也失败的极端情况，
+        此时状态仍为 RUNNING，finally 块应当兜底修正为 ERROR。
         """
-        self.agent.status = AGENT_STATUS_RUNNING
+        mock_langfuse.dynamic_observe.return_value = lambda f: f
 
-        # 模拟 finally 块的逻辑
-        if self.agent.status == AGENT_STATUS_RUNNING:
-            self.agent._set_status(AGENT_STATUS_ERROR)
+        original_set_status = self.agent._set_status
+        call_count = [0]
 
+        def failing_set_status(status):
+            call_count[0] += 1
+            # 第一次调用（设置 RUNNING）正常执行
+            if call_count[0] == 1:
+                original_set_status(status)
+                return
+            # 第二次调用（except 中设置 ERROR）模拟失败，
+            # 仅记日志不抛异常（模拟 Redis 写入失败但被内部 try-except 吞掉的场景）
+            if call_count[0] == 2:
+                return
+            # 后续调用（finally 中的兜底）正常执行
+            original_set_status(status)
+
+        with patch.object(
+            self.agent,
+            "_set_status",
+            side_effect=failing_set_status,
+        ), patch.object(
+            self.agent,
+            "_execute_llm_generation",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LLM call failed"),
+        ):
+            with self.assertRaises(RuntimeError):
+                self._run_async(
+                    self.agent.run(chat_id="test-chat-id", text="hello")
+                )
+
+        # finally 块的兜底逻辑应该将状态修正为 ERROR
         self.assertEqual(self.agent.status, AGENT_STATUS_ERROR)
 
     def test_non_running_status_not_changed_in_finally(self):
