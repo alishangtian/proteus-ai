@@ -805,11 +805,6 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
-                            if self._is_stopped():
-                                logger.info(
-                                    f"[{chat_id}] Agent 已停止，中断 LLM 流式输出"
-                                )
-                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
@@ -837,11 +832,11 @@ class ChatAgent:
                                 thinking_text += thinking_content
                                 thinking_type = chunk.get("thinking_type")
                                 # 累积到缓冲区
-                                thinking_buffer += thinking_content
 
                                 # 检查阈值并发送
                                 if self.stream_manager:
                                     if BUFFER_THRESHOLD > 0:
+                                        thinking_buffer += thinking_content
                                         if len(thinking_buffer) >= BUFFER_THRESHOLD:
                                             event = await create_agent_stream_thinking_event(
                                                 thinking_buffer
@@ -866,10 +861,10 @@ class ChatAgent:
                                 content = chunk.get("content", "")
                                 response_text += content
                                 # 累积到缓冲区
-                                content_buffer += content
 
                                 if self.stream_manager:
                                     if BUFFER_THRESHOLD > 0:
+                                        content_buffer += content
                                         if len(content_buffer) >= BUFFER_THRESHOLD:
                                             event = await create_agent_complete_event(
                                                 content_buffer
@@ -951,11 +946,6 @@ class ChatAgent:
                             request_id=chat_id,
                             enable_thinking=enable_thinking,
                         ):
-                            if self._is_stopped():
-                                logger.info(
-                                    f"[{chat_id}] Agent 已停止，中断 LLM 流式输出"
-                                )
-                                break
                             chunk_type = chunk.get("type")
 
                             if chunk_type == "thinking":
@@ -984,11 +974,11 @@ class ChatAgent:
                                 thinking_type = chunk.get("thinking_type")
 
                                 # 累积到缓冲区
-                                thinking_buffer += thinking_content
 
                                 # 检查阈值并发送
                                 if self.stream_manager:
                                     if BUFFER_THRESHOLD > 0:
+                                        thinking_buffer += thinking_content
                                         if len(thinking_buffer) >= BUFFER_THRESHOLD:
                                             event = await create_agent_stream_thinking_event(
                                                 thinking_buffer
@@ -1011,10 +1001,10 @@ class ChatAgent:
                                 response_text += content
 
                                 # 累积到缓冲区
-                                content_buffer += content
 
                                 if self.stream_manager:
                                     if BUFFER_THRESHOLD > 0:
+                                        content_buffer += content
                                         if len(content_buffer) >= BUFFER_THRESHOLD:
                                             event = await create_agent_complete_event(
                                                 content_buffer

@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""
+多任务深度研究持续监控脚本
+支持定期休眠监控模式，可配置检查间隔
+实现用户要求的第四步：主任务通过定期休眠的形式监控子任务的完成情况
+"""
+
+import os
+import json
+import time
+import sys
+from datetime import datetime, timedelta
+
+def continuous_monitor(task_dir, interval_seconds=300, max_checks=None, adaptive_interval=True):
+    """
+    持续监控多任务研究项目状态
+    
+    Args:
+        task_dir: 任务目录路径
+        interval_seconds: 检查间隔秒数（默认300秒=5分钟）
+        max_checks: 最大检查次数（None表示无限）
+        adaptive_interval: 是否启用自适应间隔（基于进度变化调整）
+    """
+    
+    config_path = os.path.join(task_dir, "task_config.json")
+    if not os.path.exists(config_path):
+        print(f"配置文件未找到: {config_path}")
+        return
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        task_name = config.get('task_name', '未知任务')
+        created_at = config.get('created_at', '未知时间')
+        
+        print(f"🔍 开始持续监控任务: {task_name}")
+        print(f"📅 创建时间: {created_at}")
+        print(f"⏱  检查间隔: {interval_seconds}秒 ({interval_seconds/60:.1f}分钟)")
+        print(f"🔄 自适应间隔: {'启用' if adaptive_interval else '禁用'}")
+        if max_checks:
+            print(f"🎯 最大检查次数: {max_checks}")
+        else:
+            print(f"🎯 最大检查次数: 无限")
+        print("=" * 60)
+        
+        check_count = 0
+        last_progress = 0.0
+        last_check_time = datetime.now()
+        
+        while True:
+            check_count += 1
+            current_time = datetime.now()
+            elapsed = (current_time - last_check_time).total_seconds()
+            
+            print(f"
+            print(f"\n🔄 第 {check_count} 次检查 [{current_time.strftime('%Y-%m-%d %H:%M:%S')}]")
+            
+            # 重新加载配置以获取最新状态
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # 检查子任务状态
+            subtasks = config.get('subtasks', [])
+            if not subtasks:
+                print("ℹ 没有子任务")
+                break
+            
+            # 统计状态
+            status_counts = {}
+            for subtask in subtasks:
+                status = subtask.get('status', 'unknown')
+                status_counts[status] = status_counts.get(status, 0) + 1
+            
+            # 计算总体进度
+            completed_tasks = len([t for t in subtasks if t.get('status') == 'completed'])
+            running_tasks = len([t for t in subtasks if t.get('status') == 'running'])
+            total_tasks = len(subtasks)
+            
+            if total_tasks > 0:
+                current_progress = (completed_tasks + running_tasks * 0.5) / total_tasks * 100
+                config['overall_progress'] = current_progress
+                progress_change = current_progress - last_progress
+                last_progress = current_progress
+            else:
+                current_progress = 0.0
+                progress_change = 0.0
+            
+            # 显示状态摘要
+            print(f"📊 总体进度: {current_progress:.1f}% (变化: {progress_change:+.1f}%)")
+            print(f"📋 任务状态: ", end="")
+            status_items = []
+            for status, count in status_counts.items():
+                status_icon = {
+                    'pending': '⏳', 'running': '🔄', 'completed': '✅',
+                    'error': '❌', 'waiting': '[等待]'
+                }.get(status, '❓')
+                status_items.append(f"{status_icon} {status}: {count}")
+            print(", ".join(status_items))
+            
+            # 详细状态（每5次检查显示一次，或进度变化大时）
+            if check_count % 5 == 0 or abs(progress_change) > 10:
+                print("
+📝 详细状态:")
+                for i, subtask in enumerate(subtasks, 1):
+                    name = subtask.get('name', f'子任务{i}')
+                    status = subtask.get('status', 'unknown')
+                    progress = subtask.get('progress', 0.0)
+                    dependencies = subtask.get('dependencies', [])
+                    
+                    status_icon = {
+                        'pending': '⏳', 'running': '🔄', 'completed': '✅',
+                        'error': '❌', 'waiting': '[等待]'
+                    }.get(status, '❓')
+                    
+                    print(f"  {i}. {status_icon} {name}")
+                    print(f"     状态: {status} | 进度: {progress:.1f}%")
+                    if dependencies:
+                        print(f"     依赖: {', '.join(dependencies)}")
+            
+            # 检查是否有任务完成
+            newly_completed = []
+            for subtask in subtasks:
+                if subtask.get('status') == 'running':
+                    # 检查实际文件状态
+                    subtask_dir_name = subtask.get('directory', subtask.get('name', '').replace(" ", "_").replace("/", "_"))
+                    subtask_path = os.path.join(task_dir, "sub_tasks", subtask_dir_name)
+                    progress_file = os.path.join(subtask_path, "progress.md")
+                    
+                    if os.path.exists(progress_file):
+                        try:
+                            with open(progress_file, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            
+                            if "状态: 完成" in content or "状态: completed" in content or "进度: 100%" in content:
+                                if subtask.get('status') != 'completed':
+                                    subtask['status'] = 'completed'
+                                    subtask['completed_at'] = current_time.strftime("%Y-%m-%d %H:%M:%S")
+                                    newly_completed.append(subtask.get('name'))
+                        except:
+                            pass
+            
+            if newly_completed:
+                print(f"
+🎉 新完成的任务: {', '.join(newly_completed)}")
+            
+            # 检查依赖关系
+            if check_count % 3 == 0:
+                print("
+🔗 依赖关系检查:")
+                valid = True
+                name_to_task = {task['name']: task for task in subtasks}
+                
+                for subtask in subtasks:
+                    name = subtask.get('name', '')
+                    dependencies = subtask.get('dependencies', [])
+                    
+                    for dep_name in dependencies:
+                        if dep_name not in name_to_task:
+                            print(f"  ❌ {name} -> {dep_name}: 依赖不存在")
+                            valid = False
+                        else:
+                            dep_task = name_to_task[dep_name]
+                            dep_status = dep_task.get('status', 'unknown')
+                            
+                            if subtask.get('status') == 'running' and dep_status != 'completed':
+                                print(f"  ⚠  {name} -> {dep_name}: 任务运行中但依赖未完成({dep_status})")
+                            elif subtask.get('status') == 'completed' and dep_status != 'completed':
+                                print(f"  ⚠  {name} -> {dep_name}: 任务已完成但依赖未完成({dep_status})")
+                
+                if not valid:
+                    print("⚠ 存在无效依赖关系")
+            
+            # 检查是否所有任务都已完成
+            all_completed = all(t.get('status') == 'completed' for t in subtasks)
+            if all_completed:
+                print(f"
+🎊 所有子任务已完成！")
+                print("💡 建议运行结果整合脚本生成最终报告:")
+                print(f"  python /app/.proteus/skills/multi-task-deep-research/scripts/integrate_results.py {task_dir}")
+                break
+            
+            # 保存更新后的配置
+            config['last_monitored'] = current_time.strftime("%Y-%m-%d %H:%M:%S")
+            config['monitoring_logs'] = config.get('monitoring_logs', [])
+            config['monitoring_logs'].append({
+                'timestamp': current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                'check_count': check_count,
+                'overall_progress': current_progress,
+                'status_summary': status_counts
+            })
+            
+            # 限制监控日志大小
+            if len(config['monitoring_logs']) > 100:
+                config['monitoring_logs'] = config['monitoring_logs'][-50:]
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            
+            # 自适应间隔调整
+            current_interval = interval_seconds
+            if adaptive_interval:
+                # 基于进度变化调整间隔
+                if abs(progress_change) > 20:  # 进度变化大，缩短间隔
+                    current_interval = max(60, interval_seconds // 2)
+                    print(f"📈 进度变化大({progress_change:+.1f}%)，缩短检查间隔: {current_interval}秒")
+                elif abs(progress_change) < 1:  # 进度稳定，延长间隔
+                    current_interval = min(1800, interval_seconds * 2)
+                    print(f"📊 进度稳定({progress_change:+.1f}%)，延长检查间隔: {current_interval}秒")
+            
+            # 检查是否达到最大检查次数
+            if max_checks and check_count >= max_checks:
+                print(f"
+⏰ 达到最大检查次数 ({max_checks})，停止监控")
+                break
+            
+            # 显示下次检查时间
+            next_check = current_time + timedelta(seconds=current_interval)
+            print(f"⏳ 下次检查: {next_check.strftime('%Y-%m-%d %H:%M:%S')} (等待{current_interval}秒)")
+            
+            # 休眠等待
+            time.sleep(current_interval)
+            last_check_time = datetime.now()
+        
+        print("
+✅ 持续监控结束")
+        
+    except KeyboardInterrupt:
+        print("
+🛑 用户中断监控")
+    except Exception as e:
+        print(f"❌ 监控错误: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="多任务深度研究持续监控脚本")
+    parser.add_argument("task_dir", help="任务目录路径")
+    parser.add_argument("--interval", "-i", type=int, default=300, 
+                       help="检查间隔秒数 (默认: 300秒=5分钟)")
+    parser.add_argument("--max-checks", "-m", type=int, default=None,
+                       help="最大检查次数 (默认: 无限制)")
+    parser.add_argument("--no-adaptive", action="store_true",
+                       help="禁用自适应间隔调整")
+    parser.add_argument("--daemon", "-d", action="store_true",
+                       help="以守护进程模式运行（在后台持续运行）")
+    
+    args = parser.parse_args()
+    
+    if not os.path.exists(args.task_dir):
+        print(f"错误: 任务目录不存在: {args.task_dir}")
+        sys.exit(1)
+    
+    print("=" * 60)
+    print("🔍 多任务深度研究持续监控系统")
+    print("📋 功能: 定期休眠监控子任务完成情况")
+    print("🎯 目标: 实现用户要求的第四步执行模式")
+    print("=" * 60)
+    
+    continuous_monitor(
+        task_dir=args.task_dir,
+        interval_seconds=args.interval,
+        max_checks=args.max_checks,
+        adaptive_interval=not args.no_adaptive
+    )

@@ -139,7 +139,7 @@ def demo_dependency_workflow():
         
         print("\n8. API参数兼容性:")
         print("   所有API参数严格匹配用户提供的curl示例:")
-        print("   - selected_skills: [\"planning-with-file\"]")
+        print("   - selected_skills: [\"planning-with-files\"]")
         print("   - tool_choices: [\"serper_search\", \"web_crawler\", \"python_execute\"]")
         print("   - model_name: \"deepseek-reasoner\"")
         print("   - itecount: 200")

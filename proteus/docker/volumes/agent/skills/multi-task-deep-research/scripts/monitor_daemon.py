@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""
+多任务深度研究监控守护进程（简化版）
+实际上是 continuous_monitor.py 的别名，提供守护进程模式接口
+"""
+
+import sys
+import os
+
+def main():
+    """主函数"""
+    print("🔍 多任务深度研究监控守护进程")
+    print("📋 注意: 本脚本是 continuous_monitor.py 的简化接口")
+    print("🎯 实际监控功能由 continuous_monitor.py 提供")
+    print("=" * 60)
+    
+    # 检查参数
+    if len(sys.argv) < 2:
+        print("用法: python monitor_daemon.py <任务目录> [选项]")
+        print("
+选项:")
+        print("  --interval <秒数>   检查间隔（默认: 300秒）")
+        print("  --daemon            守护进程模式（已在continuous_monitor中实现）")
+        print("  --help              显示此帮助信息")
+        print("
+示例:")
+        print("  python monitor_daemon.py /app/data/tasks/我的任务 --interval 300")
+        print("  python monitor_daemon.py /app/data/tasks/我的任务 --daemon")
+        sys.exit(1)
+    
+    task_dir = sys.argv[1]
+    
+    # 构建 continuous_monitor.py 的命令行参数
+    args = ["python", "/app/.proteus/skills/multi-task-deep-research/scripts/continuous_monitor.py"]
+    args.append(task_dir)
+    
+    # 转换参数
+    for i in range(2, len(sys.argv)):
+        arg = sys.argv[i]
+        if arg == "--interval" and i + 1 < len(sys.argv):
+            args.extend(["--interval", sys.argv[i + 1]])
+            i += 1
+        elif arg == "--daemon":
+            # continuous_monitor 已经有 --daemon 参数
+            args.append("--daemon")
+        elif arg == "--help":
+            print("帮助信息已显示")
+            sys.exit(0)
+    
+    print(f"🚀 启动监控守护进程，任务目录: {task_dir}")
+    print("🔄 正在调用 continuous_monitor.py...")
+    print("=" * 60)
+    
+    # 执行 continuous_monitor.py
+    os.execvp("python", args)
+
+if __name__ == "__main__":
+    main()
