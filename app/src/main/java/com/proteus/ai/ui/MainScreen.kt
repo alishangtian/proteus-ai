@@ -121,7 +121,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color.Transparent
-                    )
+                    ),
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                 )
             }
         ) { paddingValues ->
@@ -133,7 +134,8 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
 
                     MessageList(
                         messages = messages,
-                        modifier = Modifier.weight(1f).fillMaxWidth()
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        isStreaming = isStreaming
                     )
 
                     InputArea(

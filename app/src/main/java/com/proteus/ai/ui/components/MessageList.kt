@@ -15,20 +15,29 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.proteus.ai.R
 import com.proteus.ai.api.model.SseEvent
 import com.proteus.ai.ui.theme.Typography
 import com.halilibo.richtext.markdown.Markdown
@@ -48,7 +57,8 @@ data class Message(
 @Composable
 fun MessageList(
     messages: List<Message>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isStreaming: Boolean = false
 ) {
     val listState = rememberLazyListState()
 
@@ -128,14 +138,21 @@ fun MessageList(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp)
     ) {
-        itemsIndexed(messages, key = { _, message -> message.id }) { _, message ->
-            MessageBubble(message = message)
+        itemsIndexed(messages, key = { _, message -> message.id }) { index, message ->
+            val isLastAiMessage = !message.isUser && (
+                index == messages.lastIndex || 
+                messages.subList(index + 1, messages.size).all { it.isUser }
+            )
+            MessageBubble(
+                message = message,
+                showActions = isLastAiMessage && !isStreaming && message.content.isNotEmpty()
+            )
         }
     }
 }
 
 @Composable
-fun MessageBubble(message: Message) {
+fun MessageBubble(message: Message, showActions: Boolean = false) {
     val alignment = if (message.isUser) Alignment.End else Alignment.Start
 
     Column(
@@ -148,7 +165,7 @@ fun MessageBubble(message: Message) {
         if (message.isUser) {
             UserMessageContent(message)
         } else {
-            AiMessageContent(message)
+            AiMessageContent(message, showActions = showActions)
         }
     }
 }
@@ -195,7 +212,7 @@ sealed class MergedEvent {
 }
 
 @Composable
-private fun AiMessageContent(message: Message) {
+private fun AiMessageContent(message: Message, showActions: Boolean = false) {
     Column(
         modifier = Modifier
             .fillMaxWidth(0.92f)
@@ -293,6 +310,10 @@ private fun AiMessageContent(message: Message) {
                 }
                 if (index < displayItems.size - 1) Spacer(modifier = Modifier.height(8.dp))
             }
+
+            if (showActions) {
+                MessageActionButtons(messageContent = message.content)
+            }
         }
     }
 }
@@ -375,23 +396,40 @@ private fun AiTextMessage(content: String) {
         result
     }
 
+    var fullscreenMermaidCode by remember { mutableStateOf<String?>(null) }
+
     Surface(
         shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         border = androidx.compose.foundation.BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant),
         tonalElevation = 1.dp
     ) {
-        Column(modifier = Modifier.padding(16.dp).animateContentSize()) {
-            parts.forEach { (text, isMermaid) ->
-                if (isMermaid) {
-                    MermaidWebView(mermaidCode = text.trim())
-                } else {
-                    Material3RichText {
-                        Markdown(content = text)
+        SelectionContainer {
+            Column(modifier = Modifier.padding(16.dp).animateContentSize()) {
+                parts.forEach { (text, isMermaid) ->
+                    if (isMermaid) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { fullscreenMermaidCode = text.trim() }
+                        ) {
+                            MermaidWebView(mermaidCode = text.trim())
+                        }
+                    } else {
+                        Material3RichText {
+                            Markdown(content = text)
+                        }
                     }
                 }
             }
         }
+    }
+
+    fullscreenMermaidCode?.let { code ->
+        MermaidFullscreenDialog(
+            mermaidCode = code,
+            onDismiss = { fullscreenMermaidCode = null }
+        )
     }
 }
 
@@ -645,6 +683,136 @@ private fun ToolInfoSection(title: String, content: String) {
                         fontSize = 11.sp
                     )
                 )
+            }
+        }
+    }
+}
+
+private const val COPY_FEEDBACK_DURATION_MS = 2000L
+
+@Composable
+private fun MessageActionButtons(messageContent: String) {
+    val clipboardManager = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    var liked by remember { mutableStateOf(false) }
+    var disliked by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(COPY_FEEDBACK_DURATION_MS)
+            copied = false
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Copy button
+        IconButton(
+            onClick = {
+                clipboardManager.setText(AnnotatedString(messageContent))
+                copied = true
+            },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                painter = painterResource(
+                    id = if (copied) R.drawable.ic_check else R.drawable.ic_copy
+                ),
+                contentDescription = "复制",
+                modifier = Modifier.size(16.dp),
+                tint = if (copied) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+
+        // Like button
+        IconButton(
+            onClick = {
+                liked = !liked
+                if (liked) disliked = false
+            },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                contentDescription = "点赞",
+                modifier = Modifier.size(16.dp),
+                tint = if (liked) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+
+        // Dislike button (rotated ThumbUp)
+        IconButton(
+            onClick = {
+                disliked = !disliked
+                if (disliked) liked = false
+            },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = if (disliked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
+                contentDescription = "点踩",
+                modifier = Modifier
+                    .size(16.dp)
+                    .rotate(180f),
+                tint = if (disliked) MaterialTheme.colorScheme.error
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+
+        // Skill generation button
+        IconButton(
+            onClick = { /* Skill generation action */ },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_skill),
+                contentDescription = "技能生成",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MermaidFullscreenDialog(mermaidCode: String, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                MermaidWebView(
+                    mermaidCode = mermaidCode,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 56.dp),
+                    applyHeightConstraints = false
+                )
+                // Close button
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_close),
+                        contentDescription = "关闭",
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
     }
