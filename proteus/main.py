@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import Dict, Any, Optional, Union, List
 from fastapi.responses import RedirectResponse
-from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Body, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from src.utils.redis_cache import get_redis_connection  # 导入 Redis 连接
 import uuid  # 导入 uuid 用于生成唯一 ID
@@ -24,7 +24,6 @@ from fastapi.staticfiles import StaticFiles
 
 from fastapi.responses import HTMLResponse
 import shutil
-from sse_starlette.sse import EventSourceResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from src.utils.logger import setup_logger
@@ -564,75 +563,71 @@ async def stop_chat(model: str, chat_id: str):
     return {"success": True, "chat_id": chat_id}
 
 
-@app.get("/stream/{chat_id}")
-async def stream_request(chat_id: str):
-    """建立SSE连接获取响应流
+@app.websocket("/ws/stream/{chat_id}")
+async def websocket_stream(websocket: WebSocket, chat_id: str):
+    """建立WebSocket连接获取响应流
 
     Args:
         chat_id: 聊天会话ID
-
-    Returns:
-        EventSourceResponse: SSE响应
     """
+    await websocket.accept()
+    try:
+        async for message in stream_manager.get_messages(chat_id):
+            await websocket.send_text(json.dumps(message, ensure_ascii=False))
+            if message.get("event") in ["complete", "error"]:
+                break
+    except WebSocketDisconnect:
+        pass
+    except ValueError as e:
+        from src.api.events import create_error_event
 
-    async def event_generator():
+        error_event = await create_error_event(f"Stream not found: {str(e)}")
         try:
-            async for message in stream_manager.get_messages(chat_id):
-                yield message
-        except ValueError as e:
-            from src.api.events import create_error_event
-
-            yield await create_error_event(f"Stream not found: {str(e)}")
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
-            "Access-Control-Allow-Origin": "*",  # 如果是跨域
-        },
-    )
+            await websocket.send_text(json.dumps(error_event, ensure_ascii=False))
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
-@app.get("/replay/stream/{chat_id}")
-async def replay_stream_request(chat_id: str):
-    """建立SSE连接获取响应流
+@app.websocket("/ws/replay/stream/{chat_id}")
+async def websocket_replay_stream(websocket: WebSocket, chat_id: str):
+    """建立WebSocket连接获取回放流
 
     Args:
         chat_id: 聊天会话ID
-
-    Returns:
-        EventSourceResponse: SSE响应
     """
-
+    await websocket.accept()
+    # 提前创建回放流队列，避免 replay_chat 任务启动前的竞态条件
+    stream_manager.create_stream(chat_id, queue_key_prefix="replay_stream")
     asyncio.create_task(
         stream_manager.replay_chat(chat_id, queue_key_prefix="replay_stream")
     )
+    try:
+        async for message in stream_manager.get_messages(
+            chat_id, queue_key_prefix="replay_stream"
+        ):
+            await websocket.send_text(json.dumps(message, ensure_ascii=False))
+            if message.get("event") in ["complete", "error"]:
+                break
+    except WebSocketDisconnect:
+        pass
+    except ValueError as e:
+        from src.api.events import create_error_event
 
-    async def event_generator():
+        error_event = await create_error_event(f"Stream not found: {str(e)}")
         try:
-            async for message in stream_manager.get_messages(
-                chat_id, queue_key_prefix="replay_stream"
-            ):
-                yield message
-                # await asyncio.sleep(0.1)  # 小延迟减少CPU使用
-        except ValueError as e:
-            from src.api.events import create_error_event
-
-            yield await create_error_event(f"Stream not found: {str(e)}")
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
-            "Access-Control-Allow-Origin": "*",  # 如果是跨域
-        },
-    )
+            await websocket.send_text(json.dumps(error_event, ensure_ascii=False))
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 async def generate_conversation_title(text_content: str) -> str:

@@ -1,5 +1,5 @@
-// SSE 事件处理器模块
-// 将所有对 EventSource 的 addEventListener 逻辑集中在这里，导出 registerSSEHandlers(eventSource, ctx)
+// 流事件处理器模块
+// 将所有对 eventSource（EventSource 或 WSEventSource）的 addEventListener 逻辑集中在这里，导出 registerSSEHandlers(eventSource, ctx)
 // ctx 包含需要访问的外部变量与回调：{ answerElement, toolExecutions, currentActionIdRef, currentIterationRef, conversationHelpers }
 // conversationHelpers 可包含：renderNodeResult, renderExplanation, renderAnswer, createQuestionElement, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON
 

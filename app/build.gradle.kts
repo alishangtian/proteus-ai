@@ -6,6 +6,10 @@ plugins {
     id("org.jetbrains.kotlin.android") version "1.9.24"
 }
 
+// 允许从命令行传入版本信息，例如: ./gradlew assembleRelease -PversionCode=2 -PversionName="1.1.0"
+val vCode = project.findProperty("versionCode")?.toString()?.toInt() ?: 1
+val vName = project.findProperty("versionName")?.toString() ?: "1.0"
+
 // Load keystore properties
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties()
@@ -21,8 +25,8 @@ android {
         applicationId = "com.proteus.ai"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = vCode
+        versionName = vName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -60,6 +64,17 @@ android {
             buildConfigField("boolean", "ENABLE_LOGGING", "true")
         }
     }
+
+    // 自定义输出文件名，增加版本号后缀
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            val fileName = "ProteusAI-v${variant.versionName}-${variant.buildType.name}.apk"
+            output.outputFileName = fileName
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

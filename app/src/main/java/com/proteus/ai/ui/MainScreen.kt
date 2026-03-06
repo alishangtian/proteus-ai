@@ -129,7 +129,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
             if (tokenState == null) {
                 TokenRequiredPlaceholder(paddingValues) { viewModel.showTokenDialog() }
             } else {
-                Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                Column(modifier = Modifier.fillMaxSize().padding(paddingValues).consumeWindowInsets(paddingValues).imePadding()) {
                     ErrorMessageBar(uiState, viewModel)
 
                     MessageList(

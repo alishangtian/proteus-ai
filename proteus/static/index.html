@@ -8,6 +8,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="/static/marked.min.js"></script>
+    <script src="/static/ws-events-global.js"></script>
     <style>
         /* 主页导航样式 */
         .home-container {
@@ -486,8 +487,8 @@
                 const data = await response.json();
 
                 if (data.success && data.chat_id) {
-                    // 2. 连接 SSE 流
-                    const eventSource = new EventSource(`/stream/${data.chat_id}`);
+                    // 2. 连接 WebSocket 流
+                    const eventSource = new WSEventSource(`${getWsBaseUrl()}/ws/stream/${data.chat_id}`);
                     let fullText = '';
 
                     eventSource.addEventListener('answer', (event) => {
