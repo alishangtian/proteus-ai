@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Set
 from src.api.stream_manager import StreamManager
 from src.api.llm_api import (
+    call_llm_api,
     call_llm_api_stream,
     call_llm_api_with_tools_stream,
 )
@@ -52,9 +53,16 @@ AGENT_STATUS_ERROR = "error"
 # 智能体状态在 Redis 中的默认过期时间（秒）
 AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
 
-# 消息压缩截断限制（字符数）
-COMPRESS_TOOL_OUTPUT_LIMIT = int(os.getenv("COMPRESS_TOOL_OUTPUT_LIMIT", 1000))
-COMPRESS_TOOL_INPUT_LIMIT = int(os.getenv("COMPRESS_TOOL_INPUT_LIMIT", 500))
+# 消息压缩阈值（字符数）
+# 长度 <= COMPRESS_LLM_LOWER：不压缩
+# 长度在 (COMPRESS_LLM_LOWER, COMPRESS_LLM_UPPER]：LLM 总结压缩到 COMPRESS_LLM_TARGET 左右
+# 长度 > COMPRESS_LLM_UPPER：先间隔提取 30% 行，再 LLM 总结压缩
+COMPRESS_LLM_LOWER = int(os.getenv("COMPRESS_LLM_LOWER", 1000))
+COMPRESS_LLM_UPPER = int(os.getenv("COMPRESS_LLM_UPPER", 5000))
+COMPRESS_LLM_TARGET = int(os.getenv("COMPRESS_LLM_TARGET", 500))
+# 保持旧名称兼容，供 _fallback_compression 间接使用
+COMPRESS_TOOL_OUTPUT_LIMIT = COMPRESS_LLM_LOWER
+COMPRESS_TOOL_INPUT_LIMIT = COMPRESS_LLM_LOWER
 
 
 class ChatAgent:
@@ -1231,6 +1239,46 @@ class ChatAgent:
 
         return skills_content
 
+    async def _compress_text(self, chat_id: str, text: str) -> str:
+        """对单段文本按三档策略进行压缩。
+
+        - 长度 <= COMPRESS_LLM_LOWER：原样返回，不压缩。
+        - 长度在 (COMPRESS_LLM_LOWER, COMPRESS_LLM_UPPER]：直接 LLM 总结，目标约 COMPRESS_LLM_TARGET 字符。
+        - 长度 > COMPRESS_LLM_UPPER：先按间隔提取全文 30% 的行，再 LLM 总结。
+        """
+        if len(text) <= COMPRESS_LLM_LOWER:
+            return text
+
+        if len(text) > COMPRESS_LLM_UPPER:
+            # 间隔提取：按行等间隔抽取约 30%
+            lines = text.splitlines()
+            total = len(lines)
+            keep = max(1, int(total * 0.3))
+            step = max(1, total // keep)
+            sampled = [lines[i] for i in range(0, total, step)]
+            text = "\n".join(sampled)
+            logger.info(
+                f"[{chat_id}] 间隔提取压缩: 原始 {total} 行 → 抽取 {len(sampled)} 行"
+            )
+
+        prompt = (
+            f"你是一个摘要助手。请对以下内容进行总结压缩，"
+            f"保留核心信息，输出长度控制在 {COMPRESS_LLM_TARGET} 字符以内，"
+            f"直接输出摘要内容，不要加任何前缀说明。\n\n"
+            f"原始内容：\n{text}"
+        )
+        try:
+            summary, _ = await call_llm_api(
+                messages=[{"role": "user", "content": prompt}],
+                model_name=self.model_name,
+                request_id=f"compress-{chat_id}-{int(time.time())}",
+                temperature=0.3,
+            )
+            return summary.strip()
+        except Exception as e:
+            logger.warning(f"[{chat_id}] LLM 压缩失败，保留原始文本前 {COMPRESS_LLM_TARGET} 字符: {e}")
+            return text[:COMPRESS_LLM_TARGET]
+
     @langfuse_wrapper.dynamic_observe()
     async def _compress_messages(
         self, chat_id: str, messages: List[Dict[str, Any]], must_compress: bool = False
@@ -1240,6 +1288,11 @@ class ChatAgent:
         触发条件：
         1. must_compress=True（调用报错 token_limit_exceeded 触发）
         2. token 数超过上下文窗口（调用前预检触发）
+
+        压缩策略（三档）：
+        - 长度 <= 1000：不压缩
+        - 长度 1000~5000：LLM 总结到约 500 字符
+        - 长度 > 5000：先间隔提取 30% 行，再 LLM 总结到约 500 字符
 
         其他消息（system、user、普通 assistant）不做压缩。
         """
@@ -1256,32 +1309,47 @@ class ChatAgent:
             f"[{chat_id}] 开始压缩工具消息: {current_tokens}/{context_window}"
         )
 
-        # 只截断工具相关消息，其他消息保持不变
+        # 只压缩工具相关消息，其他消息保持不变
         compressed = []
         for msg in messages:
             role = msg.get("role")
             if role == "tool":
-                # 压缩工具输出（截断长内容，保持原始格式）
+                # 压缩工具输出（三档策略）
                 content = msg.get("content", "")
-                if isinstance(content, str) and len(content) > COMPRESS_TOOL_OUTPUT_LIMIT:
+                if isinstance(content, str) and len(content) > COMPRESS_LLM_LOWER:
+                    new_content = await self._compress_text(chat_id, content)
                     new_msg = msg.copy()
-                    new_msg["content"] = content[:COMPRESS_TOOL_OUTPUT_LIMIT] + "...[已截断]"
+                    new_msg["content"] = new_content
                     compressed.append(new_msg)
                 else:
                     compressed.append(msg)
             elif role == "assistant" and msg.get("tool_calls"):
-                # 压缩工具调用参数（arguments 为 JSON 字符串，超长时替换为合法 JSON 占位）
+                # 压缩工具调用参数（arguments 为 JSON 字符串，遍历其中的字符串值并压缩）
                 new_tool_calls = []
                 for tc in msg.get("tool_calls", []):
                     new_tc = dict(tc)
                     if "function" in new_tc:
                         fn = dict(new_tc["function"])
-                        args = fn.get("arguments", "")
-                        if isinstance(args, str) and len(args) > COMPRESS_TOOL_INPUT_LIMIT:
-                            fn["arguments"] = json.dumps(
-                                {"_truncated": True, "original_length": len(args)},
-                                ensure_ascii=False,
-                            )
+                        args_str = fn.get("arguments", "")
+                        if isinstance(args_str, str) and len(args_str) > COMPRESS_LLM_LOWER:
+                            try:
+                                args_dict = json.loads(args_str)
+                                if isinstance(args_dict, dict):
+                                    new_args = {}
+                                    for k, v in args_dict.items():
+                                        if isinstance(v, str) and len(v) > COMPRESS_LLM_LOWER:
+                                            new_args[k] = await self._compress_text(chat_id, v)
+                                        else:
+                                            new_args[k] = v
+                                    fn["arguments"] = json.dumps(new_args, ensure_ascii=False)
+                                else:
+                                    # 非 dict 结构：整体压缩
+                                    fn["arguments"] = await self._compress_text(chat_id, args_str)
+                            except (json.JSONDecodeError, Exception) as e:
+                                logger.warning(
+                                    f"[{chat_id}] 解析 tool_calls arguments 失败，整体压缩: {e}"
+                                )
+                                fn["arguments"] = await self._compress_text(chat_id, args_str)
                         new_tc["function"] = fn
                     new_tool_calls.append(new_tc)
                 new_msg = msg.copy()
@@ -1293,13 +1361,13 @@ class ChatAgent:
 
         compressed_tokens = count_tokens(compressed, model=self.model_name)
         logger.info(
-            f"[{chat_id}] 工具消息截断后: {current_tokens} -> {compressed_tokens} tokens"
+            f"[{chat_id}] 工具消息压缩后: {current_tokens} -> {compressed_tokens} tokens"
         )
 
-        # 若截断后仍超过上下文窗口，执行兜底压缩（移除旧消息）
+        # 若压缩后仍超过上下文窗口，执行兜底压缩（移除旧消息）
         if compressed_tokens > context_window:
             logger.warning(
-                f"[{chat_id}] 截断后仍超过上下文窗口 ({compressed_tokens}/{context_window})，"
+                f"[{chat_id}] 压缩后仍超过上下文窗口 ({compressed_tokens}/{context_window})，"
                 f"执行兜底压缩"
             )
             compressed = await self._fallback_compression(
