@@ -14,8 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Depends
-from sse_starlette.sse import EventSourceResponse
+from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from src.utils.logger import setup_logger
@@ -124,6 +123,42 @@ async def require_auth(user=Depends(get_current_user)):
     if not user:
         raise HTTPException(status_code=401, detail="未认证")
     return user
+
+
+async def get_ws_user(websocket: WebSocket) -> Optional[Dict[str, Any]]:
+    """从 WebSocket 握手头中验证 Bearer Token"""
+    auth_header = websocket.headers.get("Authorization") or websocket.headers.get("authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:].strip()
+    if not token:
+        return None
+    redis_client = get_redis_client()
+    token_key = get_token_key(token)
+    try:
+        session_data = redis_client.hgetall(token_key)
+        if not session_data:
+            return None
+    except redis.RedisError as e:
+        logger.error(f"WebSocket auth Redis 错误: {e}")
+        return None
+    user_name = session_data.get("user_name")
+    if not user_name:
+        return None
+    user_key = get_user_key(user_name)
+    try:
+        user_data = redis_client.hgetall(user_key)
+    except redis.RedisError as e:
+        logger.error(f"WebSocket auth 获取用户数据失败: {e}")
+        return None
+    if not user_data:
+        return None
+    nick_name = user_data.get("nick_name", user_name)
+    return {
+        "user_name": user_name,
+        "nick_name": nick_name,
+        "expires": session_data.get("expires", ""),
+    }
 
 
 # 中间件：可选，这里我们使用依赖项进行认证，也可以添加全局中间件
@@ -441,39 +476,45 @@ async def get_conversation_detail(
 stream_manager = StreamManager.get_instance()
 
 
-@app.get("/replay/stream/{chat_id}")
-async def replay_stream_request(chat_id: str, user: dict = Depends(require_auth)):
-    """建立SSE连接获取响应流
+@app.websocket("/replay/stream/{chat_id}")
+async def replay_stream_request(websocket: WebSocket, chat_id: str):
+    """建立WebSocket连接获取回放流
 
     Args:
         chat_id: 聊天会话ID
-
-    Returns:
-        EventSourceResponse: SSE响应
     """
+    # 鉴权
+    user = await get_ws_user(websocket)
+    if not user:
+        await websocket.close(code=4001, reason="未认证")
+        return
+
+    await websocket.accept()
+    # 提前创建回放流队列，避免 replay_chat 任务产生消息前 get_messages 尚未建立队列而导致消息丢失
+    stream_manager.create_stream(chat_id, queue_key_prefix="replay_stream")
     asyncio.create_task(
         stream_manager.replay_chat(chat_id, queue_key_prefix="replay_stream")
     )
-
-    async def event_generator():
+    try:
+        async for message in stream_manager.get_messages(
+            chat_id, queue_key_prefix="replay_stream"
+        ):
+            await websocket.send_text(json.dumps(message, ensure_ascii=False))
+            if message.get("event") in ["complete", "error"]:
+                break
+    except WebSocketDisconnect:
+        pass
+    except ValueError as e:
+        error_event = {"event": "error", "data": f"Stream not found: {str(e)}"}
         try:
-            async for message in stream_manager.get_messages(
-                chat_id, queue_key_prefix="replay_stream"
-            ):
-                yield message
-        except ValueError as e:
-            yield {"event": "error", "data": f"Stream not found: {str(e)}"}
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+            await websocket.send_text(json.dumps(error_event, ensure_ascii=False))
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 class StopRequest(BaseModel):
@@ -579,37 +620,40 @@ async def stop_chat(
         raise HTTPException(status_code=500, detail=f"停止聊天失败: {str(e)}")
 
 
-@app.get("/stream/blocking/{chat_id}")
-async def stream_blocking_queue(chat_id: str, user: dict = Depends(require_auth)):
-    """从阻塞队列中消费消息并以SSE形式发送
+@app.websocket("/stream/blocking/{chat_id}")
+async def stream_blocking_queue(websocket: WebSocket, chat_id: str):
+    """通过 WebSocket 从阻塞队列中消费消息并推送
 
     Args:
         chat_id: 聊天会话ID，用于构造Redis键（chat_stream_b:{chat_id}）
-
-    Returns:
-        EventSourceResponse: SSE响应
     """
-    stream_manager = StreamManager.get_instance()
+    # 鉴权
+    user = await get_ws_user(websocket)
+    if not user:
+        await websocket.close(code=4001, reason="未认证")
+        return
+
+    await websocket.accept()
     redis_key = f"chat_stream_b:{chat_id}"
-
-    async def event_generator():
+    try:
+        async for message in stream_manager.consume_blocking_queue(redis_key):
+            logger.info(f"WebSocket发送消息: {message}")
+            await websocket.send_text(json.dumps(message, ensure_ascii=False))
+            if message.get("event") in ["complete", "error"]:
+                break
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket连接已关闭: {chat_id}")
+    except asyncio.CancelledError:
+        logger.info(f"WebSocket流已取消: {chat_id}")
+    except Exception as e:
+        logger.error(f"WebSocket流错误: {e}")
+        error_event = {"event": "error", "data": str(e)}
         try:
-            async for message in stream_manager.consume_blocking_queue(redis_key):
-                logger.info(f"SSE发送消息: {message}")
-                yield message
-        except asyncio.CancelledError:
-            logger.info(f"SSE连接已关闭: {chat_id}")
-        except Exception as e:
-            logger.error(f"SSE流错误: {e}")
-            yield {"event": "error", "data": str(e)}
-
-    return EventSourceResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+            await websocket.send_text(json.dumps(error_event, ensure_ascii=False))
+        except Exception:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass

@@ -48,7 +48,7 @@ class ChatRepository {
     }
 
     fun streamChatBlocking(token: String, chatId: String): Flow<SseEvent> = callbackFlow {
-        val url = "${ApiClient.WS_BASE_URL}ws/stream/$chatId"
+        val url = "${ApiClient.WS_BASE_URL}stream/blocking/$chatId"
         Timber.d("WebSocket stream connecting: $url")
         val request = Request.Builder()
             .url(url)
@@ -94,7 +94,7 @@ class ChatRepository {
     }.flowOn(Dispatchers.IO)
 
     fun replayStream(token: String, chatId: String): Flow<SseEvent> = callbackFlow {
-        val url = "${ApiClient.WS_BASE_URL}ws/replay/stream/$chatId"
+        val url = "${ApiClient.WS_BASE_URL}replay/stream/$chatId"
         Timber.d("WebSocket replay connecting: $url")
         val request = Request.Builder()
             .url(url)
