@@ -1,18 +1,16 @@
 """Chat Agent 模块 - 处理纯聊天模式的对话"""
 
+import json
 import logging
 import time
 import os
 import threading
 import asyncio
-import yaml
-from pathlib import Path
 from string import Template
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Set
 from src.api.stream_manager import StreamManager
 from src.api.llm_api import (
-    call_llm_api,
     call_llm_api_stream,
     call_llm_api_with_tools_stream,
 )
@@ -53,6 +51,10 @@ AGENT_STATUS_COMPLETE = "complete"
 AGENT_STATUS_ERROR = "error"
 # 智能体状态在 Redis 中的默认过期时间（秒）
 AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
+
+# 消息压缩截断限制（字符数）
+COMPRESS_TOOL_OUTPUT_LIMIT = int(os.getenv("COMPRESS_TOOL_OUTPUT_LIMIT", 1000))
+COMPRESS_TOOL_INPUT_LIMIT = int(os.getenv("COMPRESS_TOOL_INPUT_LIMIT", 500))
 
 
 class ChatAgent:
@@ -215,122 +217,11 @@ class ChatAgent:
         self.agentid = agentid or str(uuid.uuid4())
         self.stopped = False
         self.status = AGENT_STATUS_INIT
-        # 加载压缩策略配置
-        self._compression_strategies = self._load_compression_strategies()
         self.workspace_path = workspace_path
         # 延迟初始化的工具执行器（复用实例，避免每次调用重复创建）
         self._tool_executor = None
         self.chat_id = None  # 将在 _register_agent 中设置
         self._pending_tasks = set()
-
-    def _load_compression_strategies(self) -> Dict[str, Any]:
-        """加载压缩策略配置文件"""
-        try:
-            # 确定配置文件路径
-            config_paths = [
-                Path("conf/compression_strategies.yaml"),
-                Path("/conf/compression_strategies.yaml"),
-                Path("docker/volumes/agent/conf/compression_strategies.yaml"),
-            ]
-
-            # 尝试从环境变量获取配置目录
-            if "PROTEUS_CONFIG_DIR" in os.environ:
-                config_paths.insert(
-                    0,
-                    Path(os.environ["PROTEUS_CONFIG_DIR"])
-                    / "compression_strategies.yaml",
-                )
-
-            config_path = None
-            for path in config_paths:
-                if path.exists():
-                    config_path = path
-                    break
-
-            if config_path is None:
-                logger.warning("未找到压缩策略配置文件，使用内置默认策略")
-                return self._get_default_strategies()
-
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
-
-            strategies = config.get("strategies", {})
-            if not strategies:
-                logger.warning("压缩策略配置文件中未找到策略定义，使用默认策略")
-                return self._get_default_strategies()
-
-            logger.info(f"成功加载压缩策略配置，共 {len(strategies)} 种策略")
-            return strategies
-
-        except Exception as e:
-            logger.error(f"加载压缩策略配置文件失败: {str(e)}，使用默认策略")
-            return self._get_default_strategies()
-
-    def _get_default_strategies(self) -> Dict[str, Any]:
-        """获取内置默认压缩策略"""
-        return {
-            "debugging": {
-                "name": "调试会话压缩",
-                "method": "selective_pruning",
-                "keep_recent_messages": 5,
-                "preserve_tools": ["skills_extract", "code_search", "file_read"],
-                "aggressiveness": 0.7,
-                "description": "调试会话中工具输出快速过时，优先修剪旧工具输出",
-            },
-            "code_review": {
-                "name": "代码审查压缩",
-                "method": "hybrid",
-                "keep_recent_messages": 8,
-                "preserve_tools": ["code_search", "diff_tool", "lint_tool"],
-                "aggressiveness": 0.5,
-                "description": "代码审查需要保留文件更改和决策，混合策略平衡",
-            },
-            "research": {
-                "name": "研究分析压缩",
-                "method": "summary_compression",
-                "keep_recent_messages": 10,
-                "preserve_tools": ["web_search", "citation_lookup", "data_analysis"],
-                "aggressiveness": 0.3,
-                "description": "研究对话需要保留引用和发现，优先摘要压缩",
-            },
-            "brainstorming": {
-                "name": "头脑风暴压缩",
-                "method": "summary_compression",
-                "keep_recent_messages": 6,
-                "preserve_tools": ["mind_map", "whiteboard", "idea_generator"],
-                "aggressiveness": 0.4,
-                "description": "头脑风暴需要保留创意流，摘要压缩保持连贯性",
-            },
-            "technical_design": {
-                "name": "技术设计压缩",
-                "method": "summary_compression",
-                "keep_recent_messages": 8,
-                "preserve_tools": ["arch_diagram", "spec_writer", "api_designer"],
-                "aggressiveness": 0.3,
-                "description": "技术设计需要保留规格和决策，摘要压缩最佳",
-            },
-            "tool_heavy": {
-                "name": "工具密集型压缩",
-                "method": "selective_pruning",
-                "keep_recent_messages": 4,
-                "preserve_tools": [
-                    "skills_extract",
-                    "code_search",
-                    "file_read",
-                    "web_search",
-                ],
-                "aggressiveness": 0.6,
-                "description": "工具密集型对话，优先修剪旧工具输出",
-            },
-            "general": {
-                "name": "通用压缩",
-                "method": "hybrid",
-                "keep_recent_messages": 5,
-                "preserve_tools": ["skills_extract", "code_search"],
-                "aggressiveness": 0.5,
-                "description": "通用对话，平衡摘要压缩和选择性修剪",
-            },
-        }
 
     @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
     async def run(
@@ -485,6 +376,34 @@ class ChatAgent:
                 if self._check_and_handle_stopped(chat_id):
                     break
                 try:
+                    # 调用前检查：若 token 超过上下文窗口，先执行压缩
+                    context_window = self._get_context_window_for_model()
+                    pre_tokens = count_tokens(messages, model=self.model_name)
+                    if pre_tokens > context_window:
+                        logger.info(
+                            f"[{chat_id}] 调用前检测到 token 超过上下文窗口 "
+                            f"({pre_tokens}/{context_window})，先执行压缩"
+                        )
+                        if self.stream_manager:
+                            await self.stream_manager.send_message(
+                                chat_id,
+                                await create_compress_start_event(pre_tokens),
+                            )
+                        messages = await self._compress_messages(
+                            chat_id, messages, must_compress=True
+                        )
+                        compressed_tokens = count_tokens(messages, model=self.model_name)
+                        logger.info(
+                            f"[{chat_id}] 预压缩完成: {pre_tokens} -> {compressed_tokens} tokens"
+                        )
+                        if self.stream_manager:
+                            await self.stream_manager.send_message(
+                                chat_id,
+                                await create_compress_complete_event(
+                                    pre_tokens, compressed_tokens
+                                ),
+                            )
+
                     # 执行一次 LLM 生成迭代
                     (
                         response_text,
@@ -508,10 +427,9 @@ class ChatAgent:
                     if self._check_and_handle_stopped(chat_id):
                         break
 
-                    # 检查是否需要压缩
-
+                    # 检查是否需要压缩（调用报错触发）
                     if need_compress:
-                        logger.info(f"[{chat_id}] 触发消息压缩")
+                        logger.info(f"[{chat_id}] 触发消息压缩（token_limit_exceeded）")
                         original_tokens = count_tokens(messages, model=self.model_name)
                         # 发送压缩开始事件
                         if self.stream_manager:
@@ -520,7 +438,7 @@ class ChatAgent:
                                 await create_compress_start_event(original_tokens),
                             )
 
-                        # 执行压缩（强制压缩，跳过 token 检查）；失败时退化为简单消息移除
+                        # 执行压缩（强制压缩）；失败时退化为简单消息移除
                         try:
                             messages = await self._compress_messages(
                                 chat_id, messages, must_compress=True
@@ -529,9 +447,8 @@ class ChatAgent:
                             logger.warning(
                                 f"[{chat_id}] 压缩失败，退化为简单消息移除: {compress_err}"
                             )
-                            context_window = self._get_context_window_for_model()
                             messages = await self._fallback_compression(
-                                chat_id, messages, context_window
+                                chat_id, messages, self._get_context_window_for_model()
                             )
 
                         compressed_tokens = count_tokens(messages)
@@ -548,51 +465,10 @@ class ChatAgent:
                                 ),
                             )
 
-                        # 压缩后，我们需要重新执行当前迭代，而不是继续往下走
-                        # 因为当前的 LLM 调用由于超限失败了，没有产生有效的 response 或 tool_calls
+                        # 压缩后重新执行当前迭代
                         logger.info(f"[{chat_id}] 压缩完成，重新执行当前迭代")
                         need_compress = False
                         continue
-                    else:
-                        if self._need_compress_messages(chat_id, messages):
-                            original_tokens = count_tokens(
-                                messages, model=self.model_name
-                            )
-                            logger.info(
-                                f"[{chat_id}] 虽然本轮生成未触发压缩，但消息已接近上下限，建议下一轮生成前进行压缩"
-                            )
-                            if self.stream_manager:
-                                await self.stream_manager.send_message(
-                                    chat_id,
-                                    await create_compress_start_event(original_tokens),
-                                )
-                            # 失败时退化为简单消息移除
-                            try:
-                                messages = await self._compress_messages(
-                                    chat_id, messages
-                                )
-                            except Exception as compress_err:
-                                logger.warning(
-                                    f"[{chat_id}] 压缩失败，退化为简单消息移除: {compress_err}"
-                                )
-                                context_window = self._get_context_window_for_model()
-                                messages = await self._fallback_compression(
-                                    chat_id, messages, context_window
-                                )
-                            compressed_tokens = count_tokens(messages)
-                            logger.info(
-                                f"[{chat_id}] 压缩完成: {original_tokens} -> {compressed_tokens} tokens"
-                            )
-                            # 发送压缩完成事件
-                            if self.stream_manager:
-                                await self.stream_manager.send_message(
-                                    chat_id,
-                                    await create_compress_complete_event(
-                                        original_tokens, compressed_tokens
-                                    ),
-                                )
-                            # 压缩后，继续处理当前响应（LLM 调用已成功）
-                            logger.info(f"[{chat_id}] 压缩完成，继续处理当前响应")
 
                     # 保存最终响应
                     final_response_text = response_text
@@ -1359,131 +1235,109 @@ class ChatAgent:
     async def _compress_messages(
         self, chat_id: str, messages: List[Dict[str, Any]], must_compress: bool = False
     ) -> List[Dict[str, Any]]:
-        """优化后的消息压缩逻辑，基于 Roo Code 上下文管理机制
+        """消息压缩：只压缩工具消息的输入（assistant tool_calls）和输出（tool role）。
 
-        核心改进：
-        1. 基于 token 使用率的智能触发（非仅消息数量）
-        2. 自适应压缩策略（根据对话类型选择不同压缩强度）
-        3. 选择性修剪机制（保护关键工具输出，移除旧工具输出）
-        4. 多层压缩策略（摘要压缩、逐条压缩、选择性修剪）
+        触发条件：
+        1. must_compress=True（调用报错 token_limit_exceeded 触发）
+        2. token 数超过上下文窗口（调用前预检触发）
 
-        参数:
-            must_compress: 如果为 True，则跳过 token 检查，强制进行压缩
+        其他消息（system、user、普通 assistant）不做压缩。
         """
-        # 1. 计算当前 token 使用情况
         current_tokens = count_tokens(messages, model=self.model_name)
-
-        # 获取模型上下文窗口大小（默认值：deepseek-chat 131072, deepseek-reasoner 131072）
         context_window = self._get_context_window_for_model()
 
-        # 2. 判断是否需要压缩（使用率超过 80% 或 token 数超过上下文窗口）
-        compression_threshold = 0.8  # 80% 使用率触发压缩
-        need_compress = current_tokens > context_window * compression_threshold
-
-        # 如果 must_compress 为 True，则跳过 token 检查，强制压缩
-        if must_compress:
-            logger.info(f"[{chat_id}] 强制压缩模式启动，跳过 token 检查，直接进行压缩")
-            need_compress = True
-        elif not need_compress and current_tokens <= context_window:
+        if not must_compress and current_tokens <= context_window:
             logger.info(
-                f"[{chat_id}] token 使用率正常 ({current_tokens}/{context_window})，无需压缩"
+                f"[{chat_id}] token 未超过上下文窗口 ({current_tokens}/{context_window})，无需压缩"
             )
             return messages
 
-        if not must_compress:
-            logger.info(
-                f"[{chat_id}] 触发消息压缩: token 使用率 {current_tokens}/{context_window} "
-                f"({current_tokens/context_window*100:.1f}%)"
-            )
-        else:
-            logger.info(f"[{chat_id}] 强制压缩模式启动，执行压缩")
-
-        # 3. 分析对话类型，选择压缩策略
-        conversation_type = self._detect_conversation_type(messages)
-        compression_strategy = self._select_compression_strategy(conversation_type)
-
         logger.info(
-            f"[{chat_id}] 检测到对话类型: {conversation_type}, "
-            f"使用压缩策略: {compression_strategy['name']}"
+            f"[{chat_id}] 开始压缩工具消息: {current_tokens}/{context_window}"
         )
 
-        # 4. 根据策略选择压缩方法
-        if compression_strategy["method"] == "summary_compression":
-            # 智能摘要压缩：保留最近消息，将历史消息压缩为摘要
-            compressed_messages = await self._summary_compression(
-                chat_id, messages, compression_strategy
-            )
-        elif compression_strategy["method"] == "selective_pruning":
-            # 选择性修剪：移除旧工具输出，保留关键上下文
-            compressed_messages = await self._selective_pruning_compression(
-                chat_id, messages, compression_strategy
-            )
-        elif compression_strategy["method"] == "hybrid":
-            # 混合策略：先尝试选择性修剪，如果还不够则进行摘要压缩
-            compressed_messages = await self._hybrid_compression(
-                chat_id, messages, compression_strategy
-            )
-        else:
-            # 回退到原有的逐条压缩
-            logger.warning(f"[{chat_id}] 未知压缩策略，回退到逐条压缩")
-            compressed_messages = await self._compress_messages_individual(
-                chat_id, messages
-            )
+        # 只截断工具相关消息，其他消息保持不变
+        compressed = []
+        for msg in messages:
+            role = msg.get("role")
+            if role == "tool":
+                # 压缩工具输出（截断长内容，保持原始格式）
+                content = msg.get("content", "")
+                if isinstance(content, str) and len(content) > COMPRESS_TOOL_OUTPUT_LIMIT:
+                    new_msg = msg.copy()
+                    new_msg["content"] = content[:COMPRESS_TOOL_OUTPUT_LIMIT] + "...[已截断]"
+                    compressed.append(new_msg)
+                else:
+                    compressed.append(msg)
+            elif role == "assistant" and msg.get("tool_calls"):
+                # 压缩工具调用参数（arguments 为 JSON 字符串，超长时替换为合法 JSON 占位）
+                new_tool_calls = []
+                for tc in msg.get("tool_calls", []):
+                    new_tc = dict(tc)
+                    if "function" in new_tc:
+                        fn = dict(new_tc["function"])
+                        args = fn.get("arguments", "")
+                        if isinstance(args, str) and len(args) > COMPRESS_TOOL_INPUT_LIMIT:
+                            fn["arguments"] = json.dumps(
+                                {"_truncated": True, "original_length": len(args)},
+                                ensure_ascii=False,
+                            )
+                        new_tc["function"] = fn
+                    new_tool_calls.append(new_tc)
+                new_msg = msg.copy()
+                new_msg["tool_calls"] = new_tool_calls
+                compressed.append(new_msg)
+            else:
+                # system、user、普通 assistant 消息不压缩
+                compressed.append(msg)
 
-        # 5. 验证压缩效果
-        compressed_tokens = count_tokens(compressed_messages, model=self.model_name)
-        compression_ratio = compressed_tokens / max(1, current_tokens)
-
+        compressed_tokens = count_tokens(compressed, model=self.model_name)
         logger.info(
-            f"[{chat_id}] 压缩完成: {current_tokens} -> {compressed_tokens} tokens "
-            f"(压缩率: {compression_ratio*100:.1f}%)"
+            f"[{chat_id}] 工具消息截断后: {current_tokens} -> {compressed_tokens} tokens"
         )
 
-        # 6. 如果压缩后仍然超过上下文窗口，进行兜底处理
+        # 若截断后仍超过上下文窗口，执行兜底压缩（移除旧消息）
         if compressed_tokens > context_window:
             logger.warning(
-                f"[{chat_id}] 压缩后仍超过上下文窗口 ({compressed_tokens}/{context_window})，"
+                f"[{chat_id}] 截断后仍超过上下文窗口 ({compressed_tokens}/{context_window})，"
                 f"执行兜底压缩"
             )
-            # 兜底策略：移除最早的非系统消息，保留最近消息
-            compressed_messages = await self._fallback_compression(
-                chat_id, compressed_messages, context_window
+            compressed = await self._fallback_compression(
+                chat_id, compressed, context_window
             )
 
-        # 7. 验证压缩后的消息链完整性，确保 tool 消息有对应的 assistant 消息
-        compressed_messages = self._validate_and_fix_message_chain(
-            compressed_messages, chat_id
+        # 验证消息链完整性
+        compressed = self._validate_and_fix_message_chain(compressed, chat_id)
+        return compressed
+
+    async def _fallback_compression(
+        self, chat_id: str, messages: List[Dict[str, Any]], context_window: int
+    ) -> List[Dict[str, Any]]:
+        """兜底压缩策略：工具消息截断后仍超限时，逐步移除旧消息"""
+        logger.warning(f"[{chat_id}] 执行兜底压缩策略")
+
+        system_messages = [msg for msg in messages if msg.get("role") == "system"]
+        other_messages = [msg for msg in messages if msg.get("role") != "system"]
+
+        if len(other_messages) <= 2:
+            return messages
+
+        for keep_count in range(len(other_messages) - 1, 1, -1):
+            test_messages = system_messages + other_messages[-keep_count:]
+            test_tokens = count_tokens(test_messages, model=self.model_name)
+            if test_tokens <= context_window:
+                removed_count = len(other_messages) - keep_count
+                logger.info(
+                    f"[{chat_id}] 兜底压缩移除 {removed_count} 条消息，"
+                    f"保留 {keep_count} 条非系统消息"
+                )
+                return test_messages
+
+        final_messages = (
+            system_messages + other_messages[-1:] if other_messages else system_messages
         )
-
-        return compressed_messages
-
-    def _need_compress_messages(
-        self, chat_id: str, messages: List[Dict[str, Any]]
-    ) -> bool:
-        """判断是否需要压缩消息
-
-        参数:
-            chat_id: 聊天会话ID
-            messages: 消息列表
-
-        返回:
-            bool: 如果需要压缩返回 True
-        """
-        # 1. 计算当前 token 使用情况
-        current_tokens = count_tokens(messages, model=self.model_name)
-
-        # 2. 获取模型上下文窗口大小（默认值：deepseek-chat 131072, deepseek-reasoner 131072）
-        context_window = self._get_context_window_for_model()
-
-        # 3. 判断是否需要压缩（使用率超过 80%）
-        compression_threshold = 0.8  # 80% 使用率触发压缩
-        need = current_tokens > context_window * compression_threshold
-        if need:
-            logger.info(
-                f"[{chat_id}] 检测到需要压缩: token 使用率 {current_tokens}/{context_window} "
-                f"({current_tokens/context_window*100:.1f}%)"
-            )
-        return need
+        logger.warning(f"[{chat_id}] 兜底压缩极端情况，仅保留最后一条非系统消息")
+        return final_messages
 
     def _get_context_window_for_model(self) -> int:
         """获取当前模型的上下文窗口大小"""
@@ -1509,490 +1363,6 @@ class ChatAgent:
                 "anthropic/claude-haiku-4.5": 262144,
             }
             return model_context_map.get(self.model_name, 131072)
-
-    def _detect_conversation_type(self, messages: List[Dict[str, Any]]) -> str:
-        """检测对话类型，用于选择压缩策略"""
-        if not messages:
-            return "general"
-
-        # 提取最近消息的内容进行分析
-        recent_messages = messages[-5:] if len(messages) >= 5 else messages
-        content = " ".join([msg.get("content", "").lower() for msg in recent_messages])
-
-        # 检测关键词（中英文）
-        debugging_keywords = [
-            "error",
-            "bug",
-            "fix",
-            "debug",
-            "exception",
-            "crash",
-            "traceback",
-            "错误",
-            "异常",
-            "修复",
-            "调试",
-            "崩溃",
-            "报错",
-        ]
-        code_review_keywords = [
-            "review",
-            "comment",
-            "suggest",
-            "improve",
-            "refactor",
-            "code quality",
-            "代码审查",
-            "建议",
-            "优化",
-            "重构",
-            "改进",
-        ]
-        research_keywords = [
-            "research",
-            "study",
-            "analysis",
-            "findings",
-            "citation",
-            "source",
-            "研究",
-            "分析",
-            "调研",
-            "来源",
-            "发现",
-        ]
-        brainstorming_keywords = [
-            "idea",
-            "brainstorm",
-            "design",
-            "plan",
-            "strategy",
-            "concept",
-            "想法",
-            "头脑风暴",
-            "设计",
-            "方案",
-            "策略",
-            "概念",
-        ]
-        technical_keywords = [
-            "architecture",
-            "design",
-            "spec",
-            "requirement",
-            "technical",
-            "架构",
-            "规格",
-            "需求",
-            "技术",
-            "接口",
-        ]
-
-        # 工具使用检测
-        tool_heavy = any(msg.get("role") == "tool" for msg in messages[-10:])
-
-        # 根据关键词匹配对话类型
-        if any(keyword in content for keyword in debugging_keywords):
-            return "debugging"
-        elif any(keyword in content for keyword in code_review_keywords):
-            return "code_review"
-        elif any(keyword in content for keyword in research_keywords):
-            return "research"
-        elif any(keyword in content for keyword in brainstorming_keywords):
-            return "brainstorming"
-        elif any(keyword in content for keyword in technical_keywords):
-            return "technical_design"
-        elif tool_heavy:
-            return "tool_heavy"
-        else:
-            return "general"
-
-    def _select_compression_strategy(self, conversation_type: str) -> Dict[str, Any]:
-        """根据对话类型选择压缩策略（从配置文件读取）"""
-        strategies = self._compression_strategies
-
-        # 如果未加载到策略，使用默认策略
-        if not strategies:
-            logger.warning("压缩策略未加载，使用内置默认策略")
-            strategies = self._get_default_strategies()
-
-        # 获取对应对话类型的策略，如果不存在则使用general策略
-        strategy = strategies.get(conversation_type)
-        if not strategy:
-            logger.warning(
-                f"未找到对话类型 '{conversation_type}' 的压缩策略，使用通用策略"
-            )
-            strategy = strategies.get("general")
-
-        # 如果连general策略都没有，返回一个基本策略
-        if not strategy:
-            strategy = {
-                "name": "默认压缩",
-                "method": "hybrid",
-                "keep_recent_messages": 5,
-                "preserve_tools": ["skills_extract", "code_search"],
-                "aggressiveness": 0.5,
-                "description": "默认压缩策略",
-            }
-
-        return strategy
-
-    async def _summary_compression(
-        self, chat_id: str, messages: List[Dict[str, Any]], strategy: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """智能摘要压缩：保留最近消息，将历史消息压缩为摘要"""
-        keep_recent = strategy.get("keep_recent_messages", 5)
-
-        # 分离系统消息
-        system_messages = [msg for msg in messages if msg.get("role") == "system"]
-        other_messages = [msg for msg in messages if msg.get("role") != "system"]
-
-        # 如果消息数量不多，回退到逐条压缩
-        if len(other_messages) <= keep_recent:
-            logger.info(f"[{chat_id}] 消息数量较少，回退到逐条压缩")
-            return await self._compress_messages_individual(chat_id, messages)
-
-        # 保留最近消息
-        recent_messages = other_messages[-keep_recent:]
-        old_messages = other_messages[:-keep_recent]
-
-        if not old_messages:
-            return system_messages + recent_messages
-
-        # 生成旧消息的对话摘要
-        try:
-            summary_text = await self._generate_conversation_summary(
-                chat_id, old_messages
-            )
-            summary_message = {
-                "role": "system",
-                "content": f"## 对话摘要（压缩自 {len(old_messages)} 条历史消息）\n{summary_text}",
-            }
-            compressed_messages = system_messages + [summary_message] + recent_messages
-            logger.info(f"[{chat_id}] 摘要压缩完成，替换 {len(old_messages)} 条旧消息")
-            return compressed_messages
-        except Exception as e:
-            logger.error(f"[{chat_id}] 摘要压缩失败，回退到逐条压缩: {str(e)}")
-            return await self._compress_messages_individual(chat_id, messages)
-
-    async def _selective_pruning_compression(
-        self, chat_id: str, messages: List[Dict[str, Any]], strategy: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """选择性修剪压缩：移除旧工具输出，保留关键上下文"""
-        preserved_tools = strategy.get("preserve_tools", [])
-        keep_recent = strategy.get("keep_recent_messages", 5)
-
-        compressed_messages = []
-        tool_outputs_pruned = 0
-        total_tools = 0
-
-        # 扫描消息，处理工具输出
-        for i, msg in enumerate(messages):
-            role = msg.get("role")
-
-            if role == "tool":
-                total_tools += 1
-                tool_name = msg.get("name", "")
-
-                # 检查是否应该保留此工具输出
-                should_preserve = (
-                    tool_name in preserved_tools
-                    or i >= len(messages) - keep_recent * 2  # 保留较近的工具输出
-                )
-
-                if not should_preserve:
-                    # 修剪工具输出：替换为摘要
-                    content = msg.get("content", "")
-                    if len(content) > 500:
-                        summary = await self._get_llm_summary(
-                            chat_id,
-                            f"你是一个摘要助手。请对以下工具执行结果进行总结，保留以下关键信息：\n- 工具名称\n- 执行状态（成功/失败）\n- 关键发现或结果\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{content}",
-                            content,
-                        )
-                        new_msg = msg.copy()
-                        new_msg["content"] = f"[修剪后的工具输出] {summary}"
-                        compressed_messages.append(new_msg)
-                        tool_outputs_pruned += 1
-                    else:
-                        compressed_messages.append(msg)
-                else:
-                    compressed_messages.append(msg)
-            else:
-                # 非工具消息直接保留
-                compressed_messages.append(msg)
-
-        if tool_outputs_pruned > 0:
-            logger.info(
-                f"[{chat_id}] 选择性修剪完成，修剪了 {tool_outputs_pruned}/{total_tools} 个工具输出"
-            )
-
-        return compressed_messages
-
-    async def _hybrid_compression(
-        self, chat_id: str, messages: List[Dict[str, Any]], strategy: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """混合压缩策略：先尝试选择性修剪，如果还不够则进行摘要压缩"""
-        # 第一步：尝试选择性修剪
-        pruned_messages = await self._selective_pruning_compression(
-            chat_id, messages, strategy
-        )
-
-        # 检查修剪后的 token 数
-        pruned_tokens = count_tokens(pruned_messages, model=self.model_name)
-        context_window = self._get_context_window_for_model()
-
-        # 如果修剪后仍然超过阈值，进行摘要压缩
-        if pruned_tokens > context_window * 0.8:
-            logger.info(f"[{chat_id}] 选择性修剪后仍需进一步压缩，进行摘要压缩")
-            return await self._summary_compression(chat_id, pruned_messages, strategy)
-
-        return pruned_messages
-
-    async def _fallback_compression(
-        self, chat_id: str, messages: List[Dict[str, Any]], context_window: int
-    ) -> List[Dict[str, Any]]:
-        """兜底压缩策略：当其他压缩方法仍无效时使用"""
-        logger.warning(f"[{chat_id}] 执行兜底压缩策略")
-
-        # 保留系统消息和最近消息，逐步移除较旧消息
-        system_messages = [msg for msg in messages if msg.get("role") == "system"]
-        other_messages = [msg for msg in messages if msg.get("role") != "system"]
-
-        if len(other_messages) <= 2:
-            # 消息太少，无法进一步压缩
-            return messages
-
-        # 尝试逐步移除消息，直到满足上下文窗口
-        for keep_count in range(len(other_messages) - 1, 1, -1):
-            test_messages = system_messages + other_messages[-keep_count:]
-            test_tokens = count_tokens(test_messages, model=self.model_name)
-
-            if test_tokens <= context_window:
-                removed_count = len(other_messages) - keep_count
-                logger.info(
-                    f"[{chat_id}] 兜底压缩移除 {removed_count} 条消息，"
-                    f"保留 {keep_count} 条非系统消息"
-                )
-                return test_messages
-
-        # 如果仍然不行，只保留最后一条非系统消息
-        final_messages = (
-            system_messages + other_messages[-1:] if other_messages else system_messages
-        )
-        logger.warning(f"[{chat_id}] 兜底压缩极端情况，仅保留最后一条非系统消息")
-        return final_messages
-
-    async def _compress_messages_individual(
-        self, chat_id: str, messages: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """原有的逐条消息压缩逻辑（作为回退方案）"""
-        compressed_messages = []
-        trigger_compress = False
-
-        for i, msg in enumerate(messages):
-            role = msg.get("role")
-
-            # system 消息不压缩
-            if role == "system":
-                compressed_messages.append(msg)
-                continue
-
-            if role == "tool" and msg.get("name") != "skills_extract":
-                # 只压缩 content 字段，长度超过 1000 才压缩
-                content = msg.get("content", "")
-                if len(content) > 1000:
-                    summary = await self._get_llm_summary(
-                        chat_id,
-                        f"你是一个摘要助手。请对以下工具执行结果进行总结，保留以下关键信息：\n- 工具名称\n- 执行状态（成功/失败）\n- 关键输出数据或错误信息\n- 对后续对话有重要影响的任何发现或结果\n\n请用简洁的语言总结，确保核心内容完整，长度控制在1000字符以内。\n\n原始内容：\n{content}",
-                        content,
-                    )
-                    new_msg = msg.copy()
-                    new_msg["content"] = f"{summary}"
-                    compressed_messages.append(new_msg)
-                    trigger_compress = True
-                else:
-                    compressed_messages.append(msg)
-
-            elif role == "assistant":
-                # 压缩 content 和 reasoning_content 字段
-                content = msg.get("content", "")
-                reasoning_content = msg.get("reasoning_content", "")
-                reasoning = msg.get("reasoning", "")
-
-                compressed = False
-                new_msg = msg.copy()
-
-                # 压缩 content 字段
-                if len(content) > 2000:
-                    summary = await self._get_llm_summary(
-                        chat_id,
-                        f"你是一个摘要助手。请对以下助手回答进行总结，保留以下关键信息：\n- 主要答案或建议\n- 关键代码片段或技术细节（如有）\n- 重要步骤或推理过程\n- 对用户问题的直接回应\n\n请用简洁的语言总结，确保核心内容完整，长度控制在2000字符以内。\n\n原始内容：\n{content}",
-                        content,
-                    )
-                    new_msg["content"] = f"{summary}"
-                    trigger_compress = True
-                    compressed = True
-
-                # 压缩 reasoning_content 字段
-                if len(reasoning_content) > 500:
-                    summary = await self._get_llm_summary(
-                        chat_id,
-                        f"你是一个摘要助手。请对以下助手思考过程进行总结，保留以下关键信息：\n- 主要推理步骤\n- 关键决策或假设\n- 遇到的问题及解决方案\n- 最终结论或方向\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{reasoning_content}",
-                        reasoning_content,
-                    )
-                    # 确定使用哪个字段名
-                    new_msg["reasoning_content"] = f"{summary}"
-                    trigger_compress = True
-                    compressed = True
-
-                if len(reasoning) > 500:
-                    summary = await self._get_llm_summary(
-                        chat_id,
-                        f"你是一个摘要助手。请对以下助手思考过程进行总结，保留以下关键信息：\n- 主要推理步骤\n- 关键决策或假设\n- 遇到的问题及解决方案\n- 最终结论或方向\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{reasoning}",
-                        reasoning,
-                    )
-                    # 确定使用哪个字段名
-                    new_msg["reasoning"] = f"{summary}"
-                    trigger_compress = True
-                    compressed = True
-
-                if compressed:
-                    compressed_messages.append(new_msg)
-                else:
-                    compressed_messages.append(msg)
-
-            else:
-                # user 消息或其他
-                content = msg.get("content", "")
-                if len(content) > 500:
-                    summary = await self._get_llm_summary(
-                        chat_id,
-                        f"你是一个摘要助手。请对以下用户提问进行总结，保留以下关键信息：\n- 用户的核心问题或请求\n- 任何约束条件或特殊要求\n- 提到的文件、代码或相关上下文\n- 对后续对话重要的背景信息\n\n请用简洁的语言总结，确保核心内容完整，长度控制在500字符以内。\n\n原始内容：\n{content}",
-                        content,
-                    )
-                    new_msg = msg.copy()
-                    new_msg["content"] = f"{summary}"
-                    compressed_messages.append(new_msg)
-                    trigger_compress = True
-                else:
-                    compressed_messages.append(msg)
-
-        # 如果整个循环中没有触发任何压缩，说明单条消息都未超过阈值
-        # 此时执行兜底策略：移除最早的历史消息（保留 system 和最近的消息）
-        if not trigger_compress:
-            logger.info(
-                f"[{chat_id}] 单条消息未触发压缩阈值，执行兜底策略：移除最早的历史消息"
-            )
-
-            # 确保有足够的消息可以移除（至少保留 system 和最后一条消息）
-            if len(compressed_messages) > 2:
-                # 移除 index 1 的消息（最早的非 system 消息）
-                removed_msg = compressed_messages.pop(1)
-                logger.info(
-                    f"[{chat_id}] 已移除消息: role={removed_msg.get('role')}, content_len={len(removed_msg.get('content', ''))}"
-                )
-            else:
-                logger.warning(
-                    f"[{chat_id}] 消息数量太少({len(compressed_messages)})，无法执行移除策略"
-                )
-                raise Exception(f"[{chat_id}] 消息过短且数量过少，无法压缩")
-
-        return compressed_messages
-
-    async def _get_llm_summary(
-        self, chat_id: str, prompt: str, origin_content: str
-    ) -> str:
-        """调用 LLM 获取摘要"""
-        try:
-            messages = [{"role": "user", "content": prompt}]
-            # 使用非流式 API 获取摘要
-            summary, _ = await call_llm_api(
-                messages=messages,
-                model_name=self.model_name,
-                request_id=f"compress-{chat_id}-{int(time.time())}",
-                temperature=0.3,
-            )
-            return summary.strip()
-        except Exception as e:
-            logger.error(f"[{chat_id}] 获取 LLM 摘要失败: {str(e)}")
-            input_max_length = int(os.getenv("INPUT_MAX_LENGTH", 5000))
-            return origin_content[:input_max_length]
-
-    async def _generate_conversation_summary(
-        self, chat_id: str, messages: List[Dict[str, Any]]
-    ) -> str:
-        """生成对话摘要，使用提供的结构化提示词"""
-        # 将消息列表格式化为文本
-        formatted_messages = []
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            # 处理可能的思考内容
-            thinking = (
-                msg.get("thinking", "")
-                or msg.get("reasoning", "")
-                or msg.get("reasoning_content", "")
-            )
-            if thinking:
-                content = f"{content}\n（思考：{thinking}）"
-            formatted_messages.append(f"{role}: {content}")
-        conversation_text = "\n\n".join(formatted_messages)
-
-        # 使用用户提供的提示词模板
-        prompt = f"""Your task is to create a detailed summary of the
-conversation so far, paying close attention to the user's
-explicit requests and your previous actions.
-This summary should be thorough in capturing technical
-details, code patterns, and architectural decisions that
-would be essential for continuing with the conversation and
-supporting any continuing tasks.
-Your summary should be structured as follows:
-Context: The context to continue the conversation with. If
-applicable based on the current task, this should include:
-1. Previous Conversation: High level details about what was
-discussed throughout the entire conversation with the user.
-This should be written to allow someone to be able to follow
-the general overarching conversation flow.
-2. Current Work: Describe in detail what was being worked on
-prior to this request to summarize the conversation. Pay
-special attention to the more recent messages in the
-conversation.
-3. Key Technical Concepts: List all important technical
-concepts, technologies, coding conventions, and frameworks
-discussed, which might be relevant for continuing with this
-work.
-4. Relevant Files and Code: If applicable, enumerate
-specific files and code sections examined, modified, or
-created for the task continuation. Pay special attention to
-the most recent messages and changes.
-5. Problem Solving: Document problems solved thus far and
-any ongoing troubleshooting efforts.
-6. Pending Tasks and Next Steps: Outline all pending tasks
-that you have explicitly been asked to work on, as well as
-list the next steps you will take for all outstanding work,
-if applicable. Include code snippets where they add clarity.
-For any next steps, include direct quotes from the most
-recent conversation showing exactly what task you were
-working on and where you left off. This should be verbatim
-to ensure there's no information loss in context between
-tasks.
-
-以下是对话历史：
-{conversation_text}
-
-请根据上述要求生成结构化摘要。"""
-        try:
-            summary, _ = await call_llm_api(
-                messages=[{"role": "user", "content": prompt}],
-                model_name=self.model_name,
-                request_id=f"conversation-summary-{chat_id}-{int(time.time())}",
-                temperature=0.3,
-            )
-            return summary.strip()
-        except Exception as e:
-            logger.error(f"[{chat_id}] 生成对话摘要失败: {str(e)}")
-            # 回退到简单摘要
-            return f"对话摘要（{len(messages)}条消息）: " + conversation_text[:1000]
 
 
 from src.utils.dynamic_observer import auto_apply_here

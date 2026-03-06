@@ -214,8 +214,8 @@ class TestChatAgentRunStatusTransitions(unittest.TestCase):
             return_value=("test response", None, None, {}, None, None, False),
         ), patch.object(
             self.agent,
-            "_need_compress_messages",
-            return_value=False,
+            "_get_context_window_for_model",
+            return_value=131072,
         ):
             result = self._run_async(
                 self.agent.run(chat_id="test-chat-id", text="hello")
