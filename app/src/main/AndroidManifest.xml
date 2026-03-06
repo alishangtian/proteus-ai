@@ -19,7 +19,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize"
+            android:windowSoftInputMode="adjustNothing"
             android:usesCleartextTraffic="true"
             tools:ignore="InsecureBaseConfiguration">
             <intent-filter>
