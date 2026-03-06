@@ -151,9 +151,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(result.error || '创建会话失败');
             }
 
-            // 保存chat_id并建立SSE连接
+            // 保存chat_id并建立WebSocket连接
             currentChatId = result.chat_id;
-            const eventSource = new EventSource(`stream/${result.chat_id}`);
+            const eventSource = new WSEventSource(`${getWsBaseUrl()}/ws/stream/${result.chat_id}`);
 
             // 处理状态消息
             eventSource.addEventListener('status', event => {

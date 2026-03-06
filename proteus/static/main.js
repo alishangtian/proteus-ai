@@ -2,6 +2,7 @@ import Icons from './icons.js';
 import { generateConversationId, sanitizeFilename, getMimeType, downloadFileFromContent, fetchJSON } from './utils.js';
 import { scrollToBottom as uiScrollToBottom, resetUI as uiResetUI, renderNodeResult as uiRenderNodeResult, renderExplanation as uiRenderExplanation, renderAnswer as uiRenderAnswer, createQuestionElement, streamTextContent as uiStreamTextContent, updatePlaybook as uiUpdatePlaybook } from './ui.js';
 import { registerSSEHandlers } from './sse-handlers.js';
+import { WSEventSource, getWsBaseUrl } from './ws-events.js';
 
 // 保存到知识库的函数
 async function saveToKnowledgeBase(question, answer) {
@@ -1066,10 +1067,10 @@ async function loadConversation(conversationId) {
 async function replayChat(chatId, answerElement) {
     return new Promise((resolve, reject) => {
         try {
-            // 建立SSE连接到回放接口
-            const eventSource = new EventSource(`/replay/stream/${chatId}`);
+            // 建立WebSocket连接到回放接口
+            const eventSource = new WSEventSource(`${getWsBaseUrl()}/ws/replay/stream/${chatId}`);
 
-            // 注册SSE事件处理器
+            // 注册流事件处理器
             const toolExecutions = {};
             const currentActionIdRef = { value: null };
             const currentIterationRef = { value: 1 };
@@ -2032,9 +2033,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // 启动延迟更新会话列表（8秒后执行，只调用一次）
             scheduleConversationListUpdate();
 
-            const eventSource = new EventSource(`/stream/${result.chat_id}`);
+            const eventSource = new WSEventSource(`${getWsBaseUrl()}/ws/stream/${result.chat_id}`);
 
-            // 将 SSE 事件处理委托到 sse-handlers 模块
+            // 将流事件处理委托到 sse-handlers 模块
             try {
                 // 临时存储工具调用数据，因为工具详情将直接显示在聊天流中
                 const toolExecutions = {};
