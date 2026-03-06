@@ -5,6 +5,9 @@ import com.proteus.ai.storage.TokenManager
 import com.google.gson.GsonBuilder
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -37,6 +40,17 @@ object ApiClient {
 
     val BASE_URL: String get() = _baseUrl.value
 
+    /** 将 HTTP(S) base URL 转换为 WebSocket URL */
+    val WS_BASE_URL: String
+        get() {
+            val url = _baseUrl.value
+            return when {
+                url.startsWith("https://") -> "wss://" + url.removePrefix("https://")
+                url.startsWith("http://") -> "ws://" + url.removePrefix("http://")
+                else -> url
+            }
+        }
+
     private val gson = GsonBuilder().setLenient().create()
 
     private val loggingInterceptor = HttpLoggingInterceptor { message ->
@@ -54,7 +68,7 @@ object ApiClient {
         return OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.MINUTES) // 保持长连接用于 SSE
+            .readTimeout(10, TimeUnit.MINUTES) // 保持长连接用于 WebSocket
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .connectionPool(ConnectionPool(5, 60, TimeUnit.SECONDS)) // 60s < 服务端 keep-alive 75s，避免使用过期连接
@@ -69,4 +83,9 @@ object ApiClient {
         .build()
 
     val apiService: ApiService get() = retrofit.create(ApiService::class.java)
+
+    /** 创建 WebSocket 连接 */
+    fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket {
+        return okHttpClient.newWebSocket(request, listener)
+    }
 }

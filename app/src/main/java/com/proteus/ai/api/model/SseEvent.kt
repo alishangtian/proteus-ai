@@ -82,3 +82,9 @@ data class RawSseData(
     @SerializedName("total_tokens") val totalTokens: Int? = null,
     val timestamp: Double? = null
 )
+
+/** WebSocket 消息外层结构: {"event": "...", "data": "..."} */
+data class RawWsMessage(
+    val event: String? = null,
+    val data: String? = null
+)

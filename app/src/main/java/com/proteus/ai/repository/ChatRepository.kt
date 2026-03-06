@@ -4,10 +4,14 @@ import com.google.gson.Gson
 import com.proteus.ai.api.ApiClient
 import com.proteus.ai.api.model.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
-import okio.BufferedSource
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import timber.log.Timber
 
 class ChatRepository {
@@ -43,101 +47,114 @@ class ChatRepository {
         ApiClient.apiService.stopTask("Bearer $token", request)
     }
 
-    fun streamChatBlocking(token: String, chatId: String): Flow<SseEvent> = flow {
-        var retryCount = 0
-        val maxRetries = 5
-        var success = false
+    fun streamChatBlocking(token: String, chatId: String): Flow<SseEvent> = callbackFlow {
+        val url = "${ApiClient.WS_BASE_URL}ws/stream/$chatId"
+        Timber.d("WebSocket stream connecting: $url")
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .build()
 
-        while (retryCount < maxRetries && !success) {
-            val response = try {
-                Timber.d("Starting stream request for chatId: $chatId, attempt: ${retryCount + 1}")
-                ApiClient.apiService.streamBlocking("Bearer $token", chatId)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Timber.e(e, "Stream request exception")
-                throw e
+        val ws = ApiClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Timber.d("WebSocket stream opened for chatId: $chatId")
             }
 
-            if (response.isSuccessful) {
-                success = true
-                val body = response.body() ?: throw Exception("Empty response body")
-                Timber.d("Stream response successful, starting to parse source")
-                // 使用 use 确保 source 关闭，但内部循环逻辑要稳健
-                body.source().use { source ->
-                    parseSseSource(source, this)
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Timber.v("WebSocket message: $text")
+                try {
+                    val event = parseWsMessage(text)
+                    trySend(event)
+                } catch (e: Exception) {
+                    Timber.e(e, "Error processing WebSocket stream message")
                 }
-            } else if (response.code() == 404) {
-                retryCount++
-                Timber.w("Stream not found (404), retrying... ($retryCount/$maxRetries)")
-                delay(1500L * retryCount)
-            } else {
-                val errorBody = response.errorBody()?.string()
-                Timber.e("Stream failed: ${response.code()}, body: $errorBody")
-                throw Exception("Stream request failed with code: ${response.code()}")
             }
-        }
 
-        if (!success) {
-            throw Exception("Failed to connect to stream after $maxRetries retries")
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Timber.d("WebSocket stream closing: $code $reason")
+                webSocket.close(1000, null)
+                channel.close()
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Timber.d("WebSocket stream closed: $code $reason")
+                channel.close()
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Timber.e(t, "WebSocket stream failure")
+                channel.close(t)
+            }
+        })
+
+        awaitClose {
+            Timber.d("WebSocket stream flow cancelled, closing WebSocket")
+            ws.close(1000, "Flow cancelled")
         }
     }.flowOn(Dispatchers.IO)
 
-    fun replayStream(token: String, chatId: String): Flow<SseEvent> = flow {
-        val response = ApiClient.apiService.replayStream("Bearer $token", chatId)
-        if (response.isSuccessful) {
-            val body = response.body() ?: return@flow
-            body.source().use { source ->
-                parseSseSource(source, this)
+    fun replayStream(token: String, chatId: String): Flow<SseEvent> = callbackFlow {
+        val url = "${ApiClient.WS_BASE_URL}ws/replay/stream/$chatId"
+        Timber.d("WebSocket replay connecting: $url")
+        val request = Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $token")
+            .build()
+
+        val ws = ApiClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Timber.d("WebSocket replay opened for chatId: $chatId")
             }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Timber.v("WebSocket replay message: $text")
+                try {
+                    val event = parseWsMessage(text)
+                    trySend(event)
+                } catch (e: Exception) {
+                    Timber.e(e, "Error processing WebSocket replay message")
+                }
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                Timber.d("WebSocket replay closing: $code $reason")
+                webSocket.close(1000, null)
+                channel.close()
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Timber.d("WebSocket replay closed: $code $reason")
+                channel.close()
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Timber.e(t, "WebSocket replay failure")
+                channel.close(t)
+            }
+        })
+
+        awaitClose {
+            Timber.d("WebSocket replay flow cancelled, closing WebSocket")
+            ws.close(1000, "Flow cancelled")
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun parseSseSource(source: okio.BufferedSource, collector: kotlinx.coroutines.flow.FlowCollector<SseEvent>) {
-        var currentEvent = ""
-        try {
-            // [关键优化] SSE 协议中，一个数据块可能由多行 data: 组成，直到遇到空行 \n\n 才表示一个事件结束
-            // 我们需要缓冲 data 部分
-            val dataBuffer = StringBuilder()
-
-            while (true) {
-                // readUtf8Line 可能会阻塞直到换行符
-                val line = source.readUtf8Line() ?: break
-                Timber.v("SSE Raw Line: [$line]")
-                
-                val trimmedLine = line.trim()
-                
-                when {
-                    trimmedLine.startsWith("event:") -> {
-                        currentEvent = trimmedLine.substring(6).trim()
-                    }
-                    trimmedLine.startsWith("data:") -> {
-                        val dataPart = trimmedLine.substring(5).trim()
-                        if (dataBuffer.isNotEmpty()) dataBuffer.append("\n")
-                        dataBuffer.append(dataPart)
-                    }
-                    trimmedLine.isEmpty() -> {
-                        // 遇到空行，分发当前累积的所有 data
-                        val finalData = dataBuffer.toString()
-                        if (finalData.isNotEmpty()) {
-                            val sseEvent = parseSseEvent(currentEvent, finalData)
-                            collector.emit(sseEvent)
-                            // 关键日志：分发成功
-                            Timber.d("SSE Event Dispatched: $currentEvent")
-                            dataBuffer.clear()
-                            // 原则上 SSE 一个数据包后 currentEvent 会重置，但有些实现会复用，
-                            // 这里根据主流做法重置
-                            currentEvent = ""
-                        }
-                    }
-                }
-            }
+    private fun parseWsMessage(text: String): SseEvent {
+        return try {
+            val raw = gson.fromJson(text, RawWsMessage::class.java)
+            val event = raw.event ?: ""
+            val data = raw.data ?: ""
+            Timber.d("WebSocket Event: event=[$event]")
+            parseSseEvent(event, data)
         } catch (e: Exception) {
-            Timber.e(e, "Error parsing SSE source")
+            val truncated = if (text.length > 200) text.take(200) + "..." else text
+            Timber.e(e, "Failed to parse WebSocket message: $truncated")
+            SseEvent.Unknown("", text)
         }
     }
 
     private fun parseSseEvent(event: String, data: String): SseEvent {
-        Timber.d("Parsing SSE: event=[$event], data=[$data]")
+        Timber.d("Parsing event=[$event], data=[$data]")
         if (data == "[DONE]") return SseEvent.Unknown("done", data)
         return try {
             val raw = gson.fromJson(data, RawSseData::class.java)
@@ -159,13 +176,7 @@ class ChatRepository {
             }
         } catch (e: Exception) {
             Timber.w("GSON parse failed for event [$event], attempting fallback. Error: ${e.message}")
-            // 优化：不再直接将无法解析的 data 放入 Message 渲染，而是归类为 Unknown，仅记录日志
-            if (event == "message" || event == "agent_complete" || event == "complete" || event == "") {
-                // 如果是这些核心事件但又不是 JSON，且不符合特定预期，标记为 Unknown，UI 层可以忽略 Unknown
-                SseEvent.Unknown(event, data)
-            } else {
-                SseEvent.Unknown(event, data)
-            }
+            SseEvent.Unknown(event, data)
         }
     }
 }
