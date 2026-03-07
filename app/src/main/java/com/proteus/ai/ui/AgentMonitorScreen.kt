@@ -72,6 +72,14 @@ import com.proteus.ai.ui.viewmodel.AgentMonitorViewModel
 import com.proteus.ai.ui.viewmodel.UiState
 import kotlin.math.roundToInt
 
+// Backend uses this sentinel when an agent is not associated with any conversation.
+private const val NO_CONVERSATION_ID = "__no_conversation__"
+
+private fun String.isRealConversationId(): Boolean = isNotBlank() && this != NO_CONVERSATION_ID
+
+private fun AgentConversationGroup.displayName(): String =
+    title.ifBlank { conversationId.takeIf { it.isRealConversationId() } ?: "未关联会话" }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentMonitorScreen(
@@ -137,7 +145,7 @@ fun AgentMonitorScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(conversationGroups, key = { it.conversationId }) { group ->
-                            val groupKey = group.conversationId.ifBlank { "__no_conversation__" }
+                            val groupKey = group.conversationId.ifBlank { NO_CONVERSATION_ID }
                             val expanded = expandedStates[groupKey] ?: true
                             ConversationGroupCard(
                                 group = group,
@@ -265,9 +273,7 @@ private fun ConversationGroupCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = group.title.ifBlank {
-                            group.conversationId.takeIf { it.isNotBlank() && it != "__no_conversation__" } ?: "未关联会话"
-                        },
+                        text = group.displayName(),
                         style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -282,7 +288,7 @@ private fun ConversationGroupCard(
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                         )
                     }
-                    if (group.conversationId.isNotBlank() && group.conversationId != "__no_conversation__") {
+                    if (group.conversationId.isRealConversationId()) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "会话 ID：${group.conversationId}",
@@ -613,9 +619,17 @@ internal fun formatElapsedTime(seconds: Double): String {
     }
 }
 
+private fun formatScaledWithOneDecimal(value: Long, divisor: Long, suffix: String): String {
+    // Round to one decimal place using integer arithmetic to avoid floating-point drift.
+    val scaledTimesTen = (value * 10L + divisor / 2) / divisor
+    val whole = scaledTimesTen / 10
+    val decimal = scaledTimesTen % 10
+    return "$whole.$decimal$suffix"
+}
+
 internal fun formatTokenCount(value: Long): String = when {
-    value >= 1_000_000L -> String.format("%.1fM", value / 1_000_000f)
-    value >= 1_000L -> String.format("%.1fK", value / 1_000f)
+    value >= 1_000_000L -> formatScaledWithOneDecimal(value, 1_000_000L, "M")
+    value >= 1_000L -> formatScaledWithOneDecimal(value, 1_000L, "K")
     else -> value.toString()
 }
 

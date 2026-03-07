@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.proteus.ai.ProteusAIApplication
 import com.proteus.ai.api.model.AgentConversationGroup
+import com.proteus.ai.api.model.withoutAgent
 import com.proteus.ai.repository.AgentRepository
 import com.proteus.ai.storage.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,15 +95,7 @@ class AgentMonitorViewModel(
                 val response = repository.deleteAgent(token, agentId)
                 if (response.success) {
                     _conversationGroups.value = _conversationGroups.value.mapNotNull { group ->
-                        val agents = group.agents.filter { it.agentId != agentId }
-                        if (agents.isEmpty()) {
-                            null
-                        } else {
-                            group.copy(
-                                agents = agents,
-                                hasRunning = agents.any { it.status == "running" }
-                            )
-                        }
+                        group.withoutAgent(agentId)
                     }
                     _uiState.value = UiState.Success
                 } else {

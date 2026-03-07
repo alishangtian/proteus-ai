@@ -39,6 +39,15 @@ data class AgentConversationGroup(
     @SerializedName("has_running") val hasRunning: Boolean = false
 )
 
+fun AgentConversationGroup.withoutAgent(agentId: String): AgentConversationGroup? {
+    val remainingAgents = agents.filter { it.agentId != agentId }
+    if (remainingAgents.isEmpty()) return null
+    return copy(
+        agents = remainingAgents,
+        hasRunning = remainingAgents.any { it.status == "running" }
+    )
+}
+
 data class AgentConversationGroupsResponse(
     @SerializedName("success") val success: Boolean,
     @SerializedName("data") val data: List<AgentConversationGroup> = emptyList(),

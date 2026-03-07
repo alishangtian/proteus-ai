@@ -42,24 +42,26 @@ fun KnowledgeBaseScreen(
         )
     }
 
-    if (showDetailDeleteConfirm && selectedItem != null) {
-        AlertDialog(
-            onDismissRequest = { showDetailDeleteConfirm = false },
-            title = { Text("删除条目") },
-            text = { Text("确定要删除「${selectedItem!!.title.ifBlank { "此条目" }}」吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDetailDeleteConfirm = false
-                        viewModel.deleteItem(selectedItem!!.id)
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDetailDeleteConfirm = false }) { Text("取消") }
-            }
-        )
+    if (showDetailDeleteConfirm) {
+        selectedItem?.let { detailItem ->
+            AlertDialog(
+                onDismissRequest = { showDetailDeleteConfirm = false },
+                title = { Text("删除条目") },
+                text = { Text("确定要删除「${detailItem.title.takeIf { it.isNotBlank() } ?: "此条目"}」吗？") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDetailDeleteConfirm = false
+                            viewModel.deleteItem(detailItem.id)
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("删除") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDetailDeleteConfirm = false }) { Text("取消") }
+                }
+            )
+        }
     }
 
     Scaffold(
@@ -106,7 +108,7 @@ fun KnowledgeBaseScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (inDetailMode && selectedItem != null) {
                 KnowledgeBaseDetailContent(
-                    item = selectedItem!!,
+                    item = selectedItem,
                     modifier = Modifier.fillMaxSize()
                 )
             } else if (items.isEmpty()) {

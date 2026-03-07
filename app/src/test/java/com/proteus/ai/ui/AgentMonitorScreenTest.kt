@@ -2,7 +2,11 @@ package com.proteus.ai.ui
 
 import com.proteus.ai.api.model.AgentConversationGroup
 import com.proteus.ai.api.model.AgentInfo
+import com.proteus.ai.api.model.withoutAgent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentMonitorScreenTest {
@@ -48,5 +52,52 @@ class AgentMonitorScreenTest {
         assertEquals("999", formatTokenCount(999))
         assertEquals("1.5K", formatTokenCount(1500))
         assertEquals("2.5M", formatTokenCount(2_500_000))
+    }
+
+    @Test
+    fun withoutAgent_recalculatesRunningStateAndKeepsRemainingAgents() {
+        val group = AgentConversationGroup(
+            conversationId = "conv-1",
+            agents = listOf(
+                AgentInfo(agentId = "a-1", status = "running"),
+                AgentInfo(agentId = "a-2", status = "complete")
+            ),
+            hasRunning = true
+        )
+
+        val updated = group.withoutAgent("a-1")
+
+        assertEquals(1, updated?.agents?.size)
+        assertEquals("a-2", updated?.agents?.single()?.agentId)
+        assertFalse(updated?.hasRunning ?: true)
+    }
+
+    @Test
+    fun withoutAgent_returnsNullWhenLastAgentRemoved() {
+        val group = AgentConversationGroup(
+            conversationId = "conv-1",
+            agents = listOf(AgentInfo(agentId = "a-1", status = "running")),
+            hasRunning = true
+        )
+
+        assertNull(group.withoutAgent("a-1"))
+    }
+
+    @Test
+    fun withoutAgent_keepsRunningFlagWhenRunningAgentStillExists() {
+        val group = AgentConversationGroup(
+            conversationId = "conv-1",
+            agents = listOf(
+                AgentInfo(agentId = "a-1", status = "running"),
+                AgentInfo(agentId = "a-2", status = "running"),
+                AgentInfo(agentId = "a-3", status = "complete")
+            ),
+            hasRunning = true
+        )
+
+        val updated = group.withoutAgent("a-3")
+
+        assertTrue(updated?.hasRunning == true)
+        assertEquals(2, updated?.agents?.count { it.status == "running" })
     }
 }
