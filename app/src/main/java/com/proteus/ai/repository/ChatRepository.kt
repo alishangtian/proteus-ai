@@ -156,6 +156,8 @@ class ChatRepository {
     private fun parseSseEvent(event: String, data: String): SseEvent {
         Timber.d("Parsing event=[$event], data=[$data]")
         if (data == "[DONE]") return SseEvent.Unknown("done", data)
+        if (event == "complete") return SseEvent.Complete(extractTextPayload(data))
+        if (event == "error") return SseEvent.Error(extractTextPayload(data))
         return try {
             val raw = gson.fromJson(data, RawSseData::class.java)
             when (event) {
@@ -168,7 +170,8 @@ class ChatRepository {
                 "action_start" -> SseEvent.ActionStart(raw.action, raw.actionId, raw.input, raw.timestamp)
                 "action_complete" -> SseEvent.ActionComplete(raw.action, raw.actionId, raw.result, raw.isDone, raw.timestamp)
                 "tool_progress" -> SseEvent.ToolProgress(raw.tool, raw.actionId, raw.status, raw.timestamp)
-                "message", "agent_complete", "complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
+                "message", "agent_complete" -> SseEvent.Message(raw.content ?: raw.result, raw.timestamp)
+                "agent_error" -> SseEvent.Error(raw.error ?: raw.content ?: raw.result, raw.timestamp)
                 "usage" -> SseEvent.Usage(raw.totalTokens, raw.timestamp)
                 "compress_start" -> SseEvent.CompressStart(raw.originalLength, raw.timestamp)
                 "compress_complete" -> SseEvent.CompressComplete(raw.originalLength, raw.compressedLength, raw.timestamp)
@@ -178,5 +181,12 @@ class ChatRepository {
             Timber.w("GSON parse failed for event [$event], attempting fallback. Error: ${e.message}")
             SseEvent.Unknown(event, data)
         }
+    }
+
+    private fun extractTextPayload(data: String): String {
+        return runCatching { gson.fromJson(data, String::class.java) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: data.trim('"')
     }
 }

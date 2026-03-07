@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -70,10 +71,12 @@ import com.proteus.ai.api.model.AgentConversationGroup
 import com.proteus.ai.api.model.AgentInfo
 import com.proteus.ai.ui.viewmodel.AgentMonitorViewModel
 import com.proteus.ai.ui.viewmodel.UiState
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 // Backend uses this sentinel when an agent is not associated with any conversation.
 private const val NO_CONVERSATION_ID = "__no_conversation__"
+private const val AGENT_MONITOR_REFRESH_INTERVAL_MS = 15_000L
 
 private fun String.isRealConversationId(): Boolean = isNotBlank() && this != NO_CONVERSATION_ID
 
@@ -92,6 +95,13 @@ fun AgentMonitorScreen(
     val totalMessage by viewModel.totalMessage.collectAsState()
     val summary = remember(conversationGroups) { buildAgentSummary(conversationGroups) }
     val expandedStates = remember { mutableStateMapOf<String, Boolean>() }
+
+    LaunchedEffect(statusFilter) {
+        while (true) {
+            delay(AGENT_MONITOR_REFRESH_INTERVAL_MS)
+            viewModel.loadAgents()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
