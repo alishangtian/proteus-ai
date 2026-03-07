@@ -79,6 +79,7 @@ class ChatAgent:
     - 对话历史管理
     """
 
+    # 缓存键为 conversation_id（有时为 chat_id 兜底），值为该会话下所有 agent 的列表
     _agent_cache: Dict[str, List["ChatAgent"]] = {}
     _cache_lock = threading.Lock()
     # 缓存的状态快照，避免在查询时访问正在运行的agent实例
@@ -86,7 +87,7 @@ class ChatAgent:
 
     @classmethod
     def get_agents(cls, chat_id: str) -> List["ChatAgent"]:
-        """获取指定chat_id下的agent列表副本
+        """获取指定chat_id下的agent（在所有会话缓存中搜索）
 
         参数:
             chat_id: 聊天会话ID
@@ -95,27 +96,55 @@ class ChatAgent:
             该chat_id下的agent列表副本(浅拷贝)
         """
         with cls._cache_lock:
-            agents = cls._agent_cache.get(chat_id, [])
-            logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
+            result = []
+            for agents in cls._agent_cache.values():
+                for a in agents:
+                    if a.chat_id == chat_id:
+                        result.append(a)
+            logger.info(f"Getting {len(result)} agents for chat {chat_id}")
+            return result
+
+    @classmethod
+    def get_agents_by_conversation(cls, conversation_id: str) -> List["ChatAgent"]:
+        """获取指定 conversation_id 下的所有 agent 列表副本
+
+        参数:
+            conversation_id: 会话ID
+
+        返回:
+            该 conversation_id 下的 agent 列表副本(浅拷贝)
+        """
+        with cls._cache_lock:
+            agents = cls._agent_cache.get(conversation_id, [])
             return list(agents)
 
     @classmethod
     def set_agents(cls, chat_id: str, agents: List["ChatAgent"]) -> None:
-        """设置指定chat_id下的agent列表"""
+        """设置指定chat_id下的agent列表（兼容旧接口，使用 chat_id 作为键）"""
         with cls._cache_lock:
             cls._agent_cache[chat_id] = agents.copy()
 
     @classmethod
-    def clear_agents(cls, chat_id: str) -> None:
-        """清除指定chat_id的agent缓存"""
-        cls._agent_cache.pop(chat_id, None)
+    def clear_agents(cls, key: str) -> None:
+        """清除指定 key（conversation_id 或 chat_id）的 agent 缓存"""
+        cls._agent_cache.pop(key, None)
+
+    @classmethod
+    def clear_agents_by_conversation(cls, conversation_id: str) -> None:
+        """清除指定 conversation_id 下的所有 agent 缓存
+
+        参数:
+            conversation_id: 会话ID
+        """
+        with cls._cache_lock:
+            cls._agent_cache.pop(conversation_id, None)
 
     @classmethod
     def get_all_agents(cls) -> Dict[str, List["ChatAgent"]]:
-        """获取所有缓存中的 agent（按 chat_id 分组）
+        """获取所有缓存中的 agent（按 conversation_id 分组）
 
         返回:
-            Dict[str, List[ChatAgent]]: chat_id → agent 列表 的映射副本
+            Dict[str, List[ChatAgent]]: conversation_id → agent 列表 的映射副本
 
         注意: 此方法仅用于维护操作，性能敏感的查询应使用 get_all_agents_status_snapshot()
         """
@@ -185,17 +214,21 @@ class ChatAgent:
 
     def _remove_from_cache(self) -> None:
         """从缓存中移除当前 agent（线程安全），防止内存泄漏"""
+        # 使用 conversation_id 作为缓存键（无 conversation_id 时退回 chat_id）
+        cache_key = self.conversation_id or self.chat_id
         with ChatAgent._cache_lock:
-            if self.chat_id and self.chat_id in ChatAgent._agent_cache:
-                ChatAgent._agent_cache[self.chat_id] = [
+            if cache_key and cache_key in ChatAgent._agent_cache:
+                ChatAgent._agent_cache[cache_key] = [
                     a
-                    for a in ChatAgent._agent_cache[self.chat_id]
+                    for a in ChatAgent._agent_cache[cache_key]
                     if a.agentid != self.agentid
                 ]
-                if not ChatAgent._agent_cache[self.chat_id]:
-                    del ChatAgent._agent_cache[self.chat_id]
-            # 同时移除状态快照
-            ChatAgent._remove_status_snapshot(self.agentid)
+                if not ChatAgent._agent_cache[cache_key]:
+                    del ChatAgent._agent_cache[cache_key]
+            # 在同一个锁的保护下直接操作 _status_snapshot_cache（不调用 _remove_status_snapshot）。
+            # 避免死锁：_remove_status_snapshot 也会获取 _cache_lock，
+            # 而 threading.Lock() 不可重入，同一线程二次获取会永久阻塞。
+            ChatAgent._status_snapshot_cache.pop(self.agentid, None)
         # 如果 agent 是 stopped/complete/error 状态，保留在 Redis 中供监控页面查看
         # 如果需要删除，应通过专门的删除接口（否则无法在监控页面看到历史记录）
         # 这里不主动删除 Redis 中的记录
@@ -289,15 +322,17 @@ class ChatAgent:
             logger.error(f"Agent {self.agentid} 持久化状态到 Redis 失败: {e}")
 
     async def _register_agent(self, chat_id: str) -> None:
-        """注册当前agent到缓存"""
+        """注册当前agent到缓存，以 conversation_id（或 chat_id 兜底）为缓存键"""
         self.chat_id = chat_id
+        # 以 conversation_id 为主键，实现会话级别的 agent 分组管理
+        cache_key = self.conversation_id or chat_id
         with ChatAgent._cache_lock:
-            if chat_id not in ChatAgent._agent_cache:
-                ChatAgent._agent_cache[chat_id] = []
+            if cache_key not in ChatAgent._agent_cache:
+                ChatAgent._agent_cache[cache_key] = []
             if not any(
-                a.agentid == self.agentid for a in ChatAgent._agent_cache[chat_id]
+                a.agentid == self.agentid for a in ChatAgent._agent_cache[cache_key]
             ):
-                ChatAgent._agent_cache[chat_id].append(self)
+                ChatAgent._agent_cache[cache_key].append(self)
 
     def __init__(
         self,

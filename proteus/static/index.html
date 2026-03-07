@@ -4,571 +4,499 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proteus AI - 智能助手</title>
+    <title>Proteus AI - 控制台</title>
     <link rel="icon" type="image/svg+xml" href="/static/icon/proteus.png">
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="/static/marked.min.js"></script>
-    <script src="/static/ws-events-global.js"></script>
     <style>
-        /* Reset body styles for standalone page */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            margin: 0;
-            padding: 0;
-            overflow: auto !important;
-            display: block !important;
-            height: auto !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f4f5f7;
+            color: #333;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
         }
 
-        html, body {
-            width: 100%;
-            box-sizing: border-box;
-        }
-
-        /* 主页导航样式 */
-        .home-container {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #f8f9ff 0%, #eef2ff 100%);
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            width: 220px;
+            min-width: 220px;
+            background: #fff;
+            border-right: 1px solid #e8eaed;
             display: flex;
             flex-direction: column;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 18px 20px 16px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .logo-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
-            animation: fadeIn 0.8s ease-out;
-        }
-
-        /* 布局调整 */
-        .content-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 60px;
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 24px;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .left-column {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 100%;
-            max-width: 1400px;
-        }
-
-        @media (min-width: 768px) {
-            .content-wrapper {
-                flex-direction: row;
-                align-items: flex-start;
-            }
-        }
-
-        .story-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
-        }
-
-        .story-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-        }
-
-        .story-icon {
-            font-size: 24px;
-        }
-
-        .story-title {
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-            margin: 0;
-        }
-
-        .story-content {
-            flex: 1;
-            font-size: 16px;
-            line-height: 1.8;
-            color: #444;
-            overflow-y: auto;
-            max-height: 600px;
-            padding-right: 10px;
-        }
-
-        /* Markdown 样式微调 */
-        .story-content p {
-            margin-bottom: 1em;
-        }
-
-        .story-content h1,
-        .story-content h2,
-        .story-content h3 {
-            margin-top: 1em;
-            margin-bottom: 0.5em;
-            color: #2c3e50;
-        }
-
-        .loading-text {
-            color: #888;
-            font-style: italic;
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-            0% {
-                opacity: 0.6;
-            }
-
-            50% {
-                opacity: 1;
-            }
-
-            100% {
-                opacity: 0.6;
-            }
-        }
-
-        .home-header {
-            text-align: center;
-            margin-bottom: 50px;
-        }
-
-        .home-title {
-            font-size: 48px;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .home-subtitle {
-            font-size: 18px;
-            color: #555;
-            max-width: 500px;
-            margin: 0 auto;
-            line-height: 1.7;
-            font-weight: 400;
-        }
-
-        .nav-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 30px;
-            width: 100%;
-            max-width: 1200px;
-            justify-items: stretch;
-        }
-
-        .nav-card {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 24px;
-            padding: 40px 30px;
-            text-align: center;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
-            cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            backdrop-filter: blur(8px);
-        }
-
-        .nav-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
-        }
-
-        .nav-card.chat:hover {
-            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-        }
-
-        .nav-card.knowledge:hover {
-            background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
-        }
-
-        .nav-card.token:hover {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        }
-
-        .nav-card.monitor:hover {
-            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-        }
-
-        .nav-card:hover .card-icon {
-            transform: scale(1.1);
-        }
-
-        .nav-card:hover .card-title,
-        .nav-card:hover .card-description {
             color: white;
+            font-size: 18px;
+            flex-shrink: 0;
         }
 
-        .card-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-            transition: transform 0.3s ease;
-        }
+        .logo-text { line-height: 1.2; }
+        .logo-name { font-size: 14px; font-weight: 700; color: #222; letter-spacing: 0.3px; }
+        .logo-sub { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        .card-title {
-            font-size: 24px;
+        .nav-section { padding: 10px 0 4px; }
+
+        .nav-section-title {
+            font-size: 11px;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 12px;
-            transition: color 0.3s ease;
+            color: #aab;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            padding: 4px 20px 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
-        .card-description {
-            font-size: 16px;
-            color: #666;
-            line-height: 1.5;
-            transition: color 0.3s ease;
-        }
-
-        /* 响应式设计 */
-        @media (max-width: 768px) {
-            .home-container {
-                padding: 16px;
-            }
-
-            .home-title {
-                font-size: 36px;
-            }
-
-            .nav-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .nav-card {
-                padding: 30px 20px;
-            }
-
-            .recommendation-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .home-title {
-                font-size: 28px;
-            }
-
-            .home-subtitle {
-                font-size: 16px;
-            }
-
-            .card-icon {
-                font-size: 48px;
-            }
-
-            .card-title {
-                font-size: 20px;
-            }
-        }
-
-        /* 推荐内容样式 */
-        .recommendation-section {
-            margin-top: 60px;
-            width: 100%;
-            max-width: 1400px;
-            margin-left: auto;
-            margin-right: auto;
-            padding: 0 24px;
-            display: none;
-            /* 默认隐藏，加载后显示 */
-            animation: fadeIn 0.5s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .section-title {
-            font-size: 24px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 24px;
-            text-align: left;
-            /* Align left to match flow */
+        .nav-item {
             display: flex;
             align-items: center;
             gap: 10px;
-            padding-left: 10px;
-        }
-
-        .recommendation-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-        }
-
-        .rec-card {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 20px;
-            padding: 24px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-            transition: all 0.3s ease;
+            padding: 9px 20px;
+            font-size: 14px;
+            color: #555;
             cursor: pointer;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            backdrop-filter: blur(8px);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            height: 100%;
-            min-height: 160px;
+            border-radius: 0;
+            transition: all 0.15s ease;
+            text-decoration: none;
             position: relative;
-            overflow: hidden;
         }
 
-        .rec-card::before {
+        .nav-item:hover { background: #f5f5f8; color: #333; }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(79,70,229,0.08) 0%, rgba(79,70,229,0.03) 100%);
+            color: #4f46e5;
+            font-weight: 500;
+        }
+
+        .nav-item.active::before {
             content: '';
             position: absolute;
-            top: 0;
             left: 0;
-            width: 4px;
-            height: 100%;
-            background: linear-gradient(to bottom, #4f46e5, #7c3aed);
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            top: 4px;
+            bottom: 4px;
+            width: 3px;
+            background: #4f46e5;
+            border-radius: 0 2px 2px 0;
         }
 
-        .rec-card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
-            background: white;
-        }
+        .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
 
-        .rec-card:hover::before {
-            opacity: 1;
-        }
-
-        .rec-card-title {
-            font-size: 17px;
-            font-weight: 600;
-            color: #222;
-            margin-bottom: 12px;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            line-height: 1.6;
-        }
-
-        .rec-card-meta {
-            font-size: 12px;
-            color: #666;
+        /* ===== MAIN ===== */
+        .main {
+            flex: 1;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: auto;
-            padding-top: 12px;
-            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
         }
 
-        .rec-card-author {
+        /* Top bar */
+        .topbar {
+            height: 52px;
+            background: #fff;
+            border-bottom: 1px solid #e8eaed;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            flex-shrink: 0;
+        }
+
+        .topbar-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #222;
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+        }
+
+        .topbar-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .topbar-divider { width: 1px; height: 20px; background: #e8eaed; }
+
+        .version-badge {
+            font-size: 12px;
+            color: #888;
+            background: #f4f5f7;
+            padding: 3px 10px;
+            border-radius: 12px;
+            border: 1px solid #e8eaed;
+        }
+
+        /* Content area */
+        .content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+        }
+
+        /* Page header */
+        .page-header { margin-bottom: 24px; }
+        .page-title { font-size: 26px; font-weight: 700; color: #222; margin-bottom: 6px; }
+        .page-desc { font-size: 14px; color: #888; }
+
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px 22px;
+            border: 1px solid #e8eaed;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+            transition: box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+
+        .stat-label { font-size: 13px; color: #888; margin-bottom: 8px; }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #222;
+        }
+
+        .stat-sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+
+        .stat-value.green { color: #16a34a; }
+        .stat-value.blue { color: #2563eb; }
+        .stat-value.orange { color: #d97706; }
+
+        /* Quick access cards */
+        .section-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .section-heading {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+
+        .feature-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 24px;
+            border: 1px solid #e8eaed;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .feature-card:hover {
+            border-color: #4f46e5;
+            box-shadow: 0 4px 20px rgba(79,70,229,0.12);
+            transform: translateY(-2px);
+        }
+
+        .feature-card-top {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .feature-icon {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .feature-icon.purple { background: rgba(79,70,229,0.1); }
+        .feature-icon.orange { background: rgba(249,115,22,0.1); }
+        .feature-icon.green { background: rgba(16,185,129,0.1); }
+        .feature-icon.blue { background: rgba(59,130,246,0.1); }
+
+        .feature-title { font-size: 16px; font-weight: 600; color: #222; }
+        .feature-desc { font-size: 13px; color: #888; line-height: 1.6; }
+
+        .feature-arrow {
+            margin-top: auto;
+            font-size: 13px;
+            color: #4f46e5;
+            font-weight: 500;
             display: flex;
             align-items: center;
             gap: 4px;
         }
 
-        /* @media (max-width: 768px) {
-            .recommendation-grid {
-                grid-template-columns: 1fr;
-                max-width: 400px;
-                margin: 0 auto;
-            }
+        /* Recommendations */
+        .rec-section { margin-bottom: 28px; }
 
-            .section-title {
-                text-align: center;
-                justify-content: center;
-                padding-left: 0;
-            }
+        .rec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 14px;
         }
 
-        @media (min-width: 769px) and (max-width: 1024px) {
-            .recommendation-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        } */
+        .rec-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 18px;
+            border: 1px solid #e8eaed;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .rec-card:hover { border-color: #4f46e5; box-shadow: 0 2px 12px rgba(79,70,229,0.1); }
+
+        .rec-title {
+            font-size: 14px;
+            font-weight: 500;
+            color: #222;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .rec-meta {
+            font-size: 12px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .topbar { padding: 0 16px; }
+            .content { padding: 16px; }
+        }
     </style>
 </head>
 
 <body>
-    <div class="home-container">
-        <div class="content-wrapper">
-            <div class="left-column">
-                <div class="home-header">
-                    <h1 class="home-title">Proteus AI</h1>
-                    <p class="home-subtitle">智能助手与知识库系统，为您提供全方位的AI服务体验</p>
-                </div>
-
-                <div class="nav-grid">
-                    <!-- Chat 导航卡片 -->
-                    <div class="nav-card chat" onclick="navigateToChat()">
-                        <div class="card-icon">💬</div>
-                        <h2 class="card-title">智能对话</h2>
-                        <p class="card-description">
-                            与AI助手进行自然对话，获取智能回答、创作内容、分析问题，支持多种工作模式和工具调用。
-                        </p>
-                    </div>
-
-                    <!-- 知识库导航卡片 -->
-                    <div class="nav-card knowledge" onclick="navigateToKnowledgeBase()">
-                        <div class="card-icon">📚</div>
-                        <h2 class="card-title">知识库</h2>
-                        <p class="card-description">
-                            浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等各类知识资源。
-                        </p>
-                    </div>
-
-                    <!-- Token 管理导航卡片 -->
-                    <div class="nav-card token" onclick="navigateToTokenManagement()">
-                        <div class="card-icon">🔐</div>
-                        <h2 class="card-title">Token 管理</h2>
-                        <p class="card-description">
-                            管理您的 Bearer Token，用于 API 认证和程序化访问，支持生成、查看和撤销 Token。
-                        </p>
-                    </div>
-
-                    <!-- Agent 监控导航卡片 -->
-                    <div class="nav-card monitor" onclick="navigateToMonitor()">
-                        <div class="card-icon">📊</div>
-                        <h2 class="card-title">Agent 监控</h2>
-                        <p class="card-description">
-                            实时监控正在运行的 Agent 状态，查看运行时间、Token 消耗和迭代进度等信息。
-                        </p>
-                    </div>
-                </div>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <div class="logo-icon">🔮</div>
+            <div class="logo-text">
+                <div class="logo-name">PROTEUS AI</div>
+                <div class="logo-sub">智能体控制台</div>
             </div>
         </div>
 
-        <!-- 知识库推荐区域 (Moved outside left-column) -->
-        <div class="recommendation-section" id="rec-section">
-            <h3 class="section-title">
-                <span>✨</span> 知识库推荐
-            </h3>
-            <div class="recommendation-grid" id="rec-grid">
-                <!-- 推荐卡片将通过 JS 动态插入 -->
+        <div class="nav-section">
+            <div class="nav-section-title">菜单</div>
+            <a class="nav-item" href="/chat/index">
+                <span class="nav-icon">💬</span> 聊天
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">控制</div>
+            <a class="nav-item active" href="/">
+                <span class="nav-icon">📊</span> 概览
+            </a>
+            <a class="nav-item" href="/monitor">
+                <span class="nav-icon">🤖</span> Agent 监控
+            </a>
+            <a class="nav-item" href="/knowledge/index">
+                <span class="nav-icon">📚</span> 知识库
+            </a>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-section-title">管理</div>
+            <a class="nav-item" href="/static/token_management.html">
+                <span class="nav-icon">🔐</span> Token 管理
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- Topbar -->
+        <div class="topbar">
+            <span class="topbar-title">概览</span>
+            <div class="topbar-right">
+                <div class="topbar-status">
+                    <div class="status-dot"></div>
+                    <span style="color:#16a34a;font-weight:500;">健康状态 正常</span>
+                </div>
+                <div class="topbar-divider"></div>
+                <span class="version-badge">Proteus AI</span>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div class="content">
+            <div class="page-header">
+                <div class="page-title">概览</div>
+                <div class="page-desc">系统状态、入口点和快速操作。</div>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid" id="statsGrid">
+                <div class="stat-card">
+                    <div class="stat-label">运行中 Agent</div>
+                    <div class="stat-value green" id="runningAgents">-</div>
+                    <div class="stat-sub">实时数据</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">今日 Agent 总数</div>
+                    <div class="stat-value" id="totalAgents">-</div>
+                    <div class="stat-sub">已记录</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">活跃会话</div>
+                    <div class="stat-value blue" id="activeConvs">-</div>
+                    <div class="stat-sub">含运行中 Agent</div>
+                </div>
+            </div>
+
+            <!-- Quick access -->
+            <div class="section-title-row">
+                <span class="section-heading">✨ 快捷入口</span>
+            </div>
+            <div class="cards-grid">
+                <a class="feature-card" href="/chat/index">
+                    <div class="feature-card-top">
+                        <div class="feature-icon purple">💬</div>
+                        <div>
+                            <div class="feature-title">智能对话</div>
+                        </div>
+                    </div>
+                    <div class="feature-desc">与 AI 助手自然对话，支持工具调用、多种工作模式和文件分析。</div>
+                    <div class="feature-arrow">进入对话 →</div>
+                </a>
+
+                <a class="feature-card" href="/knowledge/index">
+                    <div class="feature-card-top">
+                        <div class="feature-icon orange">📚</div>
+                        <div>
+                            <div class="feature-title">知识库</div>
+                        </div>
+                    </div>
+                    <div class="feature-desc">浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等资源。</div>
+                    <div class="feature-arrow">进入知识库 →</div>
+                </a>
+
+                <a class="feature-card" href="/static/token_management.html">
+                    <div class="feature-card-top">
+                        <div class="feature-icon green">🔐</div>
+                        <div>
+                            <div class="feature-title">Token 管理</div>
+                        </div>
+                    </div>
+                    <div class="feature-desc">管理 Bearer Token，用于 API 认证和程序化访问，支持生成和撤销。</div>
+                    <div class="feature-arrow">管理 Token →</div>
+                </a>
+
+                <a class="feature-card" href="/monitor">
+                    <div class="feature-card-top">
+                        <div class="feature-icon blue">🤖</div>
+                        <div>
+                            <div class="feature-title">Agent 监控</div>
+                        </div>
+                    </div>
+                    <div class="feature-desc">实时监控 Agent 状态，按会话分组展示运行时间、Token 消耗和迭代进度。</div>
+                    <div class="feature-arrow">查看监控 →</div>
+                </a>
+            </div>
+
+            <!-- Recommendations -->
+            <div class="rec-section" id="rec-section" style="display:none;">
+                <div class="section-title-row">
+                    <span class="section-heading">📖 知识库推荐</span>
+                </div>
+                <div class="rec-grid" id="rec-grid"></div>
             </div>
         </div>
     </div>
 
     <script>
-        function navigateToChat() {
-            window.location.href = '/chat/index';
-        }
-
-        function navigateToKnowledgeBase() {
-            window.location.href = '/knowledge/index';
-        }
-
-        function navigateToTokenManagement() {
-            window.location.href = '/static/token_management.html';
-        }
-
-        function navigateToMonitor() {
-            window.location.href = '/monitor';
-        }
-
-        // 添加键盘快捷键支持
-        document.addEventListener('keydown', function (event) {
-            if (event.key === '1' || event.key === 'c') {
-                navigateToChat();
-            } else if (event.key === '2' || event.key === 'k') {
-                navigateToKnowledgeBase();
-            } else if (event.key === '3' || event.key === 't') {
-                navigateToTokenManagement();
-            } else if (event.key === '4' || event.key === 'm') {
-                navigateToMonitor();
-            }
-        });
-
-        // 添加触摸设备优化
-        document.querySelectorAll('.nav-card').forEach(card => {
-            card.addEventListener('touchstart', function () {
-                this.style.transform = 'translateY(-5px)';
-            });
-
-            card.addEventListener('touchend', function () {
-                this.style.transform = '';
-            });
-        });
-
-        // 加载推荐内容和每日一思
-        document.addEventListener('DOMContentLoaded', () => {
-            loadRecommendations();
-            // generateDailyStory();
-        });
-
-        async function generateDailyStory() {
-            const storyContent = document.getElementById('story-content');
-
+        // Load runtime stats
+        async function loadStats() {
             try {
-                // 1. 创建会话
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: "请写一篇富有哲学的短篇小说，字数在300字左右，标题自拟。请直接输出小说内容，不要包含其他寒暄。",
-                        modul: "chat",
-                        conversation_id: "1766537112985-4i3w4vby2"
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success && data.chat_id) {
-                    // 2. 连接 WebSocket 流
-                    const eventSource = new WSEventSource(`${getWsBaseUrl()}/ws/stream/${data.chat_id}`);
-                    let fullText = '';
-
-                    eventSource.addEventListener('answer', (event) => {
-                        try {
-                            const eventData = JSON.parse(event.data);
-                            if (eventData.success && eventData.data) {
-                                fullText += eventData.data;
-                                // 使用 marked 渲染 Markdown
-                                if (typeof marked !== 'undefined') {
-                                    storyContent.innerHTML = marked.parse(fullText);
-                                } else {
-                                    storyContent.innerText = fullText;
-                                }
-                            }
-                        } catch (e) {
-                            console.error('解析 answer 事件失败', e);
+                const res = await fetch('/agents/by_conversation');
+                const data = await res.json();
+                if (data.success && Array.isArray(data.data)) {
+                    const groups = data.data;
+                    let totalAgents = 0, runningAgents = 0, activeConvs = 0;
+                    for (const g of groups) {
+                        totalAgents += g.agents.length;
+                        if (g.has_running) {
+                            runningAgents += g.agents.filter(a => a.status === 'running').length;
+                            activeConvs++;
                         }
-                    });
-
-                    eventSource.addEventListener('agent_complete', (event) => {
-                        eventSource.close();
-                    });
-
-                    eventSource.onerror = (err) => {
-                        console.error('SSE 连接错误', err);
-                        eventSource.close();
-                        if (!fullText) {
-                            storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">生成中断，请刷新重试。</div>';
-                        }
-                    };
-                } else {
-                    storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">无法启动生成任务。</div>';
+                    }
+                    document.getElementById('runningAgents').textContent = runningAgents;
+                    document.getElementById('totalAgents').textContent = totalAgents;
+                    document.getElementById('activeConvs').textContent = activeConvs;
                 }
             } catch (e) {
-                console.error('生成每日一思失败:', e);
-                storyContent.innerHTML = '<div class="error-text" style="color: #e74c3c;">生成失败，请检查网络连接。</div>';
+                console.error('加载 Agent 统计失败:', e);
             }
         }
 
@@ -576,57 +504,47 @@
             try {
                 const response = await fetch('/knowledge_base/list');
                 const data = await response.json();
-
                 if (data.success && data.knowledge_base_items && data.knowledge_base_items.length > 0) {
                     const items = data.knowledge_base_items;
-                    // 随机选择最多3个条目
-                    const selected = [];
-                    const indices = new Set();
-                    const count = Math.min(3, items.length);
-
-                    // 如果条目少于等于3个，直接全部显示
-                    if (items.length <= 3) {
-                        selected.push(...items);
-                    } else {
-                        while (selected.length < count) {
-                            const idx = Math.floor(Math.random() * items.length);
-                            if (!indices.has(idx)) {
-                                indices.add(idx);
-                                selected.push(items[idx]);
-                            }
-                        }
-                    }
-
+                    const selected = items.length <= 4 ? items : getRandomItems(items, 4);
                     const grid = document.getElementById('rec-grid');
                     grid.innerHTML = selected.map(item => `
                         <div class="rec-card" onclick="window.location.href='/knowledge/index?id=${item.id}'">
-                            <div class="rec-card-title">${escapeHtml(item.title || '无标题')}</div>
-                            <div class="rec-card-meta">
-                                <span class="rec-card-author">👤 ${escapeHtml(item.author || '匿名')}</span>
+                            <div class="rec-title">${escapeHtml(item.title || '无标题')}</div>
+                            <div class="rec-meta">
+                                <span>👤 ${escapeHtml(item.author || '匿名')}</span>
                                 <span>${formatDate(item.updated_at || item.timestamp)}</span>
                             </div>
                         </div>
                     `).join('');
-
                     document.getElementById('rec-section').style.display = 'block';
                 }
-            } catch (error) {
-                console.error('加载推荐内容失败:', error);
+            } catch (e) {
+                console.error('加载推荐内容失败:', e);
             }
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        function getRandomItems(arr, n) {
+            const shuffled = arr.slice().sort(() => Math.random() - 0.5);
+            return shuffled.slice(0, n);
         }
 
-        function formatDate(timestamp) {
-            if (!timestamp) return '';
-            const date = new Date(timestamp);
-            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        function escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
         }
+
+        function formatDate(ts) {
+            if (!ts) return '';
+            const d = new Date(ts);
+            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadRecommendations();
+        });
     </script>
 </body>
-
 </html>
