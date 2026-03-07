@@ -5,24 +5,30 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.proteus.ai.ProteusAIApplication
-import com.proteus.ai.api.model.AgentInfo
+import com.proteus.ai.api.model.AgentConversationGroup
+import com.proteus.ai.api.model.withoutAgent
+import com.proteus.ai.notifications.TaskCompletionNotifier
+import com.proteus.ai.notifications.detectConversationCompletionNotices
 import com.proteus.ai.repository.AgentRepository
 import com.proteus.ai.storage.TokenManager
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import timber.log.Timber
 
 class AgentMonitorViewModel(
     private val tokenManager: TokenManager,
-    private val repository: AgentRepository
+    private val repository: AgentRepository,
+    private val taskCompletionNotifier: TaskCompletionNotifier
 ) : ViewModel() {
 
     private val _token = MutableStateFlow<String?>(null)
 
-    private val _agents = MutableStateFlow<List<AgentInfo>>(emptyList())
-    val agents: StateFlow<List<AgentInfo>> = _agents.asStateFlow()
+    private val _conversationGroups = MutableStateFlow<List<AgentConversationGroup>>(emptyList())
+    val conversationGroups: StateFlow<List<AgentConversationGroup>> = _conversationGroups.asStateFlow()
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -36,12 +42,21 @@ class AgentMonitorViewModel(
     private val _totalMessage = MutableStateFlow("")
     val totalMessage: StateFlow<String> = _totalMessage.asStateFlow()
 
+    private val loadMutex = Mutex()
+    private var latestFullConversationSnapshot: List<AgentConversationGroup> = emptyList()
+    private var hasLoadedFullConversationSnapshot = false
+
     init {
         viewModelScope.launch {
             tokenManager.tokenFlow().collect { token ->
+                latestFullConversationSnapshot = emptyList()
+                hasLoadedFullConversationSnapshot = false
                 _token.value = token
                 if (token != null) {
                     loadAgents()
+                } else {
+                    _conversationGroups.value = emptyList()
+                    _totalMessage.value = ""
                 }
             }
         }
@@ -50,10 +65,31 @@ class AgentMonitorViewModel(
     fun loadAgents() {
         val token = _token.value ?: return
         viewModelScope.launch {
+            if (!loadMutex.tryLock()) return@launch
             _loading.value = true
             try {
-                val response = repository.getAgentsList(token, status = _statusFilter.value)
-                _agents.value = response.data
+                val fullResponseDeferred = async {
+                    repository.getAgentsByConversation(token, status = null)
+                }
+                val filteredResponseDeferred = if (_statusFilter.value == null) {
+                    null
+                } else {
+                    async { repository.getAgentsByConversation(token, status = _statusFilter.value) }
+                }
+
+                val fullResponse = fullResponseDeferred.await()
+                val response = filteredResponseDeferred?.await() ?: fullResponse
+
+                if (hasLoadedFullConversationSnapshot) {
+                    detectConversationCompletionNotices(
+                        previous = latestFullConversationSnapshot,
+                        current = fullResponse.data
+                    ).forEach(taskCompletionNotifier::notifyConversationCompleted)
+                }
+
+                latestFullConversationSnapshot = fullResponse.data
+                hasLoadedFullConversationSnapshot = true
+                _conversationGroups.value = response.data
                 _totalMessage.value = response.message
                 _uiState.value = UiState.Success
             } catch (e: Exception) {
@@ -61,6 +97,7 @@ class AgentMonitorViewModel(
                 _uiState.value = UiState.Error("加载 Agent 列表失败: ${e.message}")
             } finally {
                 _loading.value = false
+                loadMutex.unlock()
             }
         }
     }
@@ -93,7 +130,12 @@ class AgentMonitorViewModel(
             try {
                 val response = repository.deleteAgent(token, agentId)
                 if (response.success) {
-                    _agents.value = _agents.value.filter { it.agentId != agentId }
+                    _conversationGroups.value = _conversationGroups.value.mapNotNull { group ->
+                        group.withoutAgent(agentId)
+                    }
+                    latestFullConversationSnapshot = latestFullConversationSnapshot.mapNotNull { group ->
+                        group.withoutAgent(agentId)
+                    }
                     _uiState.value = UiState.Success
                 } else {
                     _uiState.value = UiState.Error(response.message.ifBlank { "删除 Agent 失败" })
@@ -111,7 +153,11 @@ class AgentMonitorViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as ProteusAIApplication
-                AgentMonitorViewModel(app.tokenManager, AgentRepository())
+                AgentMonitorViewModel(
+                    app.tokenManager,
+                    AgentRepository(),
+                    app.taskCompletionNotifier
+                )
             }
         }
     }

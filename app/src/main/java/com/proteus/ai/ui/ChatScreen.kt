@@ -103,15 +103,9 @@ fun ChatScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
-                actions = {
-                    IconButton(onClick = { viewModel.showTokenDialog() }) {
-                        Icon(Icons.Default.Settings, contentDescription = null)
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                )
             )
         }
     ) { paddingValues ->

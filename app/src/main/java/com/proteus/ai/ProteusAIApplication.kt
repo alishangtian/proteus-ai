@@ -6,12 +6,17 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import com.proteus.ai.api.ApiClient
+import com.proteus.ai.notifications.TaskCompletionNotifier
 import com.proteus.ai.storage.TokenManager
 import timber.log.Timber
 
 class ProteusAIApplication : Application() {
     lateinit var tokenManager: TokenManager
         private set
+
+    val taskCompletionNotifier: TaskCompletionNotifier by lazy {
+        TaskCompletionNotifier(this)
+    }
 
     companion object {
         const val CHANNEL_ID = "chat_notifications"

@@ -2,10 +2,13 @@ package com.proteus.ai.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,8 +31,9 @@ fun KnowledgeBaseScreen(
     val loading by viewModel.loading.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val showAddDialog by viewModel.showAddDialog.collectAsState()
-    val showDetailDialog by viewModel.showDetailDialog.collectAsState()
     val selectedItem by viewModel.selectedItem.collectAsState()
+    val inDetailMode = selectedItem != null
+    var showDetailDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showAddDialog) {
         AddKnowledgeBaseDialog(
@@ -38,47 +42,75 @@ fun KnowledgeBaseScreen(
         )
     }
 
-    if (showDetailDialog && selectedItem != null) {
-        KnowledgeBaseDetailDialog(
-            item = selectedItem!!,
-            onDismiss = { viewModel.hideDetailDialog() },
-            onDelete = { viewModel.deleteItem(selectedItem!!.id) }
-        )
+    if (showDetailDeleteConfirm) {
+        selectedItem?.let { detailItem ->
+            AlertDialog(
+                onDismissRequest = { showDetailDeleteConfirm = false },
+                title = { Text("删除条目") },
+                text = { Text("确定要删除「${detailItem.title.takeIf { it.isNotBlank() } ?: "此条目"}」吗？") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDetailDeleteConfirm = false
+                            viewModel.deleteItem(detailItem.id)
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("删除") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDetailDeleteConfirm = false }) { Text("取消") }
+                }
+            )
+        }
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             CenterAlignedTopAppBar(
+                navigationIcon = {
+                    if (inDetailMode) {
+                        IconButton(onClick = { viewModel.hideDetailDialog() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回列表")
+                        }
+                    }
+                },
                 title = {
                     Text(
-                        "知识库",
+                        selectedItem?.title?.ifBlank { "条目详情" } ?: "知识库",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.loadList() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                    if (inDetailMode && selectedItem != null) {
+                        IconButton(onClick = { showDetailDeleteConfirm = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "删除条目")
+                        }
+                    } else {
+                        TextButton(onClick = { viewModel.showAddDialog() }) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("添加条目")
+                        }
+                        IconButton(onClick = { viewModel.loadList() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.showAddDialog() },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "添加知识库条目")
-            }
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            if (loading && items.isEmpty()) {
+            if (loading && items.isEmpty() && !inDetailMode) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (inDetailMode && selectedItem != null) {
+                KnowledgeBaseDetailContent(
+                    item = selectedItem,
+                    modifier = Modifier.fillMaxSize()
+                )
             } else if (items.isEmpty()) {
                 EmptyKnowledgeBaseHint(Modifier.align(Alignment.Center)) {
                     viewModel.showAddDialog()
@@ -203,7 +235,7 @@ private fun EmptyKnowledgeBaseHint(modifier: Modifier, onAddClick: () -> Unit) {
         Text("知识库为空", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            "点击右下角 + 添加知识条目",
+            "点击添加条目创建知识内容",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
         )
@@ -248,64 +280,40 @@ private fun AddKnowledgeBaseDialog(onDismiss: () -> Unit, onConfirm: (String) ->
 }
 
 @Composable
-private fun KnowledgeBaseDetailDialog(
+private fun KnowledgeBaseDetailContent(
     item: KnowledgeBaseItem,
-    onDismiss: () -> Unit,
-    onDelete: () -> Unit
+    modifier: Modifier = Modifier
 ) {
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除条目") },
-            text = { Text("确定要删除此条目吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = { showDeleteConfirm = false; onDelete(); onDismiss() },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("删除") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("取消") }
-            }
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    item.title.ifBlank { "条目详情" },
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "删除",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        },
-        text = {
-            Column {
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     "更新时间：${item.updatedAt.take(19).replace("T", " ")}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                if (item.author.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "作者：${item.author}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     item.content ?: "（内容为空）",
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("关闭") }
         }
-    )
+    }
 }

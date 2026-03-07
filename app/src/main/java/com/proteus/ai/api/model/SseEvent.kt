@@ -43,6 +43,16 @@ sealed class SseEvent {
         override val timestamp: Double? = null
     ) : SseEvent()
 
+    data class Complete(
+        val message: String?,
+        override val timestamp: Double? = null
+    ) : SseEvent()
+
+    data class Error(
+        val message: String?,
+        override val timestamp: Double? = null
+    ) : SseEvent()
+
     data class CompressStart(
         @SerializedName("original_length") val originalLength: Int?,
         override val timestamp: Double? = null
@@ -76,6 +86,7 @@ data class RawSseData(
     val status: String? = null,
     val result: String? = null,
     val content: String? = null,
+    val error: String? = null,
     @SerializedName("is_done") val isDone: Boolean = false,
     @SerializedName("original_length") val originalLength: Int? = null,
     @SerializedName("compressed_length") val compressedLength: Int? = null,

@@ -16,6 +16,13 @@ class AgentRepository {
         ApiClient.apiService.getAgentsStatus("Bearer $token", page, pageSize, status)
     }
 
+    suspend fun getAgentsByConversation(
+        token: String,
+        status: String? = null
+    ): AgentConversationGroupsResponse = withContext(Dispatchers.IO) {
+        ApiClient.apiService.getAgentsByConversation("Bearer $token", status)
+    }
+
     suspend fun stopAgent(token: String, agentId: String): AgentActionResponse = withContext(Dispatchers.IO) {
         ApiClient.apiService.stopAgent("Bearer $token", agentId)
     }

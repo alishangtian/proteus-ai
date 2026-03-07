@@ -8,6 +8,8 @@ import com.proteus.ai.ProteusAIApplication
 import com.proteus.ai.api.ApiClient
 import com.proteus.ai.api.model.Conversation
 import com.proteus.ai.api.model.SseEvent
+import com.proteus.ai.notifications.DEFAULT_TASK_ERROR_MESSAGE
+import com.proteus.ai.notifications.TaskCompletionNotifier
 import com.proteus.ai.repository.ChatRepository
 import com.proteus.ai.repository.ConversationRepository
 import com.proteus.ai.storage.TokenManager
@@ -31,7 +33,8 @@ sealed class UiState {
 class MainViewModel(
     private val tokenManager: TokenManager,
     private val conversationRepository: ConversationRepository,
-    private val chatRepository: ChatRepository
+    private val chatRepository: ChatRepository,
+    private val taskCompletionNotifier: TaskCompletionNotifier
 ) : ViewModel() {
 
     private val _tokenState = MutableStateFlow<String?>(null)
@@ -87,8 +90,6 @@ class MainViewModel(
                     } catch (e: Exception) {
                         Timber.e(e)
                     }
-                } else {
-                    _showTokenDialog.value = true
                 }
             }
         }
@@ -217,6 +218,7 @@ class MainViewModel(
         _messages.value = _messages.value + userMsg + aiPlaceholder
 
         streamingJob = viewModelScope.launch {
+            var terminalNotificationSent = false
             try {
                 val response = chatRepository.submitTask(token, content, chatId, conversationId, 
                     _deepResearch.value, _webSearch.value, _skillCall.value)
@@ -232,6 +234,22 @@ class MainViewModel(
                 try {
                     chatRepository.streamChatBlocking(token, chatId).collect { event ->
                         updateMessageWithEvent(aiMsgId, event)
+                        if (!terminalNotificationSent) {
+                            when (event) {
+                                is SseEvent.Complete -> {
+                                    taskCompletionNotifier.notifyTaskCompleted(chatId, content)
+                                    terminalNotificationSent = true
+                                }
+                                is SseEvent.Error -> {
+                                    taskCompletionNotifier.notifyTaskFailed(
+                                        chatId,
+                                        event.message ?: DEFAULT_TASK_ERROR_MESSAGE
+                                    )
+                                    terminalNotificationSent = true
+                                }
+                                else -> Unit
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Streaming content failed")
@@ -351,7 +369,12 @@ class MainViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as ProteusAIApplication
-                MainViewModel(app.tokenManager, ConversationRepository(), ChatRepository())
+                MainViewModel(
+                    app.tokenManager,
+                    ConversationRepository(),
+                    ChatRepository(),
+                    app.taskCompletionNotifier
+                )
             }
         }
     }
