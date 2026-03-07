@@ -36,6 +36,7 @@
             gap: 10px;
             padding: 18px 20px 16px;
             border-bottom: 1px solid #f0f0f0;
+            flex-shrink: 0;
         }
 
         .logo-icon {
@@ -81,6 +82,10 @@
             transition: all 0.15s ease;
             text-decoration: none;
             position: relative;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
         }
 
         .nav-item:hover { background: #f5f5f8; color: #333; }
@@ -103,6 +108,51 @@
         }
 
         .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+
+        /* Sidebar spacer pushes user info to bottom */
+        .sidebar-spacer { flex: 1; }
+
+        /* ===== USER INFO ===== */
+        .sidebar-user {
+            padding: 14px 16px;
+            border-top: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .user-info { min-width: 0; flex: 1; }
+        .user-name { font-size: 13px; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-role { font-size: 11px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+            text-decoration: none;
+        }
+        .logout-btn:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
 
         /* ===== MAIN ===== */
         .main {
@@ -166,11 +216,33 @@
             border: 1px solid #e8eaed;
         }
 
-        /* Content area */
-        .content {
+        /* ===== PANELS ===== */
+        .panel {
+            display: none;
             flex: 1;
+            overflow: hidden;
+            flex-direction: column;
+        }
+
+        .panel.active { display: flex; }
+
+        /* Overview panel scrolls internally */
+        .panel-overview {
             overflow-y: auto;
             padding: 28px;
+        }
+
+        /* Iframe panel — iframe fills entire panel */
+        .panel-iframe {
+            position: relative;
+        }
+
+        .content-frame {
+            width: 100%;
+            flex: 1;
+            border: none;
+            display: block;
+            min-height: 0;
         }
 
         /* Page header */
@@ -244,6 +316,11 @@
             gap: 10px;
             text-decoration: none;
             color: inherit;
+            border: none;
+            background: #fff;
+            border: 1px solid #e8eaed;
+            text-align: left;
+            width: 100%;
         }
 
         .feature-card:hover {
@@ -330,7 +407,7 @@
         @media (max-width: 768px) {
             .sidebar { display: none; }
             .topbar { padding: 0 16px; }
-            .content { padding: 16px; }
+            .panel-overview { padding: 16px; }
         }
     </style>
 </head>
@@ -348,29 +425,41 @@
 
         <div class="nav-section">
             <div class="nav-section-title">菜单</div>
-            <a class="nav-item" href="/chat/index">
+            <button class="nav-item" data-page="chat" data-url="/chat/index">
                 <span class="nav-icon">💬</span> 聊天
-            </a>
+            </button>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">控制</div>
-            <a class="nav-item active" href="/">
+            <button class="nav-item active" data-page="overview">
                 <span class="nav-icon">📊</span> 概览
-            </a>
-            <a class="nav-item" href="/monitor">
+            </button>
+            <button class="nav-item" data-page="monitor" data-url="/monitor">
                 <span class="nav-icon">🤖</span> Agent 监控
-            </a>
-            <a class="nav-item" href="/knowledge/index">
+            </button>
+            <button class="nav-item" data-page="knowledge" data-url="/knowledge/index">
                 <span class="nav-icon">📚</span> 知识库
-            </a>
+            </button>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">管理</div>
-            <a class="nav-item" href="/static/token_management.html">
+            <button class="nav-item" data-page="token" data-url="/static/token_management.html">
                 <span class="nav-icon">🔐</span> Token 管理
-            </a>
+            </button>
+        </div>
+
+        <div class="sidebar-spacer"></div>
+
+        <!-- Current user info -->
+        <div class="sidebar-user">
+            <div class="user-avatar" id="userAvatar">U</div>
+            <div class="user-info">
+                <div class="user-name" id="userDisplayName">{{ nick_name or user_name or '用户' }}</div>
+                <div class="user-role" id="userUsername">@{{ user_name or '' }}</div>
+            </div>
+            <button class="logout-btn" title="退出登录" onclick="handleLogout()">⏻</button>
         </div>
     </aside>
 
@@ -378,7 +467,7 @@
     <div class="main">
         <!-- Topbar -->
         <div class="topbar">
-            <span class="topbar-title">概览</span>
+            <span class="topbar-title" id="topbarTitle">概览</span>
             <div class="topbar-right">
                 <div class="topbar-status">
                     <div class="status-dot"></div>
@@ -389,8 +478,8 @@
             </div>
         </div>
 
-        <!-- Content -->
-        <div class="content">
+        <!-- Overview Panel -->
+        <div class="panel panel-overview active" id="panel-overview">
             <div class="page-header">
                 <div class="page-title">概览</div>
                 <div class="page-desc">系统状态、入口点和快速操作。</div>
@@ -420,7 +509,7 @@
                 <span class="section-heading">✨ 快捷入口</span>
             </div>
             <div class="cards-grid">
-                <a class="feature-card" href="/chat/index">
+                <button class="feature-card" data-page="chat" data-url="/chat/index">
                     <div class="feature-card-top">
                         <div class="feature-icon purple">💬</div>
                         <div>
@@ -429,9 +518,9 @@
                     </div>
                     <div class="feature-desc">与 AI 助手自然对话，支持工具调用、多种工作模式和文件分析。</div>
                     <div class="feature-arrow">进入对话 →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/knowledge/index">
+                <button class="feature-card" data-page="knowledge" data-url="/knowledge/index">
                     <div class="feature-card-top">
                         <div class="feature-icon orange">📚</div>
                         <div>
@@ -440,9 +529,9 @@
                     </div>
                     <div class="feature-desc">浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等资源。</div>
                     <div class="feature-arrow">进入知识库 →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/static/token_management.html">
+                <button class="feature-card" data-page="token" data-url="/static/token_management.html">
                     <div class="feature-card-top">
                         <div class="feature-icon green">🔐</div>
                         <div>
@@ -451,9 +540,9 @@
                     </div>
                     <div class="feature-desc">管理 Bearer Token，用于 API 认证和程序化访问，支持生成和撤销。</div>
                     <div class="feature-arrow">管理 Token →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/monitor">
+                <button class="feature-card" data-page="monitor" data-url="/monitor">
                     <div class="feature-card-top">
                         <div class="feature-icon blue">🤖</div>
                         <div>
@@ -462,7 +551,7 @@
                     </div>
                     <div class="feature-desc">实时监控 Agent 状态，按会话分组展示运行时间、Token 消耗和迭代进度。</div>
                     <div class="feature-arrow">查看监控 →</div>
-                </a>
+                </button>
             </div>
 
             <!-- Recommendations -->
@@ -473,10 +562,104 @@
                 <div class="rec-grid" id="rec-grid"></div>
             </div>
         </div>
+
+        <!-- Iframe Panel (for embedded pages) -->
+        <div class="panel panel-iframe" id="panel-iframe">
+            <iframe class="content-frame" id="contentFrame" src="" title="内容面板"></iframe>
+        </div>
     </div>
 
     <script>
-        // Load runtime stats
+        // ===== Logout =====
+        async function handleLogout() {
+            try {
+                await fetch('/logout', { credentials: 'include' });
+            } catch (e) {
+                // ignore network errors
+            }
+            window.location.href = '/login';
+        }
+
+        // ===== Page navigation config =====
+        const PAGE_CONFIG = {
+            overview:  { title: '概览',        panel: 'overview' },
+            chat:      { title: '聊天',        panel: 'iframe' },
+            monitor:   { title: 'Agent 监控',  panel: 'iframe' },
+            knowledge: { title: '知识库',      panel: 'iframe' },
+            token:     { title: 'Token 管理',  panel: 'iframe' },
+        };
+
+        let currentPage = 'overview';
+
+        function navigate(page, url) {
+            const cfg = PAGE_CONFIG[page];
+            if (!cfg) return;
+
+            // Update active nav item
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.page === page);
+            });
+
+            // Update topbar title
+            document.getElementById('topbarTitle').textContent = cfg.title;
+
+            // Switch panel
+            document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+            const targetPanel = document.getElementById('panel-' + cfg.panel);
+            if (targetPanel) targetPanel.classList.add('active');
+
+            // Load URL in iframe if needed
+            if (cfg.panel === 'iframe' && url) {
+                const frame = document.getElementById('contentFrame');
+                if (frame.dataset.loadedUrl !== url) {
+                    frame.src = url;
+                    frame.dataset.loadedUrl = url;
+                }
+            }
+
+            // Reload stats when returning to overview
+            if (page === 'overview') {
+                loadStats();
+                loadRecommendations();
+            }
+
+            currentPage = page;
+            // Update URL hash for browser history
+            history.pushState({ page, url }, cfg.title, '#' + page);
+        }
+
+        // Attach click handlers to all nav items and feature cards
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('[data-page]');
+            if (!btn) return;
+            e.preventDefault();
+            const page = btn.dataset.page;
+            const url = btn.dataset.url || null;
+            navigate(page, url);
+        });
+
+        // Handle browser back/forward
+        window.addEventListener('popstate', function(e) {
+            if (e.state && e.state.page) {
+                if (currentPage !== e.state.page) {
+                    navigate(e.state.page, e.state.url);
+                }
+            } else {
+                navigate('overview', null);
+            }
+        });
+
+        // ===== User avatar initial =====
+        (function initUserAvatar() {
+            const nameEl = document.getElementById('userDisplayName');
+            const avatarEl = document.getElementById('userAvatar');
+            if (nameEl && avatarEl) {
+                const name = nameEl.textContent.trim();
+                avatarEl.textContent = name ? name.charAt(0).toUpperCase() : 'U';
+            }
+        })();
+
+        // ===== Stats and recommendations =====
         async function loadStats() {
             try {
                 const res = await fetch('/agents/by_conversation');
@@ -509,7 +692,7 @@
                     const selected = items.length <= 4 ? items : getRandomItems(items, 4);
                     const grid = document.getElementById('rec-grid');
                     grid.innerHTML = selected.map(item => `
-                        <div class="rec-card" onclick="window.location.href='/knowledge/index?id=${item.id}'">
+                        <div class="rec-card" data-page="knowledge" data-url="/knowledge/index?id=${encodeURIComponent(item.id)}">
                             <div class="rec-title">${escapeHtml(item.title || '无标题')}</div>
                             <div class="rec-meta">
                                 <span>👤 ${escapeHtml(item.author || '匿名')}</span>
@@ -541,9 +724,20 @@
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
+        // ===== Initialise =====
         document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            loadRecommendations();
+            // Restore page from hash if present — validate against known pages first
+            const rawHash = location.hash.replace('#', '');
+            const safeHash = Object.prototype.hasOwnProperty.call(PAGE_CONFIG, rawHash) ? rawHash : '';
+            const navEl = safeHash && document.querySelector(`.nav-item[data-page="${safeHash}"]`);
+            if (navEl && safeHash !== 'overview') {
+                navigate(safeHash, navEl.dataset.url || null);
+            } else {
+                loadStats();
+                loadRecommendations();
+                // Set initial history state
+                history.replaceState({ page: 'overview', url: null }, '概览', '#overview');
+            }
         });
     </script>
 </body>
