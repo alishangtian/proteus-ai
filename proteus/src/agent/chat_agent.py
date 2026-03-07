@@ -509,6 +509,7 @@ class ChatAgent:
             final_response_text = ""
             # 标记是否需要保存最终助手消息（仅当最后一轮无工具调用时才保存）
             _save_final_message = False
+            unnormal_compress_count = 3
             while tool_iteration < max_iterations:
                 if self._check_and_handle_stopped(chat_id):
                     break
@@ -529,7 +530,9 @@ class ChatAgent:
                         messages = await self._compress_messages(
                             chat_id, messages, must_compress=True
                         )
-                        compressed_tokens = count_tokens(messages, model=self.model_name)
+                        compressed_tokens = count_tokens(
+                            messages, model=self.model_name
+                        )
                         logger.info(
                             f"[{chat_id}] 预压缩完成: {pre_tokens} -> {compressed_tokens} tokens"
                         )
@@ -571,7 +574,7 @@ class ChatAgent:
                         break
 
                     # 检查是否需要压缩（调用报错触发）
-                    if need_compress:
+                    if need_compress and unnormal_compress_count < 3:
                         logger.info(f"[{chat_id}] 触发消息压缩（token_limit_exceeded）")
                         original_tokens = count_tokens(messages, model=self.model_name)
                         # 发送压缩开始事件
@@ -598,6 +601,14 @@ class ChatAgent:
                         logger.info(
                             f"[{chat_id}] 压缩完成: {original_tokens} -> {compressed_tokens} tokens"
                         )
+
+                        if compressed_tokens >= original_tokens:
+                            unnormal_compress_count += 1
+                            logger.warning(
+                                f"[{chat_id}] 非正常压缩（压缩后 tokens 未减少），当前累计次数: {unnormal_compress_count}"
+                            )
+                            await asyncio.sleep(5)
+                            continue
 
                         # 发送压缩完成事件
                         if self.stream_manager:
@@ -1414,7 +1425,9 @@ class ChatAgent:
             )
             return summary.strip()
         except Exception as e:
-            logger.warning(f"[{chat_id}] LLM 压缩失败，保留原始文本前 {COMPRESS_LLM_TARGET} 字符: {e}")
+            logger.warning(
+                f"[{chat_id}] LLM 压缩失败，保留原始文本前 {COMPRESS_LLM_TARGET} 字符: {e}"
+            )
             return text[:COMPRESS_LLM_TARGET]
 
     @langfuse_wrapper.dynamic_observe()
@@ -1443,9 +1456,7 @@ class ChatAgent:
             )
             return messages
 
-        logger.info(
-            f"[{chat_id}] 开始压缩工具消息: {current_tokens}/{context_window}"
-        )
+        logger.info(f"[{chat_id}] 开始压缩工具消息: {current_tokens}/{context_window}")
 
         # 只压缩工具相关消息，其他消息保持不变
         compressed = []
@@ -1469,25 +1480,39 @@ class ChatAgent:
                     if "function" in new_tc:
                         fn = dict(new_tc["function"])
                         args_str = fn.get("arguments", "")
-                        if isinstance(args_str, str) and len(args_str) > COMPRESS_LLM_LOWER:
+                        if (
+                            isinstance(args_str, str)
+                            and len(args_str) > COMPRESS_LLM_LOWER
+                        ):
                             try:
                                 args_dict = json.loads(args_str)
                                 if isinstance(args_dict, dict):
                                     new_args = {}
                                     for k, v in args_dict.items():
-                                        if isinstance(v, str) and len(v) > COMPRESS_LLM_LOWER:
-                                            new_args[k] = await self._compress_text(chat_id, v)
+                                        if (
+                                            isinstance(v, str)
+                                            and len(v) > COMPRESS_LLM_LOWER
+                                        ):
+                                            new_args[k] = await self._compress_text(
+                                                chat_id, v
+                                            )
                                         else:
                                             new_args[k] = v
-                                    fn["arguments"] = json.dumps(new_args, ensure_ascii=False)
+                                    fn["arguments"] = json.dumps(
+                                        new_args, ensure_ascii=False
+                                    )
                                 else:
                                     # 非 dict 结构：整体压缩
-                                    fn["arguments"] = await self._compress_text(chat_id, args_str)
+                                    fn["arguments"] = await self._compress_text(
+                                        chat_id, args_str
+                                    )
                             except (json.JSONDecodeError, Exception) as e:
                                 logger.warning(
                                     f"[{chat_id}] 解析 tool_calls arguments 失败，整体压缩: {e}"
                                 )
-                                fn["arguments"] = await self._compress_text(chat_id, args_str)
+                                fn["arguments"] = await self._compress_text(
+                                    chat_id, args_str
+                                )
                         new_tc["function"] = fn
                     new_tool_calls.append(new_tc)
                 new_msg = msg.copy()

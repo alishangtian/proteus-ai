@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.proteus.ai.R
 import com.proteus.ai.api.model.Conversation
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
@@ -336,24 +337,39 @@ fun ConversationItem(
 private fun formatConversationTime(updatedAt: String?): String {
     if (updatedAt.isNullOrBlank()) return ""
     return try {
-        // 后端返回的通常是 ISO 格式，例如 "2023-10-27T10:30:00Z" 或 "2023-10-27 10:30:00"
-        val inputFormat = if (updatedAt.contains("T")) {
-            val format = if (updatedAt.contains(".")) {
-                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.getDefault())
+        // 后端可能返回带或不带时区信息的字符串
+        // 如果后端直接返回 "2023-10-27 10:30:00" 且没给时区，Java 默认会按本地时间解析，这会导致错误
+        
+        val date: Date? = if (updatedAt.contains("T")) {
+            // ISO 格式处理
+            val pattern = if (updatedAt.contains(".")) "yyyy-MM-dd'T'HH:mm:ss.SSS" else "yyyy-MM-dd'T'HH:mm:ss"
+            val parser = SimpleDateFormat(pattern, Locale.getDefault())
+            
+            if (updatedAt.endsWith("Z")) {
+                parser.timeZone = TimeZone.getTimeZone("UTC")
+                parser.parse(updatedAt)
+            } else if (updatedAt.contains("+") || (updatedAt.lastIndexOf("-") > 10)) {
+                // 自带偏移量如 +08:00，SimpleDateFormat 默认能处理一部分，或者这里保持默认
+                parser.parse(updatedAt)
             } else {
-                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+                // 有 T 但没标志，通常默认为 UTC
+                parser.timeZone = TimeZone.getTimeZone("UTC")
+                parser.parse(updatedAt)
             }
-            format.apply { timeZone = TimeZone.getTimeZone("UTC") }
         } else {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            // 非 ISO 格式 (yyyy-MM-dd HH:mm:ss)
+            // 绝大多数后端接口如果不带 T，通常是存储的 UTC 时间字符串
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.parse(updatedAt)
         }
         
-        val date = inputFormat.parse(updatedAt)
-        // 优化为日期 + 时:分，例如 "10-27 10:30"
         val outputFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        // 关键：确保输出格式化器使用系统的当前时区
+        outputFormat.timeZone = TimeZone.getDefault()
+        
         date?.let { outputFormat.format(it) } ?: updatedAt.take(16).replace("T", " ")
     } catch (e: Exception) {
-        // 如果解析失败，回退到字符串截取
         if (updatedAt.length >= 16) {
             updatedAt.substring(5, 16).replace("T", " ")
         } else {
