@@ -8,6 +8,7 @@ import com.proteus.ai.ProteusAIApplication
 import com.proteus.ai.api.ApiClient
 import com.proteus.ai.api.model.Conversation
 import com.proteus.ai.api.model.SseEvent
+import com.proteus.ai.notifications.DEFAULT_TASK_ERROR_MESSAGE
 import com.proteus.ai.notifications.TaskCompletionNotifier
 import com.proteus.ai.repository.ChatRepository
 import com.proteus.ai.repository.ConversationRepository
@@ -242,7 +243,7 @@ class MainViewModel(
                                 is SseEvent.Error -> {
                                     taskCompletionNotifier.notifyTaskFailed(
                                         chatId,
-                                        event.message ?: "Proteus AI 任务执行过程中发生错误"
+                                        event.message ?: DEFAULT_TASK_ERROR_MESSAGE
                                     )
                                     terminalNotificationSent = true
                                 }

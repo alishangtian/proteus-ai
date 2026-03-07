@@ -14,7 +14,12 @@ import com.proteus.ai.ProteusAIApplication
 import com.proteus.ai.R
 import com.proteus.ai.api.model.AgentConversationGroup
 
+// Keep collapsed notifications compact while still surfacing the task summary.
 private const val MAX_NOTIFICATION_TEXT_LENGTH = 80
+const val DEFAULT_TASK_ERROR_MESSAGE = "Proteus AI 任务执行过程中发生错误"
+
+private fun AgentConversationGroup.notificationDisplayName(): String =
+    title.ifBlank { conversationId }.ifBlank { "未关联会话" }
 
 data class ConversationCompletionNotice(
     val conversationId: String,
@@ -38,7 +43,7 @@ internal fun detectConversationCompletionNotices(
         val hasComplete = normalizedStatuses.any { it == "complete" }
         if (!hasError && !hasComplete) return@mapNotNull null
 
-        val displayName = group.title.ifBlank { group.conversationId.ifBlank { "未关联会话" } }
+        val displayName = group.notificationDisplayName()
         val title = if (hasError) "会话任务已结束" else "会话任务已完成"
         val message = if (hasError) {
             "$displayName 中的运行任务已结束，包含错误状态"
@@ -64,11 +69,11 @@ class TaskCompletionNotifier(
         )
     }
 
-    fun notifyTaskFailed(chatId: String, errorMessage: String) {
+    fun notifyTaskFailed(chatId: String, errorMessage: String = DEFAULT_TASK_ERROR_MESSAGE) {
         notify(
             notificationId = "task-error:$chatId".hashCode(),
             title = "任务执行出错",
-            message = errorMessage.ifBlank { "Proteus AI 任务执行过程中发生错误" }
+            message = errorMessage.ifBlank { DEFAULT_TASK_ERROR_MESSAGE }
         )
     }
 

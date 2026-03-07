@@ -184,9 +184,9 @@ class ChatRepository {
     }
 
     private fun extractTextPayload(data: String): String {
-        return runCatching { gson.fromJson(data, String::class.java) }
-            .getOrNull()
-            ?.takeIf { it.isNotBlank() }
-            ?: data.trim('"')
+        // "complete"/"error" may arrive either as a JSON string literal or as plain text.
+        val parsedString = runCatching { gson.fromJson(data, String::class.java) }.getOrNull()
+        if (parsedString != null) return parsedString
+        return data.trim('"')
     }
 }

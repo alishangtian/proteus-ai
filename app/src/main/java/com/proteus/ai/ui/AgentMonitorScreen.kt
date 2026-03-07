@@ -76,7 +76,7 @@ import kotlin.math.roundToInt
 
 // Backend uses this sentinel when an agent is not associated with any conversation.
 private const val NO_CONVERSATION_ID = "__no_conversation__"
-private const val AGENT_MONITOR_REFRESH_INTERVAL_MS = 15_000L
+private const val AGENT_MONITOR_REFRESH_INTERVAL_MILLIS = 15000L
 
 private fun String.isRealConversationId(): Boolean = isNotBlank() && this != NO_CONVERSATION_ID
 
@@ -98,7 +98,7 @@ fun AgentMonitorScreen(
 
     LaunchedEffect(statusFilter) {
         while (true) {
-            delay(AGENT_MONITOR_REFRESH_INTERVAL_MS)
+            delay(AGENT_MONITOR_REFRESH_INTERVAL_MILLIS)
             viewModel.loadAgents()
         }
     }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import timber.log.Timber
 
 class AgentMonitorViewModel(
@@ -41,6 +42,7 @@ class AgentMonitorViewModel(
     private val _totalMessage = MutableStateFlow("")
     val totalMessage: StateFlow<String> = _totalMessage.asStateFlow()
 
+    private val loadMutex = Mutex()
     private var latestFullConversationSnapshot: List<AgentConversationGroup> = emptyList()
     private var hasLoadedFullConversationSnapshot = false
 
@@ -62,8 +64,8 @@ class AgentMonitorViewModel(
 
     fun loadAgents() {
         val token = _token.value ?: return
-        if (_loading.value) return
         viewModelScope.launch {
+            if (!loadMutex.tryLock()) return@launch
             _loading.value = true
             try {
                 val fullResponseDeferred = async {
@@ -95,6 +97,7 @@ class AgentMonitorViewModel(
                 _uiState.value = UiState.Error("加载 Agent 列表失败: ${e.message}")
             } finally {
                 _loading.value = false
+                loadMutex.unlock()
             }
         }
     }
