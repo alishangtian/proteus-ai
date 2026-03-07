@@ -38,7 +38,7 @@ fun AgentMonitorScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        "Agent 监控",
+                        "智能体监控",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 },
