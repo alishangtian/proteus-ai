@@ -52,6 +52,10 @@ AGENT_STATUS_COMPLETE = "complete"
 AGENT_STATUS_ERROR = "error"
 # 智能体状态在 Redis 中的默认过期时间（秒）
 AGENT_STATUS_TTL = int(os.getenv("AGENT_STATUS_TTL", 86400))
+# Agent 状态列表在 Redis 中的键名
+AGENT_STATUS_LIST_KEY = "agents:status:list"
+# Agent 状态列表的最大长度（保留最近的记录）
+AGENT_STATUS_LIST_MAX_LEN = int(os.getenv("AGENT_STATUS_LIST_MAX_LEN", 1000))
 
 # 消息压缩阈值（字符数）
 # 长度 <= COMPRESS_LLM_LOWER：不压缩
@@ -192,6 +196,9 @@ class ChatAgent:
                     del ChatAgent._agent_cache[self.chat_id]
             # 同时移除状态快照
             ChatAgent._remove_status_snapshot(self.agentid)
+        # 如果 agent 是 stopped/complete/error 状态，保留在 Redis 中供监控页面查看
+        # 如果需要删除，应通过专门的删除接口（否则无法在监控页面看到历史记录）
+        # 这里不主动删除 Redis 中的记录
 
     def stop(self) -> None:
         """停止 agent：设置停止标志并从缓存中移除自身，防止内存泄漏"""
@@ -267,8 +274,19 @@ class ChatAgent:
             "total_output_tokens": self.total_output_tokens,
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "conversation_id": self.conversation_id,
+            "updated_at": datetime.now().isoformat(),
         }
         ChatAgent._update_status_snapshot(self.agentid, status_info)
+        # 同时持久化到 Redis hash（使用 agent_id 作为 field）
+        try:
+            redis_conn = get_redis_connection()
+            # 使用 hash 存储，field 为 agent_id，value 为 json
+            member = json.dumps(status_info, ensure_ascii=False)
+            redis_conn.hset(AGENT_STATUS_LIST_KEY, self.agentid, member)
+            # 设置过期时间
+            redis_conn.expire(AGENT_STATUS_LIST_KEY, AGENT_STATUS_TTL)
+        except Exception as e:
+            logger.error(f"Agent {self.agentid} 持久化状态到 Redis 失败: {e}")
 
     async def _register_agent(self, chat_id: str) -> None:
         """注册当前agent到缓存"""

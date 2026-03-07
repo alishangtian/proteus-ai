@@ -198,6 +198,7 @@
             font-size: 14px;
             color: #444;
             border-bottom: 1px solid rgba(0,0,0,0.04);
+            vertical-align: middle;
         }
 
         .agent-table tbody tr:hover {
@@ -206,6 +207,83 @@
 
         .agent-table tbody tr:last-child td {
             border-bottom: none;
+        }
+
+        /* Action buttons */
+        .action-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            border: 1px solid;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: white;
+        }
+
+        .action-btn.stop {
+            color: #f59e0b;
+            border-color: #f59e0b;
+        }
+
+        .action-btn.stop:hover {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .action-btn.delete {
+            color: #ef4444;
+            border-color: #ef4444;
+        }
+
+        .action-btn.delete:hover {
+            background: #ef4444;
+            color: white;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 20px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+
+        .pagination-btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+            background: white;
+            color: #555;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: rgba(79, 70, 229, 0.05);
+            border-color: #4f46e5;
+            color: #4f46e5;
+        }
+
+        .pagination-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .pagination-info {
+            font-size: 14px;
+            color: #666;
         }
 
         /* Status badge */
@@ -428,20 +506,27 @@
                     <div class="empty-desc">当前没有正在运行的 Agent 实例，数据会自动刷新</div>
                 </div>
             </div>
+            <div class="pagination" id="pagination" style="display: none;">
+                <button class="pagination-btn" onclick="prevPage()">上一页</button>
+                <span class="pagination-info" id="pageInfo">第 1 页</span>
+                <button class="pagination-btn" onclick="nextPage()">下一页</button>
+            </div>
         </div>
     </div>
 
     <script>
         let refreshTimer = null;
         const REFRESH_INTERVAL = 5000;
+        let currentPage = 1;
+        const pageSize = 20;
 
         async function loadAgentStatus() {
             try {
-                const response = await fetch('/agents/status');
+                const response = await fetch(`/agents/status?page=${currentPage}&page_size=${pageSize}`);
                 const result = await response.json();
 
                 if (result.success && Array.isArray(result.data)) {
-                    renderAgents(result.data);
+                    renderAgents(result.data, result.message);
                 } else {
                     renderAgents([]);
                 }
@@ -450,7 +535,7 @@
             }
         }
 
-        function renderAgents(agents) {
+        function renderAgents(agents, message) {
             // Update summary
             const running = agents.filter(a => a.status === 'running');
             document.getElementById('totalCount').textContent = agents.length;
@@ -474,8 +559,14 @@
                         <div class="empty-title">暂无运行中的 Agent</div>
                         <div class="empty-desc">当前没有正在运行的 Agent 实例，数据会自动刷新</div>
                     </div>`;
+                // Hide pagination
+                document.getElementById('pagination').style.display = 'none';
                 return;
             }
+
+            // Show pagination
+            document.getElementById('pagination').style.display = 'flex';
+            document.getElementById('pageInfo').textContent = message || `第 ${currentPage} 页`;
 
             // Sort: running first, then by elapsed_time desc
             agents.sort((a, b) => {
@@ -498,6 +589,7 @@
                             <th>输入 Tokens</th>
                             <th>输出 Tokens</th>
                             <th>Agent ID</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>`;
@@ -506,6 +598,14 @@
                 const iterPct = agent.max_iterations > 0
                     ? Math.round((agent.current_iteration / agent.max_iterations) * 100)
                     : 0;
+
+                // Action buttons based on status
+                let actionBtn = '';
+                if (agent.status === 'running') {
+                    actionBtn = `<button class="action-btn stop" onclick="stopAgent('${agent.agent_id}')">⏸ 停止</button>`;
+                } else {
+                    actionBtn = `<button class="action-btn delete" onclick="deleteAgent('${agent.agent_id}')">🗑 删除</button>`;
+                }
 
                 html += `
                     <tr>
@@ -524,11 +624,70 @@
                         <td class="mono-text">${formatNumber(agent.total_input_tokens || 0)}</td>
                         <td class="mono-text">${formatNumber(agent.total_output_tokens || 0)}</td>
                         <td class="mono-text" title="${escapeAttr(agent.agent_id || '')}">${truncateId(agent.agent_id)}</td>
+                        <td>${actionBtn}</td>
                     </tr>`;
             }
 
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        async function stopAgent(agentId) {
+            if (!confirm(`确定要停止 Agent ${agentId.substring(0, 8)}... 吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/agents/${agentId}/stop`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Agent 已停止');
+                    loadAgentStatus();
+                } else {
+                    alert('停止失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('停止 Agent 失败:', error);
+                alert('停止失败，请稍后重试');
+            }
+        }
+
+        async function deleteAgent(agentId) {
+            if (!confirm(`确定要删除 Agent ${agentId.substring(0, 8)}... 的记录吗？`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/agents/${agentId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    alert('Agent 记录已删除');
+                    loadAgentStatus();
+                } else {
+                    alert('删除失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('删除 Agent 失败:', error);
+                alert('删除失败，请稍后重试');
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                loadAgentStatus();
+            }
+        }
+
+        function nextPage() {
+            currentPage++;
+            loadAgentStatus();
         }
 
         function formatElapsed(seconds) {
