@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.proteus.ai.ProteusAIApplication
-import com.proteus.ai.api.model.AgentInfo
+import com.proteus.ai.api.model.AgentConversationGroup
 import com.proteus.ai.repository.AgentRepository
 import com.proteus.ai.storage.TokenManager
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,8 +21,8 @@ class AgentMonitorViewModel(
 
     private val _token = MutableStateFlow<String?>(null)
 
-    private val _agents = MutableStateFlow<List<AgentInfo>>(emptyList())
-    val agents: StateFlow<List<AgentInfo>> = _agents.asStateFlow()
+    private val _conversationGroups = MutableStateFlow<List<AgentConversationGroup>>(emptyList())
+    val conversationGroups: StateFlow<List<AgentConversationGroup>> = _conversationGroups.asStateFlow()
 
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -52,8 +52,8 @@ class AgentMonitorViewModel(
         viewModelScope.launch {
             _loading.value = true
             try {
-                val response = repository.getAgentsList(token, status = _statusFilter.value)
-                _agents.value = response.data
+                val response = repository.getAgentsByConversation(token, status = _statusFilter.value)
+                _conversationGroups.value = response.data
                 _totalMessage.value = response.message
                 _uiState.value = UiState.Success
             } catch (e: Exception) {
@@ -93,7 +93,17 @@ class AgentMonitorViewModel(
             try {
                 val response = repository.deleteAgent(token, agentId)
                 if (response.success) {
-                    _agents.value = _agents.value.filter { it.agentId != agentId }
+                    _conversationGroups.value = _conversationGroups.value.mapNotNull { group ->
+                        val agents = group.agents.filter { it.agentId != agentId }
+                        if (agents.isEmpty()) {
+                            null
+                        } else {
+                            group.copy(
+                                agents = agents,
+                                hasRunning = agents.any { it.status == "running" }
+                            )
+                        }
+                    }
                     _uiState.value = UiState.Success
                 } else {
                     _uiState.value = UiState.Error(response.message.ifBlank { "删除 Agent 失败" })

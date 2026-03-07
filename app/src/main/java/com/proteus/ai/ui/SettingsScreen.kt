@@ -50,8 +50,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                )
             )
         }
     ) { paddingValues ->
@@ -61,7 +60,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Avatar section
             Column(

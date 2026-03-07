@@ -81,6 +81,12 @@ interface ApiService {
         @Query("status") status: String? = null
     ): AgentStatusListResponse
 
+    @GET("agents/by_conversation")
+    suspend fun getAgentsByConversation(
+        @Header("Authorization") authorization: String,
+        @Query("status") status: String? = null
+    ): AgentConversationGroupsResponse
+
     @POST("agents/{agent_id}/stop")
     suspend fun stopAgent(
         @Header("Authorization") authorization: String,
@@ -93,4 +99,3 @@ interface ApiService {
         @Path("agent_id") agentId: String
     ): AgentActionResponse
 }
-

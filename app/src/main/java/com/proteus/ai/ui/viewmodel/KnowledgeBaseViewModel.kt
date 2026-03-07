@@ -36,9 +36,6 @@ class KnowledgeBaseViewModel(
     private val _showAddDialog = MutableStateFlow(false)
     val showAddDialog: StateFlow<Boolean> = _showAddDialog.asStateFlow()
 
-    private val _showDetailDialog = MutableStateFlow(false)
-    val showDetailDialog: StateFlow<Boolean> = _showDetailDialog.asStateFlow()
-
     init {
         viewModelScope.launch {
             tokenManager.tokenFlow().collect { token ->
@@ -73,7 +70,6 @@ class KnowledgeBaseViewModel(
             try {
                 val item = repository.getItem(token, itemId)
                 _selectedItem.value = item
-                _showDetailDialog.value = true
                 _uiState.value = UiState.Success
             } catch (e: Exception) {
                 Timber.e(e, "Failed to load knowledge base item")
@@ -119,7 +115,6 @@ class KnowledgeBaseViewModel(
                     _items.value = _items.value.filter { it.id != itemId }
                     if (_selectedItem.value?.id == itemId) {
                         _selectedItem.value = null
-                        _showDetailDialog.value = false
                     }
                     _uiState.value = UiState.Success
                 } else {
@@ -136,7 +131,7 @@ class KnowledgeBaseViewModel(
 
     fun showAddDialog() { _showAddDialog.value = true }
     fun hideAddDialog() { _showAddDialog.value = false }
-    fun hideDetailDialog() { _showDetailDialog.value = false; _selectedItem.value = null }
+    fun hideDetailDialog() { _selectedItem.value = null }
     fun clearError() { _uiState.value = UiState.Success }
 
     companion object {

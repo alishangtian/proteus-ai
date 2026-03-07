@@ -87,8 +87,6 @@ class MainViewModel(
                     } catch (e: Exception) {
                         Timber.e(e)
                     }
-                } else {
-                    _showTokenDialog.value = true
                 }
             }
         }

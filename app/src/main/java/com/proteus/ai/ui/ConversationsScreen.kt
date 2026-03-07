@@ -108,13 +108,12 @@ fun ConversationsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.settings))
+                        Icon(Icons.Default.Person, contentDescription = stringResource(R.string.nav_profile))
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                )
             )
         }
     ) { paddingValues ->

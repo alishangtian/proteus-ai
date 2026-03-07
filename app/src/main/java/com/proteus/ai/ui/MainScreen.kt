@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.proteus.ai.R
-import com.proteus.ai.ui.components.TokenDialog
 import com.proteus.ai.ui.viewmodel.AgentMonitorViewModel
 import com.proteus.ai.ui.viewmodel.KnowledgeBaseViewModel
 import com.proteus.ai.ui.viewmodel.MainViewModel
@@ -33,8 +32,6 @@ enum class BottomNavTab { CONVERSATIONS, AGENTS, KNOWLEDGE_BASE, PROFILE }
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory)) {
     val tokenState by viewModel.tokenState.collectAsState()
-    val serverUrlState by viewModel.serverUrlState.collectAsState()
-    val showTokenDialog by viewModel.showTokenDialog.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val isStreaming by viewModel.isStreaming.collectAsState()
@@ -69,15 +66,6 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
             chatConversationTitle = "新对话"
             inChatMode = true
         }
-    }
-
-    if (showTokenDialog) {
-        TokenDialog(
-            onDismissRequest = { viewModel.hideTokenDialog() },
-            onConfirm = { token, serverUrl -> viewModel.saveSettings(token, serverUrl) },
-            initialToken = tokenState ?: "",
-            initialServerUrl = serverUrlState ?: ""
-        )
     }
 
     if (showUploadSheet) {
@@ -133,7 +121,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                             if (tokenState != null) {
                                 showUploadSheet = true
                             } else {
-                                viewModel.showTokenDialog()
+                                selectedTab = BottomNavTab.PROFILE
                             }
                         }
                     )
@@ -147,7 +135,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                     when (selectedTab) {
                         BottomNavTab.CONVERSATIONS -> {
                             if (tokenState == null) {
-                                TokenRequiredScreen { viewModel.showTokenDialog() }
+                                TokenRequiredScreen { selectedTab = BottomNavTab.PROFILE }
                             } else {
                                 ConversationsScreen(
                                     conversations = conversations,
@@ -166,7 +154,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
                                         inChatMode = true
                                     },
                                     onRefresh = { viewModel.loadConversations(tokenState ?: "") },
-                                    onSettingsClick = { viewModel.showTokenDialog() }
+                                    onSettingsClick = { selectedTab = BottomNavTab.PROFILE }
                                 )
                             }
                         }
