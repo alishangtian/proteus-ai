@@ -225,7 +225,9 @@ class ChatAgent:
                 ]
                 if not ChatAgent._agent_cache[cache_key]:
                     del ChatAgent._agent_cache[cache_key]
-            # 在同一个锁的保护下移除状态快照（直接操作，不调用会再次获取锁的方法）
+            # 在同一个锁的保护下直接操作 _status_snapshot_cache（不调用 _remove_status_snapshot）。
+            # 避免死锁：_remove_status_snapshot 也会获取 _cache_lock，
+            # 而 threading.Lock() 不可重入，同一线程二次获取会永久阻塞。
             ChatAgent._status_snapshot_cache.pop(self.agentid, None)
         # 如果 agent 是 stopped/complete/error 状态，保留在 Redis 中供监控页面查看
         # 如果需要删除，应通过专门的删除接口（否则无法在监控页面看到历史记录）

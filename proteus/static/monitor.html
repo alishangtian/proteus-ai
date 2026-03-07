@@ -376,98 +376,199 @@
                 return;
             }
 
-            let html = '<div class="conversations-list">';
+            // Build DOM nodes to avoid innerHTML with user-controlled strings in event handlers
+            const listEl = document.createElement('div');
+            listEl.className = 'conversations-list';
+
             for (const g of convGroups) {
                 const convId = g.conversation_id || '__no_conversation__';
                 const isCollapsed = collapsedState[convId] === true;
-                const toggleClass = isCollapsed ? 'collapsed' : '';
                 const agentCount = g.agents.length;
                 const badgeClass = g.has_running ? 'has-running' : 'idle';
                 const badgeText = g.has_running ? '● 运行中' : '○ 空闲';
                 const displayId = convId === '__no_conversation__' ? '（无会话）' : truncateId(convId, 20);
 
-                html += `
-                <div class="conv-group">
-                    <div class="conv-header" onclick="toggleConv('${escapeAttr(convId)}')">
-                        <div class="conv-title">
-                            <span class="conv-id" title="${escapeAttr(convId)}">${escapeHtml(displayId)}</span>
-                            <span class="conv-badge ${badgeClass}">${badgeText}</span>
-                            <span class="conv-meta">${agentCount} 个 Agent</span>
-                        </div>
-                        <span class="conv-toggle ${toggleClass}" id="toggle-${escapeAttr(convId)}">▾</span>
-                    </div>
-                    <div class="conv-agents" id="agents-${escapeAttr(convId)}" style="${isCollapsed ? 'display:none' : ''}">
-                        <table class="agent-table">
-                            <thead>
-                                <tr>
-                                    <th>状态</th>
-                                    <th>模型</th>
-                                    <th>任务内容</th>
-                                    <th>运行时间</th>
-                                    <th>迭代进度</th>
-                                    <th>输入 Tokens</th>
-                                    <th>输出 Tokens</th>
-                                    <th>Agent ID</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>`;
+                const groupEl = document.createElement('div');
+                groupEl.className = 'conv-group';
+
+                // Header
+                const headerEl = document.createElement('div');
+                headerEl.className = 'conv-header';
+                headerEl.dataset.convId = convId;
+
+                const titleEl = document.createElement('div');
+                titleEl.className = 'conv-title';
+
+                const idSpan = document.createElement('span');
+                idSpan.className = 'conv-id';
+                idSpan.title = convId;
+                idSpan.textContent = displayId;
+
+                const badgeSpan = document.createElement('span');
+                badgeSpan.className = 'conv-badge ' + badgeClass;
+                badgeSpan.textContent = badgeText;
+
+                const metaSpan = document.createElement('span');
+                metaSpan.className = 'conv-meta';
+                metaSpan.textContent = agentCount + ' 个 Agent';
+
+                titleEl.appendChild(idSpan);
+                titleEl.appendChild(badgeSpan);
+                titleEl.appendChild(metaSpan);
+
+                const toggleSpan = document.createElement('span');
+                toggleSpan.className = 'conv-toggle' + (isCollapsed ? ' collapsed' : '');
+                toggleSpan.dataset.convToggle = convId;
+                toggleSpan.textContent = '▾';
+
+                headerEl.appendChild(titleEl);
+                headerEl.appendChild(toggleSpan);
+
+                // Agents area
+                const agentsEl = document.createElement('div');
+                agentsEl.className = 'conv-agents';
+                agentsEl.dataset.convAgents = convId;
+                if (isCollapsed) agentsEl.style.display = 'none';
+
+                const table = document.createElement('table');
+                table.className = 'agent-table';
+                table.innerHTML = `
+                    <thead><tr>
+                        <th>状态</th><th>模型</th><th>任务内容</th><th>运行时间</th>
+                        <th>迭代进度</th><th>输入 Tokens</th><th>输出 Tokens</th>
+                        <th>Agent ID</th><th>操作</th>
+                    </tr></thead>`;
+                const tbody = document.createElement('tbody');
 
                 for (const agent of g.agents) {
                     const iterPct = agent.max_iterations > 0
                         ? Math.round((agent.current_iteration / agent.max_iterations) * 100)
                         : 0;
-                    let actionBtn = '';
-                    if (agent.status === 'running') {
-                        actionBtn = `<button class="action-btn stop" onclick="stopAgent('${escapeAttr(agent.agent_id)}', event)">⏸ 停止</button>`;
-                    } else {
-                        actionBtn = `<button class="action-btn delete" onclick="deleteAgent('${escapeAttr(agent.agent_id)}', event)">🗑 删除</button>`;
-                    }
+                    const tr = document.createElement('tr');
 
-                    html += `
-                            <tr>
-                                <td><span class="status-badge ${statusClass(agent.status)}">${escapeHtml(agent.status)}</span></td>
-                                <td>${escapeHtml(agent.model_name || '-')}</td>
-                                <td><span class="task-text" title="${escapeAttr(agent.task_text || '')}">${escapeHtml(agent.task_text || '-')}</span></td>
-                                <td>${formatElapsed(agent.elapsed_time)}</td>
-                                <td>
-                                    <div class="iter-wrap">
-                                        <div class="iter-bar"><div class="iter-fill" style="width:${iterPct}%"></div></div>
-                                        <span class="iter-text">${agent.current_iteration}/${agent.max_iterations}</span>
-                                    </div>
-                                </td>
-                                <td class="mono-text">${formatNumber(agent.total_input_tokens || 0)}</td>
-                                <td class="mono-text">${formatNumber(agent.total_output_tokens || 0)}</td>
-                                <td class="mono-text" title="${escapeAttr(agent.agent_id || '')}">${truncateId(agent.agent_id, 12)}</td>
-                                <td>${actionBtn}</td>
-                            </tr>`;
+                    // Status
+                    const statusTd = document.createElement('td');
+                    const statusBadge = document.createElement('span');
+                    statusBadge.className = 'status-badge ' + statusClass(agent.status);
+                    statusBadge.textContent = agent.status;
+                    statusTd.appendChild(statusBadge);
+
+                    // Model
+                    const modelTd = document.createElement('td');
+                    modelTd.textContent = agent.model_name || '-';
+
+                    // Task
+                    const taskTd = document.createElement('td');
+                    const taskSpan = document.createElement('span');
+                    taskSpan.className = 'task-text';
+                    taskSpan.title = agent.task_text || '';
+                    taskSpan.textContent = agent.task_text || '-';
+                    taskTd.appendChild(taskSpan);
+
+                    // Elapsed
+                    const elapsedTd = document.createElement('td');
+                    elapsedTd.textContent = formatElapsed(agent.elapsed_time);
+
+                    // Iteration
+                    const iterTd = document.createElement('td');
+                    iterTd.innerHTML = `
+                        <div class="iter-wrap">
+                            <div class="iter-bar"><div class="iter-fill" style="width:${iterPct}%"></div></div>
+                            <span class="iter-text">${agent.current_iteration}/${agent.max_iterations}</span>
+                        </div>`;
+
+                    // Tokens
+                    const inTd = document.createElement('td');
+                    inTd.className = 'mono-text';
+                    inTd.textContent = formatNumber(agent.total_input_tokens || 0);
+
+                    const outTd = document.createElement('td');
+                    outTd.className = 'mono-text';
+                    outTd.textContent = formatNumber(agent.total_output_tokens || 0);
+
+                    // Agent ID
+                    const idTd = document.createElement('td');
+                    idTd.className = 'mono-text';
+                    idTd.title = agent.agent_id || '';
+                    idTd.textContent = truncateId(agent.agent_id, 12);
+
+                    // Action
+                    const actionTd = document.createElement('td');
+                    const btn = document.createElement('button');
+                    if (agent.status === 'running') {
+                        btn.className = 'action-btn stop';
+                        btn.textContent = '⏸ 停止';
+                        btn.dataset.action = 'stop';
+                        btn.dataset.agentId = agent.agent_id || '';
+                    } else {
+                        btn.className = 'action-btn delete';
+                        btn.textContent = '🗑 删除';
+                        btn.dataset.action = 'delete';
+                        btn.dataset.agentId = agent.agent_id || '';
+                    }
+                    actionTd.appendChild(btn);
+
+                    tr.appendChild(statusTd);
+                    tr.appendChild(modelTd);
+                    tr.appendChild(taskTd);
+                    tr.appendChild(elapsedTd);
+                    tr.appendChild(iterTd);
+                    tr.appendChild(inTd);
+                    tr.appendChild(outTd);
+                    tr.appendChild(idTd);
+                    tr.appendChild(actionTd);
+                    tbody.appendChild(tr);
                 }
 
-                html += `
-                            </tbody>
-                        </table>
-                    </div>
-                </div>`;
+                table.appendChild(tbody);
+                agentsEl.appendChild(table);
+                groupEl.appendChild(headerEl);
+                groupEl.appendChild(agentsEl);
+                listEl.appendChild(groupEl);
             }
-            html += '</div>';
-            container.innerHTML = html;
+
+            container.innerHTML = '';
+            container.appendChild(listEl);
+
+            // Attach event handlers via delegation
+            listEl.addEventListener('click', handleConvListClick);
+        }
+
+        function handleConvListClick(e) {
+            // Conv header toggle
+            const header = e.target.closest('.conv-header');
+            if (header && !e.target.closest('.action-btn')) {
+                const convId = header.dataset.convId;
+                toggleConv(convId);
+                return;
+            }
+            // Action button
+            const btn = e.target.closest('.action-btn');
+            if (btn) {
+                e.stopPropagation();
+                const agentId = btn.dataset.agentId;
+                const action = btn.dataset.action;
+                if (action === 'stop') stopAgent(agentId);
+                else if (action === 'delete') deleteAgent(agentId);
+            }
         }
 
         function toggleConv(convId) {
-            const agentsEl = document.getElementById('agents-' + convId);
-            const toggleEl = document.getElementById('toggle-' + convId);
+            const listEl = document.querySelector('.conversations-list');
+            if (!listEl) return;
+            const agentsEl = listEl.querySelector(`[data-conv-agents="${CSS.escape(convId)}"]`);
+            const toggleEl = listEl.querySelector(`[data-conv-toggle="${CSS.escape(convId)}"]`);
             if (!agentsEl) return;
             const isHidden = agentsEl.style.display === 'none';
             agentsEl.style.display = isHidden ? '' : 'none';
-            toggleEl.classList.toggle('collapsed', !isHidden);
+            if (toggleEl) toggleEl.classList.toggle('collapsed', !isHidden);
             collapsedState[convId] = !isHidden;
         }
 
-        async function stopAgent(agentId, evt) {
-            evt && evt.stopPropagation();
+        async function stopAgent(agentId) {
             if (!confirm(`确定要停止 Agent ${agentId.substring(0, 8)}... 吗？`)) return;
             try {
-                const res = await fetch(`/agents/${agentId}/stop`, { method: 'POST' });
+                const res = await fetch(`/agents/${encodeURIComponent(agentId)}/stop`, { method: 'POST' });
                 const result = await res.json();
                 if (result.success) {
                     loadAgentStatus();
@@ -479,11 +580,10 @@
             }
         }
 
-        async function deleteAgent(agentId, evt) {
-            evt && evt.stopPropagation();
+        async function deleteAgent(agentId) {
             if (!confirm(`确定要删除 Agent ${agentId.substring(0, 8)}... 的记录吗？`)) return;
             try {
-                const res = await fetch(`/agents/${agentId}`, { method: 'DELETE' });
+                const res = await fetch(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
                 const result = await res.json();
                 if (result.success) {
                     loadAgentStatus();
@@ -518,12 +618,6 @@
             const d = document.createElement('div');
             d.textContent = text;
             return d.innerHTML;
-        }
-
-        function escapeAttr(text) {
-            if (!text) return '';
-            return text.replace(/&/g,'&amp;').replace(/"/g,'&quot;')
-                       .replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
 
         function statusClass(s) {

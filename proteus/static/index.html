@@ -242,6 +242,8 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            text-decoration: none;
+            color: inherit;
         }
 
         .feature-card:hover {
@@ -418,7 +420,7 @@
                 <span class="section-heading">✨ 快捷入口</span>
             </div>
             <div class="cards-grid">
-                <div class="feature-card" onclick="window.location.href='/chat/index'">
+                <a class="feature-card" href="/chat/index">
                     <div class="feature-card-top">
                         <div class="feature-icon purple">💬</div>
                         <div>
@@ -427,9 +429,9 @@
                     </div>
                     <div class="feature-desc">与 AI 助手自然对话，支持工具调用、多种工作模式和文件分析。</div>
                     <div class="feature-arrow">进入对话 →</div>
-                </div>
+                </a>
 
-                <div class="feature-card" onclick="window.location.href='/knowledge/index'">
+                <a class="feature-card" href="/knowledge/index">
                     <div class="feature-card-top">
                         <div class="feature-icon orange">📚</div>
                         <div>
@@ -438,9 +440,9 @@
                     </div>
                     <div class="feature-desc">浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等资源。</div>
                     <div class="feature-arrow">进入知识库 →</div>
-                </div>
+                </a>
 
-                <div class="feature-card" onclick="window.location.href='/static/token_management.html'">
+                <a class="feature-card" href="/static/token_management.html">
                     <div class="feature-card-top">
                         <div class="feature-icon green">🔐</div>
                         <div>
@@ -449,9 +451,9 @@
                     </div>
                     <div class="feature-desc">管理 Bearer Token，用于 API 认证和程序化访问，支持生成和撤销。</div>
                     <div class="feature-arrow">管理 Token →</div>
-                </div>
+                </a>
 
-                <div class="feature-card" onclick="window.location.href='/monitor'">
+                <a class="feature-card" href="/monitor">
                     <div class="feature-card-top">
                         <div class="feature-icon blue">🤖</div>
                         <div>
@@ -460,7 +462,7 @@
                     </div>
                     <div class="feature-desc">实时监控 Agent 状态，按会话分组展示运行时间、Token 消耗和迭代进度。</div>
                     <div class="feature-arrow">查看监控 →</div>
-                </div>
+                </a>
             </div>
 
             <!-- Recommendations -->
