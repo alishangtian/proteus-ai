@@ -480,6 +480,21 @@
             color: #bbb;
         }
 
+        /* Items containers: max 10 items visible, scroll the rest */
+        #convItems, #kbItems {
+            max-height: 360px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(79,70,229,0.3) transparent;
+        }
+        #convItems::-webkit-scrollbar, #kbItems::-webkit-scrollbar {
+            width: 4px;
+        }
+        #convItems::-webkit-scrollbar-thumb, #kbItems::-webkit-scrollbar-thumb {
+            background: rgba(79,70,229,0.3);
+            border-radius: 2px;
+        }
+
         /* Nav item with expand arrow */
         .nav-item-expandable {
             justify-content: space-between;

@@ -54,7 +54,7 @@
 
         body {
             font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #FFFFFF;
+            background-color: var(--bg-color-light, #f8f7ff);
             color: #333;
             line-height: 1.5;
         }
@@ -64,9 +64,9 @@
             display: flex;
             min-height: 100vh;
             width: 100vw;
-            /* 确保容器占满整个视口宽度 */
             margin: 0;
             padding: 0;
+            background: var(--bg-color-light, #f8f7ff);
         }
 
         /* 左侧导航栏 - 占20%宽度 */
@@ -149,27 +149,48 @@
             font-size: 14px;
         }
 
-        /* 右侧主内容区 - 占80%宽度 */
+        /* 主内容区 - 全宽 */
         .main-content {
             flex: 1;
             min-height: 100vh;
-            background-color: #FFFFFF;
-            padding: 40px;
+            background-color: transparent;
+            padding: 24px 40px 40px;
             overflow-y: auto;
             display: flex;
-            justify-content: center;
-            width: 80%;
-            /* 明确指定80%宽度 */
-            flex-grow: 1;
-            /* 确保主内容区填满剩余空间 */
+            flex-direction: column;
+            align-items: center;
         }
 
-        /* 知识库展示区域 - 占右侧区域的60% */
+        /* 知识库展示区域 */
         .knowledge-display-area {
-            width: 60%;
-            max-width: 1200px;
-            min-width: 800px;
+            width: 100%;
+            max-width: 900px;
         }
+
+        /* 顶部工具栏 */
+        .kb-toolbar {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+        }
+
+        .kb-add-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Noto Sans SC', sans-serif;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        .kb-add-btn:hover { background: #4338ca; }
 
         /* 知识库内容区域 */
         .tutorial-content {
@@ -923,59 +944,18 @@
 <body>
     <!-- 主容器 -->
     <div class="knowledge-base-container">
-        <!-- 左侧导航栏 -->
-        <div class="sidebar">
-            <div class="sidebar-content">
-                <!-- 搜索框和收回按钮容器 -->
-                <div class="sidebar-header"
-                    style="padding: 16px; border-bottom: 1px solid #E0E0E0; display: flex; flex-direction: column; gap: 12px;">
-                    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                        <div style="position: relative; flex: 1;">
-                            <input type="text" id="knowledge-search" placeholder="搜索知识库..."
-                                style="width: 100%; padding: 8px 12px 8px 36px; border: 1px solid #d9d9d9; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; outline: none; transition: border-color 0.2s ease;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                stroke-width="2"
-                                style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #999;">
-                                <circle cx="11" cy="11" r="8"></circle>
-                                <path d="m21 21-4.3-4.3"></path>
-                            </svg>
-                        </div>
-                        <!-- 收回按钮 -->
-                        <div class="collapse-toggle" id="sidebar-toggle" style="margin-left: 8px; flex-shrink: 0;">
-                            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img"
-                                width="16" height="16" viewBox="0 0 1024 1024" name="LeftBar" data-v-5586598d=""
-                                class="iconify">
-                                <path
-                                    d="M861.866667 162.133333c-17.066667-17.066667-42.666667-29.866667-68.266667-29.866666H226.133333c-25.6 0-51.2 8.533333-68.266666 29.866666S128 204.8 128 230.4v567.466667c0 25.6 8.533333 51.2 29.866667 68.266666 17.066667 17.066667 42.666667 29.866667 68.266666 29.866667h567.466667c25.6 0 51.2-8.533333 68.266667-29.866667 17.066667-17.066667 29.866667-42.666667 29.866666-68.266666V226.133333c0-25.6-8.533333-46.933333-29.866666-64zM366.933333 814.933333H226.133333c-4.266667 0-8.533333 0-12.8-4.266666-4.266667-4.266667-4.266667-8.533333-4.266666-12.8V226.133333c0-4.266667 0-8.533333 4.266666-12.8 4.266667-4.266667 8.533333-4.266667 12.8-4.266666h140.8v605.866666z m448-17.066666c0 4.266667 0 8.533333-4.266666 12.8-4.266667 4.266667-8.533333 4.266667-12.8 4.266666h-354.133334V209.066667h354.133334c4.266667 0 8.533333 0 12.8 4.266666 4.266667 4.266667 4.266667 8.533333 4.266666 12.8v571.733334z"
-                                    fill="currentColor"></path>
-                            </svg>
-                        </div>
-                    </div>
-                    <!-- 添加知识库按钮 -->
-                    <button id="add-knowledge-btn" style="width: 100%; padding: 8px 12px; background: #1677FF; color: white; border: none; border-radius: 6px; font-family: 'Noto Sans SC', sans-serif; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background 0.2s ease;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="12" y1="5" x2="12" y2="19"></line>
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                        添加知识库
-                    </button>
-                </div>
-                <div class="directory-tree">
-                </div>
-            </div>
-        </div>
-
         <!-- 右侧主内容区 -->
         <div class="main-content">
-            <!-- 主内容区展开按钮 -->
-            <button class="main-expand-toggle" id="main-expand-toggle">
-                <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" role="img" width="20"
-                    height="20" viewBox="0 0 1024 1024" name="LeftBar" data-v-5586598d="" class="iconify">
-                    <path
-                        d="M861.866667 162.133333c-17.066667-17.066667-42.666667-29.866667-68.266667-29.866666H226.133333c-25.6 0-51.2 8.533333-68.266666 29.866666S128 204.8 128 230.4v567.466667c0 25.6 8.533333 51.2 29.866667 68.266666 17.066667 17.066667 42.666667 29.866667 68.266666 29.866667h567.466667c25.6 0 51.2-8.533333 68.266667-29.866667 17.066667-17.066667 29.866667-42.666667 29.866666-68.266666V226.133333c0-25.6-8.533333-46.933333-29.866666-64zM366.933333 814.933333H226.133333c-4.266667 0-8.533333 0-12.8-4.266666-4.266667-4.266667-4.266667-8.533333-4.266666-12.8V226.133333c0-4.266667 0-8.533333 4.266666-12.8 4.266667-4.266667 8.533333-4.266667 12.8-4.266666h140.8v605.866666z m448-17.066666c0 4.266667 0 8.533333-4.266666 12.8-4.266667 4.266667-8.533333 4.266667-12.8 4.266666h-354.133334V209.066667h354.133334c4.266667 0 8.533333 0 12.8 4.266666 4.266667 4.266667 4.266667 8.533333 4.266666 12.8v571.733334z"
-                        fill="currentColor"></path>
-                </svg>
-            </button>
+            <!-- 顶部工具栏 -->
+            <div class="kb-toolbar">
+                <button id="add-knowledge-btn" class="kb-add-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    添加知识库
+                </button>
+            </div>
             <div class="knowledge-display-area">
                 <!-- 教程内容区 -->
                 <div class="tutorial-content">
@@ -1287,6 +1267,7 @@
 
             renderKnowledgeList() {
                 const treeContainer = document.querySelector('.directory-tree');
+                if (!treeContainer) return; // sidebar removed -- list handled by parent page
 
                 if (this.knowledgeItems.length === 0) {
                     treeContainer.innerHTML = `
@@ -1381,6 +1362,7 @@
 
             updateSearchResultSelection(selectedItemId) {
                 const treeContainer = document.querySelector('.directory-tree');
+                if (!treeContainer) return;
                 const treeItems = treeContainer.querySelectorAll('.tree-item');
 
                 // 移除所有选中状态
@@ -1398,15 +1380,16 @@
             // 显示全部知识列表
             showAllKnowledgeItems() {
                 this.showingAllItems = true;
-                this.currentItemId = null; // 清除当前选中项
+                this.currentItemId = null;
                 const contentContainer = document.querySelector('.tutorial-content');
 
-                // 清除左侧列表的选中状态
+                // 清除左侧列表的选中状态（如果存在）
                 const treeContainer = document.querySelector('.directory-tree');
-                const treeItems = treeContainer.querySelectorAll('.tree-item');
-                treeItems.forEach(item => {
-                    item.classList.remove('active');
-                });
+                if (treeContainer) {
+                    treeContainer.querySelectorAll('.tree-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                }
 
                 let html = `
                     <div class="all-knowledge-list">
@@ -2128,6 +2111,7 @@
             // 切换侧边栏收回/展开状态
             toggleSidebar() {
                 const sidebar = document.querySelector('.sidebar');
+                if (!sidebar) return;
                 const isCollapsed = sidebar.classList.contains('collapsed');
 
                 if (isCollapsed) {
@@ -2168,6 +2152,7 @@
 
             renderSearchResults(results, searchTerm) {
                 const treeContainer = document.querySelector('.directory-tree');
+                if (!treeContainer) return;
 
                 if (results.length === 0) {
                     treeContainer.innerHTML = `
@@ -2228,6 +2213,7 @@
                 );
 
                 const treeContainer = document.querySelector('.directory-tree');
+                if (!treeContainer) return;
 
                 if (filteredItems.length === 0) {
                     treeContainer.innerHTML = `
