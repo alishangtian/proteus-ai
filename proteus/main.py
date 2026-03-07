@@ -563,6 +563,48 @@ async def stop_chat(model: str, chat_id: str):
     return {"success": True, "chat_id": chat_id}
 
 
+@app.get("/agents/status", response_model=ApiResponse)
+async def get_all_agents_status():
+    """查询所有正在运行的 agent 的实时状态
+
+    返回每个 agent 的运行时间、任务信息、迭代轮次和 token 消耗等信息。
+    """
+    all_agents = ChatAgent.get_all_agents()
+    agents_info = []
+    for chat_id, agents in all_agents.items():
+        for agent in agents:
+            agents_info.append(agent.get_status_info())
+    return ApiResponse(
+        event="agents_status",
+        success=True,
+        data=agents_info,
+    )
+
+
+@app.get("/agents/status/{chat_id}", response_model=ApiResponse)
+async def get_agent_status(chat_id: str):
+    """查询指定 chat_id 下 agent 的实时运行状态
+
+    返回 agent 的运行时间、任务信息、迭代轮次和 token 消耗等信息。
+
+    Args:
+        chat_id: 聊天会话 ID
+    """
+    agents = ChatAgent.get_agents(chat_id)
+    if not agents:
+        return ApiResponse(
+            event="agent_status",
+            success=True,
+            data=[],
+        )
+    agents_info = [agent.get_status_info() for agent in agents]
+    return ApiResponse(
+        event="agent_status",
+        success=True,
+        data=agents_info,
+    )
+
+
 @app.websocket("/ws/stream/{chat_id}")
 async def websocket_stream(websocket: WebSocket, chat_id: str):
     """建立WebSocket连接获取响应流

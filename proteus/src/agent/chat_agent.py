@@ -103,6 +103,38 @@ class ChatAgent:
         """清除指定chat_id的agent缓存"""
         cls._agent_cache.pop(chat_id, None)
 
+    @classmethod
+    def get_all_agents(cls) -> Dict[str, List["ChatAgent"]]:
+        """获取所有缓存中的 agent（按 chat_id 分组）
+
+        返回:
+            Dict[str, List[ChatAgent]]: chat_id → agent 列表 的映射副本
+        """
+        with cls._cache_lock:
+            return {k: list(v) for k, v in cls._agent_cache.items()}
+
+    def get_status_info(self) -> Dict[str, Any]:
+        """获取当前 agent 的实时运行状态信息
+
+        返回:
+            Dict[str, Any]: 包含运行时间、任务信息、迭代轮次和 token 消耗等
+        """
+        elapsed = round(time.time() - self.start_time, 2) if self.start_time else 0
+        return {
+            "agent_id": self.agentid,
+            "chat_id": self.chat_id,
+            "status": self.status,
+            "model_name": self.model_name,
+            "elapsed_time": elapsed,
+            "task_text": self.task_text,
+            "current_iteration": self.current_iteration,
+            "max_iterations": self.max_tool_iterations,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_input_tokens + self.total_output_tokens,
+            "conversation_id": self.conversation_id,
+        }
+
     def _remove_from_cache(self) -> None:
         """从缓存中移除当前 agent（线程安全），防止内存泄漏"""
         with ChatAgent._cache_lock:
@@ -230,6 +262,12 @@ class ChatAgent:
         self._tool_executor = None
         self.chat_id = None  # 将在 _register_agent 中设置
         self._pending_tasks = set()
+        # 运行时指标（用于实时状态查询）
+        self.start_time: Optional[float] = None  # agent 开始运行的时间戳
+        self.current_iteration: int = 0  # 当前工具调用迭代轮次
+        self.total_input_tokens: int = 0  # 累计输入 token 消耗
+        self.total_output_tokens: int = 0  # 累计输出 token 消耗
+        self.task_text: Optional[str] = None  # 用户提交的任务/查询文本
 
     @langfuse_wrapper.dynamic_observe(name="chat_agent_run")
     async def run(
@@ -254,6 +292,12 @@ class ChatAgent:
         )
         await self._register_agent(chat_id)
         self._set_status(AGENT_STATUS_RUNNING)
+        # 记录运行时指标
+        self.start_time = time.time()
+        self.task_text = text
+        self.current_iteration = 0
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
 
         try:
             # 发送 agent_start 事件
@@ -432,6 +476,10 @@ class ChatAgent:
                         tool_iteration=tool_iteration,
                     )
 
+                    # 累计 token 消耗
+                    self.total_input_tokens += accumulated_usage.get("prompt_tokens", 0)
+                    self.total_output_tokens += accumulated_usage.get("completion_tokens", 0)
+
                     if self._check_and_handle_stopped(chat_id):
                         break
 
@@ -541,6 +589,7 @@ class ChatAgent:
 
                     # 增加迭代计数
                     tool_iteration += 1
+                    self.current_iteration = tool_iteration
                     logger.info(
                         f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
                     )
