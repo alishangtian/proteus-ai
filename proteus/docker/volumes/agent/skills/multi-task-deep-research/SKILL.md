@@ -1,796 +1,392 @@
 ---
 name: multi-task-deep-research
-description: 企业级多任务深度研究智能体系统 - 基于文件规划的复杂多任务研究框架，集成系统性研究方法论、多源验证机制和智能化报告生成，支持依赖关系管理和顺序子任务执行
+description: 融合深度研究技能和 planning-with-files 技能的多任务深度研究工作流。实现基于文件规划的多任务深度研究系统，支持主任务目录创建、子任务拆分、子任务目录建立、子任务下发、任务监控和成果产出。适用于复杂研究项目的系统性规划和分布式执行。
 allowed-tools:
   - python_execute
   - serper_search
   - web_crawler
-version: v1.2.0
-optimization-date: 2026-03-05
-optimization-methodology: 五步执行模式优化 + 任务目录规划 + API优先下发 + 定期休眠监控
-author: Proteus AI Research Team
-tags:
-  - research
-  - multi-task
-  - planning
-  - analysis
-  - coordination
-  - deep-research
+version: 3.0.0
 ---
 
-# 🎯 多任务深度研究技能：企业级智能研究协调系统
+# 多任务深度研究技能 (Multi-Task Deep Research)
 
-## 🌟 技能核心价值：为什么选择多任务深度研究？
+融合 **deep-research** 与 **planning-with-files** 能力，通过 Task API 将复杂研究任务拆分为多个子任务并发执行，最终整合产出高质量研究报告。
 
-多任务深度研究技能是**planning-with-files模式**与**深度研究方法论**的融合升级，专为复杂、多维度、需要并行处理的研究任务而设计。与单任务研究相比，本技能提供：
-
-### 🔍 多任务 vs. 单任务研究：关键区别
-
-| 维度 | 单任务深度研究 | 多任务深度研究 |
-|------|---------------|--------------|
-| **任务规模** | 单一研究问题 | 多个相关研究子任务 |
-| **协调机制** | 线性执行 | 并行执行+进度监控 |
-| **输出结构** | 单一报告 | 主报告+子任务报告 |
-| **资源利用** | 串行资源分配 | 智能资源调度 |
-| **风险控制** | 单一失败点 | 容错与任务隔离 |
-| **价值产出** | 深度但单一 | 广度+深度综合 |
-
-### 🏆 技能解决的四大核心问题
-
-1. **复杂问题分解** - 将宏大研究问题拆解为可管理的子任务
-2. **并行执行协调** - 智能调度和监控多个子任务进度
-3. **结果整合挑战** - 系统化整合分散的研究发现
-4. **质量控制统一** - 确保所有子任务达到一致质量标准
+> **核心原则**
+> - **Python-first**：所有操作均通过 `python_execute` 调用 `task_manager.py`，无需 shell 脚本
+> - **零 hardcoding**：路径通过 `__file__` 动态推导，目录探查通过 Python 遍历实现
+> - **文件驱动**：所有状态写入文件，支持跨会话无缝恢复
+> - **非阻塞监控**：禁止 while+sleep 阻塞；每轮对话独立调用 `check_and_dispatch_next()` 一次
 
 ---
 
-# 🔄 五步执行模式：主任务直接操作文件系统的标准工作流
+## 触发条件
 
-## 🎯 核心设计理念
-
-多任务深度研究技能的核心创新在于**主任务直接操作文件系统**的设计理念。与传统的脚本调用模式不同，优化后的五步执行模式强调：
-
-1. **直接文件操作**：主任务使用Python代码直接读写文件系统
-2. **统一执行环境**：所有操作在同一个Python执行环境中完成
-3. **实时状态同步**：文件状态实时更新，无需额外同步机制
-4. **简化调试维护**：单一代码库，调试和维护更简单
-
-## 📋 第一步：任务总规划与目录生成
-
-**目标**：在主任务中直接创建完整的任务目录结构和规划文件
-
-**Python代码示例**：
-```python
-# 在主任务中直接创建任务结构
-import os
-import json
-from datetime import datetime
-
-def create_task_directly(task_name):
-    """直接创建任务目录和文件"""
-    # 1. 创建主目录
-    task_dir = f"/app/data/tasks/{task_name.replace(' ', '_')}"
-    os.makedirs(task_dir, exist_ok=True)
-    
-    # 2. 创建子目录
-    for subdir in ['sub_tasks', 'reports', 'data/sources']:
-        os.makedirs(os.path.join(task_dir, subdir), exist_ok=True)
-    
-    # 3. 直接写入规划文件
-    plan_content = f"# 主任务规划: {task_name}\n生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    with open(f"{task_dir}/master_task_plan.md", 'w', encoding='utf-8') as f:
-        f.write(plan_content)
-    
-    # 4. 直接写入配置文件
-    config = {
-        "task_name": task_name,
-        "created_at": datetime.now().isoformat(),
-        "status": "planning",
-        "progress": 0.0
-    }
-    with open(f"{task_dir}/task_config.json", 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-    
-    return task_dir
-```
-
-**文件系统操作**：
-- `os.makedirs()`：创建目录结构
-- `open() + write()`：写入文本文件
-- `json.dump()`：写入配置文件
-
-## 📝 第二步：主任务与子任务文件丰富化
-
-**目标**：在主任务中直接创建和丰富所有任务文件
-
-**Python代码示例**：
-```python
-def enrich_files_directly(task_dir, subtasks):
-    """直接丰富任务文件"""
-    for subtask in subtasks:
-        # 创建子任务目录
-        subtask_dir = f"{task_dir}/sub_tasks/{subtask['name'].replace(' ', '_')}"
-        os.makedirs(subtask_dir, exist_ok=True)
-        
-        # 直接写入子任务文件
-        files = {
-            "task_plan.md": f"# {subtask['name']}规划\n描述: {subtask.get('desc', '')}",
-            "findings.md": f"# {subtask['name']}发现\n状态: 进行中",
-            "progress.md": f"# {subtask['name']}进度\n进度: 0%"
-        }
-        
-        for filename, content in files.items():
-            with open(f"{subtask_dir}/{filename}", 'w', encoding='utf-8') as f:
-                f.write(content)
-    
-    print(f"文件丰富化完成: {len(subtasks)}个子任务")
-```
-
-## 🚀 第三步：子任务API优先下发
-
-**目标**：在主任务中直接调用API启动子任务
-
-**Python代码示例**：
-```python
-import requests
-
-def start_tasks_directly(task_dir, api_config):
-    """直接通过API启动任务"""
-    config_path = f"{task_dir}/task_config.json"
-    
-    # 读取配置
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    # 直接调用API
-    for task in config.get('tasks', []):
-        try:
-            response = requests.post(
-                api_config['endpoint'],
-                json={"query": task['query']},
-                headers={"Authorization": f"Bearer {api_config['token']}"},
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                task['status'] = 'running'
-                print(f"✅ {task['name']}启动成功")
-        except Exception as e:
-            print(f"❌ {task['name']}启动失败: {e}")
-    
-    # 更新配置
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
-```
-
-## 🔍 第四步：定期休眠监控
-
-**目标**：在主任务中实现智能监控循环
-
-**Python代码示例**：
-```python
-import time
-
-def monitor_directly(task_dir, interval=300):
-    """直接实现监控"""
-    check_count = 0
-    
-    while True:
-        check_count += 1
-        print(f"🔄 第{check_count}次检查")
-        
-        # 检查进度
-        progress = check_progress(task_dir)
-        print(f"📊 进度: {progress}%")
-        
-        if progress >= 100:
-            print("🎊 任务完成!")
-            break
-        
-        # 智能休眠
-        sleep_time = interval
-        if progress < 30:
-            sleep_time = interval // 2
-        elif progress > 80:
-            sleep_time = interval * 2
-        
-        print(f"⏳ 休眠{sleep_time}秒")
-        time.sleep(sleep_time)
-```
-
-## 📊 第五步：最终结果生成
-
-**目标**：在主任务中直接生成综合报告
-
-**Python代码示例**：
-```python
-def generate_report_directly(task_dir):
-    """直接生成报告"""
-    # 收集发现
-    findings = collect_findings(task_dir)
-    
-    # 生成报告
-    report_content = f"# 综合研究报告\n生成时间: {datetime.now()}\n\n"
-    report_content += "## 研究发现\n" + "\n".join(findings)
-    
-    # 写入报告
-    report_path = f"{task_dir}/reports/final_report.md"
-    os.makedirs(os.path.dirname(report_path), exist_ok=True)
-    
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(report_content)
-    
-    return report_path
-```
-
-## 📈 模式对比：直接操作 vs 脚本调用
-
-| 方面 | 脚本调用模式 | **直接文件操作模式** |
-|------|--------------|----------------------|
-| **控制粒度** | 粗粒度（脚本级） | **细粒度（代码级）** |
-| **错误处理** | 跨脚本复杂 | **直接异常处理** |
-| **状态管理** | 需要同步机制 | **文件即时更新** |
-| **调试难度** | 高（多进程） | **低（单进程）** |
-| **部署复杂度** | 高（多脚本） | **低（单文件）** |
-| **灵活性** | 有限 | **极高** |
-
-## 🛠️ 实施指南
-
-### 1. 代码组织
-```python
-# research_project.py
-# ├── 规划模块 (planning.py)
-# ├── 执行模块 (execution.py)
-# ├── 监控模块 (monitoring.py)
-# └── 报告模块 (reporting.py)
-```
-
-### 2. 错误处理策略
-```python
-def safe_file_operation(func):
-    """文件操作安全装饰器"""
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except IOError as e:
-            print(f"文件操作错误: {e}")
-            return None
-        except json.JSONDecodeError as e:
-            print(f"JSON解析错误: {e}")
-            return None
-    return wrapper
-```
-
-### 3. 性能优化
-- **批量操作**：减少文件系统调用
-- **缓存机制**：避免重复读取
-- **并发处理**：独立任务并行执行
+| 触发 | 不触发 |
+|------|--------|
+| 需要多角度深度调研的复杂课题 | 单一问题快速搜索 |
+| 研究内容可拆分为 3~7 个子任务 | 简单信息查询 |
+| 需要并行执行多个子任务 | 不需要拆分的单一研究 |
 
 ---
 
-通过这五步执行模式，您可以在主任务中直接使用Python代码实现完整的多任务研究流程，获得最大的灵活性和控制力。
-# 🚀 快速开始：在主任务中实施五步执行模式
+## 目录结构
 
-## 📋 完整示例代码
+```
+/app/data/tasks/{task_id}/
+├── config.json          # 主任务配置（含 Token、子任务列表、状态）
+├── task_plan.md         # 主任务执行计划
+├── findings.md          # 主任务研究发现汇总
+├── progress.md          # 主任务进度日志
+├── final_report.md      # 最终研究报告（完成后生成）
+└── subtasks/
+    ├── {subtask_name}/
+    │   ├── config.json      # 子任务配置（执行引擎读取）
+    │   ├── task_plan.md     # 子任务执行计划（含 [ ]/[x] 进度标记）
+    │   ├── findings.md      # 子任务研究发现
+    │   ├── progress.md      # 子任务执行进度
+    │   └── completed.flag   # 完成标志（存在即视为完成）
+    └── ...
+```
 
-以下是在主任务中使用`python_execute`工具实现五步执行模式的完整示例：
+**目录探查（Python 动态实现，非 hardcoding）**：
 
 ```python
-# 在主任务中执行多任务研究
-import os
-import json
-from datetime import datetime
+import sys
+sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
+from task_manager import TaskManager
 
-def run_complete_research():
-    """完整五步执行示例"""
-    
-    # 第一步：规划
-    task_dir = "/app/data/tasks/示例研究"
-    os.makedirs(task_dir, exist_ok=True)
-    
-    with open(f"{task_dir}/plan.md", 'w', encoding='utf-8') as f:
-        f.write(f"# 研究计划\n时间: {datetime.now()}")
-    
-    # 第二步：创建子任务
-    subtasks = ["分析", "研究", "总结"]
-    for task in subtasks:
-        subtask_dir = f"{task_dir}/sub_tasks/{task}"
-        os.makedirs(subtask_dir, exist_ok=True)
-        
-        with open(f"{subtask_dir}/task.md", 'w', encoding='utf-8') as f:
-            f.write(f"# {task}任务")
-    
-    # 第三步：执行（简化）
-    print("执行子任务...")
-    
-    # 第四步：监控（简化）
-    print("监控进度...")
-    
-    # 第五步：报告
-    report_path = f"{task_dir}/report.md"
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write("# 研究报告\n完成!")
-    
-    print(f"研究完成！报告: {report_path}")
-    return task_dir
+# 列出所有已存在的任务（读取各目录的 config.json）
+tasks = TaskManager.list_tasks()   # 默认扫描 /app/data/tasks/
+for t in tasks:
+    print(t["task_id"], t["task_name"], t["status"])
 
-# 执行
-if __name__ == "__main__":
-    run_complete_research()
-```
-
-## 🔧 在主任务中调用
-
-在主任务中，使用`python_execute`工具运行代码：
-
-```python
-# 主任务调用示例
-research_code = """
-import os
-from datetime import datetime
-
-# 创建研究目录
-task_dir = "/app/data/tasks/我的研究"
-os.makedirs(task_dir, exist_ok=True)
-
-# 写入规划文件
-with open(f"{task_dir}/plan.md", 'w', encoding='utf-8') as f:
-    f.write(f"研究开始于: {datetime.now()}")
-
-print(f"任务目录: {task_dir}")
-"""
-
-# 使用python_execute执行
-result = python_execute(code=research_code, language="python", enable_network=True)
-print(result)
-```
-
-## 📁 核心文件操作函数
-
-### 1. 目录管理
-```python
-def setup_research_project(name):
-    """设置研究项目目录"""
-    project_dir = f"/app/data/tasks/{name}"
-    
-    # 创建目录结构
-    dirs = ['sub_tasks', 'reports', 'data', 'logs']
-    for d in dirs:
-        os.makedirs(f"{project_dir}/{d}", exist_ok=True)
-    
-    return project_dir
-```
-
-### 2. 配置文件管理
-```python
-def update_project_config(project_dir, key, value):
-    """更新项目配置"""
-    config_file = f"{project_dir}/config.json"
-    
-    # 读取或创建配置
-    if os.path.exists(config_file):
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-    else:
-        config = {}
-    
-    # 更新配置
-    config[key] = value
-    config['updated'] = datetime.now().isoformat()
-    
-    # 写入配置
-    with open(config_file, 'w') as f:
-        json.dump(config, f, indent=2)
-    
-    return config
-```
-
-### 3. 进度跟踪
-```python
-def update_progress(project_dir, task_name, progress):
-    """更新任务进度"""
-    progress_file = f"{project_dir}/sub_tasks/{task_name}/progress.md"
-    
-    content = f"# 进度跟踪\n任务: {task_name}\n进度: {progress}%\n时间: {datetime.now()}"
-    
-    with open(progress_file, 'w', encoding='utf-8') as f:
-        f.write(content)
-    
-    return progress
-```
-
-## 🎯 使用建议
-
-### 1. 开始步骤
-1. 从简单的文件操作开始
-2. 逐步添加复杂功能
-3. 测试每一步的文件输出
-
-### 2. 调试技巧
-1. 检查目录结构是否正确
-2. 验证文件内容格式
-3. 监控配置文件更新
-
-### 3. 扩展方法
-1. 添加更多的文件模板
-2. 实现更复杂的监控逻辑
-3. 集成外部工具和服务
-
----
-
-通过这个快速开始指南，您可以在主任务中直接使用Python代码操作文件系统，实现高效的多任务研究管理。
-# 🏗️ 文件系统架构：基于五步执行模式优化
-
-## 📁 优化后的目录结构
-
-```
-项目根目录/
-├── 第一步：规划文件/
-│   ├── master_task_plan.md          # 详细的主任务规划
-│   ├── task_config.json             # 任务配置和状态
-│   └── architecture_diagram.md      # 任务架构图
-├── 第二步：任务文件/
-│   ├── master_findings.md           # 主研究发现模板
-│   ├── master_progress.md           # 主任务进度跟踪
-│   └── sub_tasks/                   # 子任务目录
-│       ├── [task_name_1]/
-│       │   ├── task_plan.md         # 详细的子任务规划
-│       │   ├── findings.md          # 结构化研究发现模板
-│       │   ├── progress.md          # 详细进度跟踪
-│       │   ├── references/          # 参考资料
-│       │   └── data/                # 子任务数据
-│       ├── [task_name_2]/
-│       │   └── ...                  # 类似结构
-│       └── ...
-├── 第三步：执行监控/
-│   ├── api_logs/                    # API调用日志
-│   ├── error_reports/               # 错误报告
-│   └── status_snapshots/            # 状态快照
-├── 第四步：监控数据/
-│   ├── monitoring_logs/              # 监控日志
-│   ├── progress_history/             # 进度历史
-│   └── alerts/                       # 警报记录
-└── 第五步：最终输出/
-    ├── final_report.md               # 综合研究报告
-    ├── executive_summary.md          # 执行摘要
-    ├── action_plan.md                # 行动计划
-    ├── knowledge_base/               # 知识库
-    │   ├── findings_by_topic/        # 按主题分类的发现
-    │   ├── patterns_insights/        # 模式和洞察
-    │   └── recommendations/          # 建议库
-    └── presentation/                 # 演示材料
-        ├── slides.md                 # 幻灯片
-        ├── visualizations/           # 可视化图表
-        └── handouts/                 # 讲义材料
-```
-
-## 📄 核心文件说明（优化版）
-
-### 1. master_task_plan.md (主任务规划)
-- **目的**：详细定义总体研究目标、范围、子任务分解、时间规划
-- **内容结构**：
-  - **研究背景**：问题陈述、重要性分析
-  - **总体目标**：明确的研究目标和关键问题
-  - **研究范围**：包含范围和排除范围的明确定义
-  - **子任务分解**：详细的子任务描述、目标、交付物
-  - **依赖关系图**：可视化展示任务依赖关系
-  - **时间规划**：详细的阶段划分和时间线
-  - **资源分配**：工具、技能、时间的详细分配
-  - **质量标准**：明确的质量标准和验收条件
-  - **风险管理**：识别风险、评估、缓解措施
-
-### 2. task_config.json (任务配置)
-- **目的**：机器可读的任务配置和状态跟踪，支持自动化执行
-- **内容结构**：
-  - **任务元数据**：名称、描述、创建时间、版本
-  - **子任务配置**：详细的任务配置、依赖、状态
-  - **API配置**：API端点、认证、模型参数
-  - **监控配置**：检查间隔、通知设置、警报阈值
-  - **执行统计**：进度统计、性能指标、错误记录
-  - **整合配置**：报告模板、输出格式、质量检查
-
-### 3. 子任务文件集合
-- **task_plan.md**：详细的子任务规划，包含具体的研究方法、数据来源、分析框架
-- **findings.md**：结构化研究发现模板，支持自动提取和整合
-- **progress.md**：详细的进度跟踪，包含里程碑、检查点、质量验证
-- **配置和参考文件**：支持子任务执行的附加文件和配置
-
----
-
-# 🔧 脚本工具集：支持五步执行模式
-
-## 🛠️ 核心脚本说明
-
-### 1. init_multi_task.py (初始化脚本)
-- **功能**：执行第一步任务总规划和目录生成
-- **增强特性**：
-  - 支持依赖关系的子任务管理
-  - 智能文件夹名称生成和验证
-  - 自动创建完整的目录结构
-  - 生成丰富的模板文件
-
-### 2. enrich_task_files.py (新增：文件丰富化脚本)
-- **功能**：支持第二步主任务和子任务文件丰富化
-- **主要特性**：
-  - 自动填充模板文件的关键部分
-  - 确保文件之间的逻辑一致性
-  - 添加丰富的示例和指导内容
-  - 验证文件完整性和质量
-
-### 3. start_subtasks.py (子任务启动脚本)
-- **功能**：执行第三步子任务API优先下发
-- **增强特性**：
-  - 增强的错误处理和诊断功能
-  - 详细的网络诊断和连通性检查
-  - 依赖关系的拓扑排序和验证
-  - 指数退避重试机制
-
-### 4. continuous_monitor.py (新增：持续监控脚本)
-- **功能**：执行第四步定期休眠监控
-- **主要特性**：
-  - 可配置的检查间隔（默认300秒）
-  - 智能的状态变化检测
-  - 自动的异常识别和警报
-  - 渐进式的休眠策略
-
-### 5. generate_final_report.py (新增：最终报告生成脚本)
-- **功能**：执行第五步最终结果生成
-- **主要特性**：
-  - 自动收集和整合所有子任务结果
-  - 智能的跨任务分析和模式识别
-  - 多种输出格式支持（报告、摘要、行动计划）
-  - 知识归档和结构化存储
-
-## 🔄 脚本协同工作流
-
-```
-初始化 → 丰富化 → API下发 → 持续监控 → 结果生成
-   ↓         ↓         ↓         ↓         ↓
-init_multi_task.py → enrich_task_files.py → start_subtasks.py → continuous_monitor.py → generate_final_report.py
+# 探查某个任务的完整目录状态（文件大小、内容预览）
+info = TaskManager.inspect_workspace("task_20260307_143749_a1b2c3")
+print(info)
 ```
 
 ---
 
-# 🎯 应用场景与案例示例
+## 完整工作流程
 
-## 📈 场景一：技术趋势综合研究（五步模式实践）
+### Step 0：获取 API Token（必须）
 
-**问题**："全面研究2026年AI智能体发展趋势，包括技术、市场、政策、应用等多个维度"
-
-**五步执行模式实践**：
-
-### 第一步：任务总规划
-- 创建`ai_agent_trends_2026`项目目录
-- 规划4个子任务：技术趋势、市场分析、政策研究、战略建议
-- 定义依赖关系：前三者并行，战略建议依赖前三者
-- 生成详细的主任务规划文档
-
-### 第二步：文件丰富化
-- 完善主任务规划中的研究范围和质量标准
-- 为每个子任务创建丰富的研究模板：
-  - 技术趋势：预设技术维度分析框架
-  - 市场分析：预设市场规模、竞争格局分析模板
-  - 政策研究：预设法规、伦理、安全分析框架
-  - 战略建议：预设SWOT分析和战略矩阵
-
-### 第三步：API优先下发
-- 验证API配置，确保连通性
-- 按依赖顺序启动子任务：先启动技术、市场、政策三个并行任务
-- 监控启动状态，处理可能的错误
-- 等待前三者完成后自动启动战略建议任务
-
-### 第四步：定期休眠监控
-- 设置5分钟检查间隔
-- 监控各子任务进度，识别异常
-- 在关键里程碑发送进度报告
-- 自动检测依赖满足情况，适时触发后续任务
-
-### 第五步：最终结果生成
-- 自动整合四个子任务的发现
-- 生成综合性研究报告和可执行的战略建议
-- 创建知识库，归档关键发现和洞察
-- 生成演示材料，支持决策沟通
-
-**输出成果**：
-1. 完整的五步执行过程文档
-2. 综合性研究报告（80+页）
-3. 执行摘要（1-2页）
-4. 具体的战略行动计划
-5. 可重用的知识库和模板
+在开始任何操作前，**必须先向用户获取 Token**：
+- 询问用户提供 API Token
+- Token 仅存于 `config.json`，不在日志或报告中明文展示
+- Token 格式示例：`f12ff351-9789-4c85-a1eb-d89ea8f6d8bc`
 
 ---
 
-# ⚙️ 高级配置与自定义
+### Step 1：创建主任务
 
-## 🔧 API配置优化
+```python
+import sys
+sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
+from task_manager import TaskManager
 
-```json
-{
-  "api_config": {
-    "endpoint": "https://127.0.0.1/task",
-    "auth_token": "您的认证令牌",
-    "model_name": "deepseek-reasoner",
-    "itecount": 200,
-    "conversation_round": 5,
-    "tool_choices": ["serper_search", "web_crawler", "python_execute"],
-    "selected_skills": ["planning-with-files", "deep-research"],
-    "priority": "high",  // 任务优先级
-    "timeout": 120,      // 超时设置（秒）
-    "retry_strategy": {  // 重试策略
-      "max_retries": 3,
-      "backoff_factor": 2,
-      "retry_codes": [429, 500, 502, 503, 504]
-    }
-  }
-}
+tm = TaskManager(token="用户提供的Token")
+task_id = tm.create_task(
+    task_name="AI医疗应用深度研究",
+    goal="全面调研AI在医疗领域的应用现状、发展趋势和未来展望",
+    description="可选背景说明"
+)
+print(f"任务已创建: {task_id}")
+# 输出示例: 任务已创建: task_20260307_143749_a1b2c3
 ```
 
-## ⏱️ 监控配置优化
+此步骤自动完成：
+- 创建 `/app/data/tasks/{task_id}/` 目录结构
+- 初始化 `config.json`（含 token、状态、子任务列表）
+- 使用模板生成 `task_plan.md`、`findings.md`、`progress.md`
 
-```json
-{
-  "monitoring": {
-    "enabled": true,
-    "interval_seconds": 300,
-    "adaptive_interval": true,  // 自适应间隔
-    "alert_thresholds": {
-      "progress_stagnation": 3600,  // 进度停滞阈值（秒）
-      "error_count": 3,             // 错误计数阈值
-      "dependency_timeout": 7200    // 依赖超时阈值（秒）
+---
+
+### Step 2：子任务拆分
+
+基于第一性原理分析任务本质，按以下原则拆分：
+
+| 原则 | 说明 |
+|------|------|
+| **独立性** | 每个子任务可独立执行，不依赖其他子任务的中间过程 |
+| **完整性** | 所有子任务合并后覆盖主任务全部研究维度 |
+| **粒度适中** | 每个子任务预计执行 5~20 分钟，过大则再拆分 |
+| **依赖最小化** | 减少依赖链长度，提高并行度 |
+| **命名规范** | `name` 必须是见名知意的英文，如 `market_research`、`tech_analysis` |
+
+**子任务 Query 编写规范**（质量直接影响研究深度）：
+
+```
+✅ 好的 Query：
+  "深度调研2024年国内大模型市场规模、主要玩家市占率、融资情况。
+   需覆盖：(1)市场规模数据（引用权威报告）；(2)TOP5厂商产品对比；
+   (3)近12个月融资事件（金额/轮次）；(4)技术差异化分析。
+   输出需包含具体数据，来源需可信。"
+
+❌ 差的 Query：
+  "调研AI市场"
+```
+
+```python
+subtask_definitions = [
+    {
+        "name":       "market_research",
+        "query":      "详细研究指令（包含研究对象+具体维度+输出要求+质量标准）...",
+        "depends_on": []
     },
-    "notifications": {
-      "email": "user@example.com",
-      "webhook": "https://hooks.slack.com/...",
-      "critical_only": true
+    {
+        "name":       "tech_analysis",
+        "query":      "详细研究指令...",
+        "depends_on": ["market_research"]   # 依赖 market_research 完成后执行
     },
-    "reporting": {
-      "daily_summary": true,
-      "milestone_reports": true,
-      "auto_integration": true  // 自动结果整合
+    {
+        "name":       "competitor_analysis",
+        "query":      "详细研究指令...",
+        "depends_on": ["market_research"]   # 与 tech_analysis 并行
+    },
+    {
+        "name":       "final_synthesis",
+        "query":      "基于以上研究整合分析...",
+        "depends_on": ["tech_analysis", "competitor_analysis"]
     }
-  }
-}
+]
+tm.split_subtasks(subtask_definitions)
+# 自动完成：循环依赖检测、目录创建、模板文件初始化
 ```
 
-## 📊 质量保证配置
+**依赖 DAG 示意**：
+```
+market_research ──→ tech_analysis ──┐
+                └──→ competitor_analysis ──┘──→ final_synthesis
+```
 
-```json
-{
-  "quality_assurance": {
-    "checkpoints": [
-      {
-        "name": "规划完成检查",
-        "criteria": ["master_task_plan完整", "子任务分解合理", "依赖关系明确"],
-        "required": true
-      },
-      {
-        "name": "文件丰富化检查", 
-        "criteria": ["所有模板文件完整", "内容结构合理", "示例丰富"],
-        "required": true
-      },
-      {
-        "name": "API下发验证",
-        "criteria": ["API连通性", "任务启动成功", "状态跟踪正常"],
-        "required": true
-      },
-      {
-        "name": "最终质量检查",
-        "criteria": ["所有子任务完成", "发现整合完整", "建议具体可行"],
-        "required": true
-      }
-    ],
-    "scoring_system": {
-      "completeness": 25,
-      "accuracy": 25, 
-      "depth": 20,
-      "consistency": 15,
-      "actionability": 15
+执行层次（拓扑排序自动计算）：
+```
+第1层: market_research          ← 立即下发
+第2层: tech_analysis             ← 第1层完成后并行下发
+       competitor_analysis
+第3层: final_synthesis           ← 第2层全部完成后下发
+```
+
+---
+
+### Step 3：下发第一批子任务
+
+```python
+# 按依赖拓扑顺序下发所有 pending 子任务（已完成的自动跳过）
+tm.dispatch_all_by_dependency(max_parallel=3)
+
+# 下发完成后，本轮对话结束，等待子任务执行
+```
+
+**下发原理**（在 task_manager.py 内部实现，无需外部 curl）：
+- 从 `config.json` 读取 `token` 和 `api_endpoint`
+- 构建 payload（含 query、workspace_path、model 参数）
+- POST 到 Task API，自动重试 3 次（指数退避：2s/4s/8s）
+- 下发成功后更新子任务状态为 `dispatched`，持久化到 `config.json`
+
+---
+
+### Step 4：非阻塞式监控（每轮对话独立调用）
+
+> ⚠️ **禁止** 在单次 `python_execute` 中使用 `while/sleep` 阻塞等待。
+> 正确模式：**下发 → 本轮结束 → 等待 → 新一轮调用 `check_and_dispatch_next()`**
+
+#### 标准监控模式（每轮对话执行）
+
+```python
+import sys
+sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
+from task_manager import TaskManager
+
+# 从文件恢复任务状态（无内存依赖，支持跨会话）
+tm = TaskManager.load_task("task_20260307_143749_a1b2c3")
+
+# 一次性检查 + 触发后续依赖任务
+result = tm.check_and_dispatch_next()
+
+print("当前状态:", result["status"])
+print("新下发任务:", result["newly_dispatched"])
+print("未完成任务:", result["pending"])
+print("是否全部完成:", result["all_completed"])
+
+if result["all_completed"]:
+    # 进入 Step 5
+    report_path = tm.collect_and_finalize()
+    print(f"最终报告: {report_path}")
+else:
+    print(f"请等待约 X 分钟后再次触发检查")
+```
+
+#### `check_and_dispatch_next()` 内部逻辑
+
+```
+1. 遍历所有 dispatched 子任务 → 读取工作区文件 → 计算完成分数
+   - task_plan.md 中 [x] 完成率  → 40%
+   - findings.md  内容大小       → 30%（>1000字节=满分）
+   - progress.md  完成关键词     → 30%（含"总结/结论/complete/100%"）
+   - completed.flag 文件存在     → 强制 100 分
+
+2. 分数 ≥ 90 或 completed.flag 存在 → 标记为 completed，写入 config.json
+
+3. 找出依赖已全部 completed 的 pending 任务 → 立即下发（受 MAX_PARALLEL=3 限制）
+
+4. 返回结构化报告
+```
+
+#### 返回结构说明
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `status` | `Dict[str, str]` | 所有子任务的最新状态 |
+| `newly_dispatched` | `List[str]` | 本次新触发下发的任务名 |
+| `pending` | `List[str]` | 仍未完成的任务名 |
+| `all_completed` | `bool` | 是否所有任务均已完成 |
+
+#### 建议检查间隔
+
+| 子任务复杂度 | 建议等待时间 |
+|-------------|------------|
+| 简单查询（1~2 次搜索） | 3~5 分钟 |
+| 标准研究任务 | 8~15 分钟 |
+| 复杂深度研究 | 15~30 分钟 |
+
+---
+
+### Step 5：成果汇总与报告生成
+
+```python
+tm = TaskManager.load_task("task_20260307_143749_a1b2c3")
+report_path = tm.collect_and_finalize()
+# 生成 /app/data/tasks/{task_id}/final_report.md
+```
+
+**最终报告结构**：
+```markdown
+# 最终研究报告：{任务名称}
+## 执行摘要
+## 研究背景与目标
+## 研究方法与子任务划分（含状态表）
+## 核心发现（各子任务 findings.md 汇总）
+## 综合分析与洞察
+## 结论与建议
+## 参考资料
+```
+
+---
+
+## 会话恢复
+
+任务执行中断后（如会话被清除），通过以下方式恢复：
+
+```python
+import sys
+sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
+from task_manager import TaskManager
+
+# 方式一：先探查所有任务，找到目标任务
+tasks = TaskManager.list_tasks()   # 扫描 /app/data/tasks/ 下所有 config.json
+for t in tasks:
+    print(t["task_id"], t["status"], t["subtask_count"], "个子任务")
+
+# 方式二：直接用 task_id 恢复（从 config.json 读取所有状态）
+tm = TaskManager.load_task("task_20260307_143749_a1b2c3")
+
+# 查看详细状态
+status = tm.get_all_status()
+print(status)
+
+# 继续执行（自动跳过已完成任务，下发未完成任务）
+tm.resume()
+```
+
+---
+
+## 状态流转
+
+```
+pending → dispatched → completed
+                    ↘ failed → (重试) → dispatched
+```
+
+| 状态 | 描述 |
+|------|------|
+| `pending` | 子任务已定义，等待下发 |
+| `dispatched` | 已通过 Task API 下发，执行中 |
+| `completed` | 已完成（进度≥90% 或存在 `completed.flag`） |
+| `failed` | 下发失败（已重试 3 次） |
+
+---
+
+## 错误处理
+
+| 错误类型 | 处理策略 |
+|----------|----------|
+| API 调用失败 | 自动重试 3 次（指数退避：2s/4s/8s） |
+| 循环依赖 | `split_subtasks()` 时自动检测并抛出异常 |
+| 子任务执行超时 | 手动调用 `tm.dispatch_subtask("task_name")` 重新下发 |
+| 依赖任务失败 | 修复后调用 `tm.resume()` |
+| 会话中断 | `TaskManager.load_task(task_id)` 恢复，自动跳过已完成任务 |
+
+---
+
+## 任务结束标准
+
+- [ ] 所有子任务状态均为 `completed`
+- [ ] `final_report.md` 已生成，包含执行摘要、核心发现、结论建议
+- [ ] 主任务 `config.json` 中 `status` 已更新为 `completed`
+- [ ] `findings.md` 已汇总所有子任务发现
+
+---
+
+## 完整调用示例
+
+```python
+import sys
+sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
+from task_manager import TaskManager
+
+# ── 第一轮对话：创建并下发 ──────────────────────────────────────────────────
+tm = TaskManager(token="YOUR_TOKEN_HERE")
+task_id = tm.create_task("大模型市场研究", "调研2024年国内大模型市场格局")
+
+tm.split_subtasks([
+    {
+        "name":       "market_size",
+        "query":      "调研2024年国内大模型市场规模（引用艾瑞/IDC等权威报告），"
+                      "包含市场规模数据、增速、细分赛道占比。",
+        "depends_on": []
     },
-    "minimum_score": 80
-  }
-}
+    {
+        "name":       "player_analysis",
+        "query":      "深度分析国内大模型TOP10厂商（百度/阿里/腾讯/华为/字节等），"
+                      "对比产品能力、商业化进展、用户规模数据。",
+        "depends_on": []
+    },
+    {
+        "name":       "investment_trend",
+        "query":      "调研2023-2024年国内大模型领域投融资情况，"
+                      "包含融资事件列表、金额、轮次、主要投资机构。",
+        "depends_on": ["market_size"]
+    },
+    {
+        "name":       "final_synthesis",
+        "query":      "基于市场规模、玩家分析、投融资数据，撰写综合研究报告，"
+                      "提炼核心洞察和未来趋势判断。",
+        "depends_on": ["player_analysis", "investment_trend"]
+    }
+])
+
+# 下发第一批（无依赖）任务：market_size + player_analysis
+tm.dispatch_all_by_dependency()
+print(f"任务ID: {task_id}，已下发第一批子任务，请等待 10~15 分钟后检查")
+
+# ── 后续轮次：检查 + 触发后续任务 ──────────────────────────────────────────
+# （每次等待后，在新一轮迭代中检查，并触发后续任务）
+tm = TaskManager.load_task(task_id)
+result = tm.check_and_dispatch_next()
+if result["all_completed"]:
+    report = tm.collect_and_finalize()
+    print(f"研究完成！报告路径: {report}")
 ```
-
----
-
-# 🛡️ 故障排除与最佳实践
-
-## 🔍 常见问题与解决方案
-
-### 问题1：API下发失败
-**症状**：子任务无法通过API启动，返回连接错误或认证失败
-**解决方案**：
-1. 运行环境检查脚本：`python scripts/check_environment.py`
-2. 验证API端点连通性：使用curl测试`curl -X GET {endpoint}/health`
-3. 检查认证令牌是否正确且有权限
-4. 考虑使用本地执行模式作为备用方案
-
-### 问题2：文件丰富化不足
-**症状**：模板文件内容过于简单，缺乏指导性
-**解决方案**：
-1. 运行文件丰富化脚本：`python scripts/enrich_task_files.py {task_dir}`
-2. 参考最佳实践案例中的文件模板
-3. 手动添加领域特定的示例和指导内容
-4. 确保文件之间的引用和逻辑一致性
-
-### 问题3：监控间隔不合理
-**症状**：要么检查过于频繁导致资源浪费，要么检查间隔太长错过关键状态变化
-**解决方案**：
-1. 启用自适应间隔：`{"adaptive_interval": true}`
-2. 基于任务阶段调整检查频率：
-   - 规划阶段：低频率（如1小时）
-   - 执行阶段：中频率（如5-15分钟）
-   - 收尾阶段：高频率（如1-5分钟）
-3. 基于进度变化动态调整：进度变化快时增加频率，稳定时减少频率
-
-### 问题4：最终结果质量不足
-**症状**：报告简单堆砌子任务结果，缺乏深度整合
-**解决方案**：
-1. 预留专门的整合时间（建议总时间的15-20%）
-2. 使用系统化整合框架：
-   - 主题聚类：将相关发现按主题组织
-   - 矛盾分析：识别和解决不一致的发现
-   - 模式识别：提取跨任务的模式和趋势
-   - 优先级排序：基于影响和可行性排序建议
-3. 多轮验证：至少进行两轮交叉验证和编辑
-
-## 💡 最佳实践总结
-
-### 规划阶段最佳实践
-- 花费足够时间进行详细规划（15-20%总时间）
-- 使用MECE原则确保子任务分解合理
-- 明确依赖关系，避免循环依赖
-- 设计可扩展的目录结构
-
-### 执行阶段最佳实践
-- 优先使用API下发，充分利用外部资源
-- 实现健壮的错误处理和重试机制
-- 保持适中的监控频率，平衡及时性和资源消耗
-- 及时更新状态文件，确保信息准确性
-
-### 整合阶段最佳实践
-- 预留专门的整合时间，避免仓促收尾
-- 使用系统化的整合框架，确保深度和一致性
-- 生成多种形式的输出，满足不同受众需求
-- 建立知识归档，支持未来重用和扩展
-
----
-
-# 🌟 总结：五步执行模式的核心优势
-
-多任务深度研究技能的**五步执行模式**将复杂的多任务研究项目系统化为可管理、可重复、高质量的标准化流程：
-
-## 🎯 模式优势总结
-
-1. **系统性规划** - 详细的任务总规划确保项目方向正确、结构合理
-2. **深度准备** - 丰富的文件模板确保研究有明确的框架和指导
-3. **高效执行** - API优先下发充分利用计算资源，实现智能调度
-4. **持续跟踪** - 定期休眠监控确保及时发现和解决问题
-5. **价值交付** - 综合性结果生成确保研究成果实用、可操作
-
-## 🔄 模式进化：从复杂到简单
-
-传统的多任务研究面临协调复杂、质量不一、整合困难等挑战。五步执行模式通过：
-
-- **标准化**：将复杂过程分解为五个明确的步骤
-- **自动化**：通过脚本工具支持各步骤的自动化执行
-- **质量内建**：在每个步骤中嵌入质量控制机制
-- **知识积累**：通过模板和案例积累最佳实践
-
-## 🚀 立即开始您的五步多任务研究
-
-**下一次当您面临复杂、多维度研究任务时，使用标准化的五步执行模式：**
-
-启动关键词示例：
-- "请使用五步执行模式研究[复杂问题]"
-- "需要按照任务规划、文件丰富、API下发、定期监控、结果生成的流程分析[主题]"
-- "帮我使用多任务深度研究技能，遵循五步模式协调研究[项目]"
-- "为[决策]提供基于五步执行模式的综合研究报告"
-
----
-**版本信息**: v1.2.0  
-**更新日期**: 2026-03-05  
-**核心价值**: 五步执行模式 + 任务目录规划 + API优先下发 + 定期休眠监控  
-**适用对象**: 研究项目经理、战略分析师、学术研究者、企业决策者  
-**质量承诺**: 系统性规划 + 深度准备 + 高效执行 + 持续跟踪 + 价值交付  
-**持续愿景**: 打造最标准化、最高效、最可靠的企业级多任务研究平台

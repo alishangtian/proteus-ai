@@ -1,0 +1,788 @@
+#!/usr/bin/env python3
+"""
+多任务深度研究子任务启动脚本 - 强制API下发版
+所有子任务必须通过API下发执行，不支持本地执行模式
+包含增强的错误处理和诊断功能
+"""
+多任务深度研究子任务启动脚本 - 增强版
+支持依赖关系的顺序启动，一次只启动一个任务
+包含改进的错误处理和诊断功能
+"""
+
+import os
+import json
+import time
+import sys
+import socket
+import urllib.parse
+from datetime import datetime
+
+def print_help():
+    """打印帮助信息"""
+    print("用法: python start_subtasks.py <任务目录> [模式]")
+    print("\n模式:")
+    print("  --wait          顺序等待模式: 每个任务完成后才启动下一个")
+    print("  --sequential    顺序启动模式: 按依赖顺序启动，但不等待完成 (默认)")
+    print("  --specific      特定任务模式: 启动指定的任务 (传统模式)")
+    print("  --help, -h      显示此帮助信息")
+    print("  --auth-token, -t   指定task下发的鉴权token")
+    print("\n示例:")
+    print("  python start_subtasks.py /app/data/tasks/我的任务")
+    print("  python start_subtasks.py /app/data/tasks/我的任务 --wait")
+    print("  python start_subtasks.py /app/data/tasks/我的任务 --sequential")
+    print("  python start_subtasks.py /app/data/tasks/我的任务 --specific \"任务A\" \"任务B\"")
+    print("\n📋 特性:")
+    print("  • 增强的错误处理和诊断")
+    print("  • 详细的错误报告")
+    print("  • 环境检查")
+    print("  • 指数退避重试机制")
+    print("  • HTTP状态码分析")
+
+# Try to import requests, install if not available
+try:
+    import requests
+    from requests.exceptions import RequestException, Timeout, ConnectionError as RequestsConnectionError
+except ImportError:
+    print("requests模块未找到，尝试安装...")
+    try:
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
+        import requests
+        from requests.exceptions import RequestException, Timeout, ConnectionError as RequestsConnectionError
+        print("✓ requests安装成功")
+    except Exception as e:
+        print(f"✗ 安装requests失败: {e}")
+        print("请手动安装: pip install requests")
+        sys.exit(1)
+
+class EnhancedErrorHandler:
+    """增强的错误处理器
+    
+    注意: 所有子任务必须通过API下发执行
+    系统不支持本地执行模式，确保API配置正确
+    """
+    
+    @staticmethod
+    def analyze_http_error(status_code, response_text=""):
+        """分析HTTP错误并提供建议"""
+        suggestions = {
+            400: "请求格式错误，请检查API参数",
+            401: "认证失败，请检查auth_token",
+            403: "权限不足，请验证API密钥",
+            404: "API端点不存在，请检查endpoint配置",
+            429: "请求过于频繁，请稍后重试",
+            500: "服务器内部错误，请稍后重试",
+            502: "网关错误，服务器可能正在维护",
+            503: "服务不可用，服务器可能过载",
+            504: "网关超时，网络连接可能有问题"
+        }
+        
+        suggestion = suggestions.get(status_code, "未知错误，请检查网络和API配置")
+        
+        # 尝试从响应中提取更多信息
+        extra_info = ""
+        if response_text:
+            try:
+                error_json = json.loads(response_text)
+                if "error" in error_json:
+                    extra_info = f" 错误详情: {error_json['error']}"
+                elif "message" in error_json:
+                    extra_info = f" 消息: {error_json['message']}"
+            except:
+                # 如果不是JSON，显示前200个字符
+                extra_info = f" 响应: {response_text[:200]}..."
+        
+        return suggestion, extra_info
+    
+    @staticmethod
+    def analyze_network_error(error):
+        """分析网络错误并提供诊断建议"""
+        error_msg = str(error)
+        
+        if "Name or service not known" in error_msg or "getaddrinfo failed" in error_msg:
+            return "DNS解析失败", "请检查endpoint域名是否正确，网络是否正常"
+        elif "Connection refused" in error_msg:
+            return "连接被拒绝", "API服务可能未启动，请检查服务状态"
+        elif "timed out" in error_msg:
+            return "连接超时", "网络延迟过高或服务器响应慢，请检查网络"
+        elif "SSL" in error_msg:
+                        # 容器HTTPS环境可能使用自签名证书
+                        # verify=False 允许使用自签名证书，生产环境应配置正确的证书
+            return "SSL证书错误", "尝试设置verify=False或检查证书"
+        else:
+            return "网络连接错误", f"具体错误: {error_msg}"
+    
+    @staticmethod
+    def generate_error_report(task_dir, subtask, error_type, error_details, suggestion):
+        """生成详细错误报告"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_dir = os.path.join(task_dir, "error_reports")
+        os.makedirs(report_dir, exist_ok=True)
+        
+        report_file = os.path.join(report_dir, f"error_{subtask.get('directory', 'unknown')}_{timestamp}.md")
+        
+        report_content = f"""# 子任务启动错误报告
+
+## 错误概览
+- **子任务**: {subtask.get('name', '未知')}
+- **错误类型**: {error_type}
+- **发生时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- **错误详情**: {error_details}
+
+## 环境信息
+- **工作目录**: {os.path.join(task_dir, "sub_tasks", subtask.get('directory', 'unknown'))}
+- **API端点**: {subtask.get('api_endpoint', '未指定')}
+- **Python版本**: {sys.version}
+
+## 诊断建议
+{suggestion}
+
+## 修复步骤
+1. 检查网络连接是否正常
+2. 验证API端点是否可以访问
+3. 确认auth_token是否正确
+4. 检查防火墙或代理设置
+5. 尝试使用curl手动测试API
+
+## 任务配置
+```json
+{json.dumps(subtask, indent=2, ensure_ascii=False)}
+```
+
+## 下一步操作
+- 如果问题是暂时的，可以重试任务
+- 如果配置错误，请更新task_config.json
+- 如果API服务不可用，请检查API配置和网络连接，并重试
+"""
+        
+        try:
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            return report_file
+        except Exception as e:
+            print(f"⚠ 无法保存错误报告: {e}")
+            return None
+
+class EnvironmentChecker:
+    """启动前的环境检查器"""
+    
+    @staticmethod
+    def check_endpoint_connectivity(endpoint, timeout=5):
+        """检查API端点连通性"""
+        try:
+            parsed_url = urllib.parse.urlparse(endpoint)
+            
+            # 检查网络连接
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            
+            port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+            host = parsed_url.hostname
+            
+            result = sock.connect_ex((host, port))
+            sock.close()
+            
+            if result == 0:
+                return True, f"✓ 可以连接到 {host}:{port}"
+            else:
+                return False, f"✗ 无法连接到 {host}:{port} (错误码: {result})"
+                
+        except Exception as e:
+            return False, f"✗ 连接检查失败: {e}"
+    
+    @staticmethod
+    def check_local_api_service(endpoint):
+        """检查本地API服务"""
+        if "nginx" in endpoint or "localhost" in endpoint:
+            try:
+                health_endpoint = endpoint.replace("/task", "/health")
+                response = requests.get(health_endpoint, verify=False, timeout=5)
+                if response.status_code == 200:
+                    return True, f"✓ 本地API服务运行正常"
+                else:
+                    return False, f"✗ 本地API服务返回 {response.status_code}"
+            except Exception as e:
+                return False, f"✗ 本地API服务可能未启动: {e}"
+        return True, "非本地服务，跳过检查"
+
+def topological_sort(subtasks):
+    """对子任务进行拓扑排序，考虑依赖关系"""
+    # Build adjacency list and indegree map
+    name_to_task = {task["name"]: task for task in subtasks}
+    adjacency = {task["name"]: [] for task in subtasks}
+    indegree = {task["name"]: 0 for task in subtasks}
+    
+    for task in subtasks:
+        for dep_name in task.get("dependencies", []):
+            if dep_name in name_to_task:
+                adjacency[dep_name].append(task["name"])
+                indegree[task["name"]] = indegree.get(task["name"], 0) + 1
+    
+    # Kahn's algorithm for topological sort
+    result = []
+    queue = [task_name for task_name in indegree if indegree[task_name] == 0]
+    
+    while queue:
+        current = queue.pop(0)
+        result.append(name_to_task[current])
+        
+        for neighbor in adjacency[current]:
+            indegree[neighbor] -= 1
+            if indegree[neighbor] == 0:
+                queue.append(neighbor)
+    
+    # Check for cycles
+    if len(result) != len(subtasks):
+        print("⚠ 警告: 检测到循环依赖，部分任务无法排序")
+        remaining = [task for task in subtasks if task not in result]
+        result.extend(remaining)
+    
+    return result
+
+def check_task_status(workspace_path):
+    """检查任务状态，判断是否完成"""
+    try:
+        progress_file = os.path.join(workspace_path, "progress.md")
+        if os.path.exists(progress_file):
+            with open(progress_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            if "状态: 完成" in content or "状态: completed" in content or "进度: 100%" in content:
+                return True
+        
+        findings_file = os.path.join(workspace_path, "findings.md")
+        if os.path.exists(findings_file):
+            with open(findings_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            if "[等待研究完成]" not in content and len(content.strip()) > 200:
+                return True
+        
+        return False
+    except:
+        return False
+
+def start_subtask(task_dir, subtask, api_config, max_retries=3, initial_delay=2):
+    """
+    启动单个子任务，增强的错误处理和重试机制
+    
+    重要: 所有子任务必须通过API下发执行
+    系统强制使用API下发，不支持本地执行模式
+    """
+    subtask_name = subtask.get("name")
+    subtask_query = subtask.get("query", subtask.get("description", ""))
+    subtask_dir_name = subtask.get("directory", subtask_name.replace(" ", "_").replace("/", "_"))
+    
+    # Build workspace path
+    workspace_path = os.path.join(task_dir, "sub_tasks", subtask_dir_name)
+    
+    print(f"\n🚀 启动子任务: {subtask_name}")
+    print(f"   📁 工作目录: {workspace_path}")
+    
+    if subtask.get("dependencies"):
+        print(f"   🔗 依赖: {', '.join(subtask['dependencies'])}")
+    
+    # Prepare API payload
+    payload = {
+        "query": subtask_query,
+        "workspace_path": workspace_path,
+        "modul": "task",
+        "model_name": api_config.get("model_name", "deepseek-reasoner"),
+        "itecount": api_config.get("itecount", 200),
+        "team_name": "",
+        "conversation_id": "",
+        "conversation_round": api_config.get("conversation_round", 5),
+        "tool_memory_enabled": False,
+        "enable_tools": True,
+        "tool_choices": api_config.get("tool_choices", ["serper_search", "web_crawler", "python_execute"]),
+        "selected_skills": api_config.get("selected_skills", ["planning-with-files"]),
+        "stream": True
+    }
+    
+    # Prepare headers
+    endpoint = api_config.get("endpoint", "https://nginx/task")
+    auth_token = api_config.get("auth_token", "")  # 必须由用户提供，不能硬编码
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {auth_token}"
+    }
+    
+    # 启动前的环境检查
+    print("   🔍 执行环境检查...")
+    checker = EnvironmentChecker()
+    
+    # 检查网络连通性
+    connectivity_ok, connectivity_msg = checker.check_endpoint_connectivity(endpoint)
+    print(f"     {connectivity_msg}")
+    
+    # 检查本地服务
+    service_ok, service_msg = checker.check_local_api_service(endpoint)
+    if service_msg:
+        print(f"     {service_msg}")
+    
+    if not connectivity_ok:
+        error_msg = f"网络连通性检查失败: {connectivity_msg}"
+        print(f"   ❌ {error_msg}")
+        
+        # 生成错误报告
+        report_file = EnhancedErrorHandler.generate_error_report(
+            task_dir, subtask, "网络连通性失败", error_msg,
+            "请检查网络连接和API端点配置"
+        )
+        if report_file:
+            print(f"   📋 详细错误报告已保存到: {report_file}")
+        
+        subtask["status"] = "error"
+        subtask["error_count"] = subtask.get("error_count", 0) + 1
+        subtask["last_error"] = error_msg
+        return False, error_msg
+    
+    # 重试逻辑（指数退避）
+    error_handler = EnhancedErrorHandler()
+    
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                delay = initial_delay * (2 ** (attempt - 1))  # 指数退避
+                print(f"   🔄 第{attempt}次重试 (等待{delay}秒)...")
+                time.sleep(delay)
+            
+            # 发送请求
+            print(f"   📡 发送API请求到 {endpoint}...")
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                verify=False,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                print(f"   ✅ 子任务启动成功")
+                
+                # Update subtask status
+                subtask["status"] = "running"
+                subtask["started_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                subtask["last_activity"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                subtask["api_calls"] = subtask.get("api_calls", 0) + 1
+                subtask.pop("last_error", None)  # 清除之前的错误
+                
+                return True, ""
+                
+            else:
+                # HTTP错误处理
+                suggestion, extra_info = error_handler.analyze_http_error(
+                    response.status_code, response.text
+                )
+                
+                error_msg = f"HTTP {response.status_code}: {suggestion}{extra_info}"
+                print(f"   ❌ {error_msg}")
+                
+                # 如果不是最后一次尝试，继续重试
+                if attempt < max_retries:
+                    if response.status_code in [400, 401, 403, 404]:
+                        # 这些错误通常不会因为重试而解决
+                        print(f"     ⚠ 配置错误，重试可能无法解决")
+                    continue
+                else:
+                    # 达到最大重试次数
+                    subtask["status"] = "error"
+                    subtask["error_count"] = subtask.get("error_count", 0) + 1
+                    subtask["last_error"] = error_msg
+                    
+                    # 生成错误报告
+                    report_file = error_handler.generate_error_report(
+                        task_dir, subtask, f"HTTP {response.status_code}", error_msg,
+                        f"建议: {suggestion}"
+                    )
+                    if report_file:
+                        print(f"   📋 详细错误报告已保存到: {report_file}")
+                    
+                    return False, error_msg
+            
+        except Timeout:
+            error_type, suggestion = error_handler.analyze_network_error("请求超时")
+            error_msg = f"请求超时: {suggestion}"
+            print(f"   ⏱ {error_msg}")
+            
+            if attempt < max_retries:
+                continue
+            else:
+                subtask["status"] = "error"
+                subtask["error_count"] = subtask.get("error_count", 0) + 1
+                subtask["last_error"] = error_msg
+                return False, error_msg
+                
+        except RequestsConnectionError as e:
+            error_type, suggestion = error_handler.analyze_network_error(e)
+            error_msg = f"连接错误: {suggestion}"
+            print(f"   🔌 {error_msg}")
+            
+            if attempt < max_retries:
+                continue
+            else:
+                subtask["status"] = "error"
+                subtask["error_count"] = subtask.get("error_count", 0) + 1
+                subtask["last_error"] = error_msg
+                
+                # 生成错误报告
+                report_file = error_handler.generate_error_report(
+                    task_dir, subtask, "网络连接错误", str(e),
+                    f"建议: {suggestion}"
+                )
+                if report_file:
+                    print(f"   📋 详细错误报告已保存到: {report_file}")
+                
+                return False, error_msg
+                
+        except RequestException as e:
+            error_msg = f"请求异常: {e}"
+            print(f"   ❌ {error_msg}")
+            
+            if attempt < max_retries:
+                continue
+            else:
+                subtask["status"] = "error"
+                subtask["error_count"] = subtask.get("error_count", 0) + 1
+                subtask["last_error"] = error_msg
+                return False, error_msg
+        
+        except Exception as e:
+            error_msg = f"未知错误: {e}"
+            print(f"   ⚠ {error_msg}")
+            
+            if attempt < max_retries:
+                continue
+            else:
+                subtask["status"] = "error"
+                subtask["error_count"] = subtask.get("error_count", 0) + 1
+                subtask["last_error"] = error_msg
+                return False, error_msg
+    
+    # 理论上不会执行到这里
+    return False, "未知错误"
+
+def start_subtasks_sequential(task_dir, wait_for_completion=False, check_interval=30, max_checks=120, auth_token=None):
+    """按依赖顺序顺序启动子任务，一次只启动一个"""
+    
+    config_path = os.path.join(task_dir, "task_config.json")
+    if not os.path.exists(config_path):
+        print(f"❌ 错误: 任务配置文件未找到 {config_path}")
+        print("💡 建议: 请确保任务目录正确，或重新初始化任务")
+        return False
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        task_name = config.get("task_name", "未知任务")
+        print(f"
+🎯 按依赖顺序启动子任务: {task_name}")
+        print(f"📁 任务目录: {task_dir}")
+        
+        # Get API configuration
+        api_config = config.get("api_config", {})
+        if not api_config:
+            print("⚠ 警告: 任务配置中没有API配置，使用默认配置")
+            api_config = {
+                "endpoint": "https://nginx/task",
+                "auth_token": "",  # 必须由用户提供，不能硬编码
+                "model_name": "deepseek-reasoner",
+                "itecount": 200,
+                "conversation_round": 5,
+                "tool_choices": ["serper_search", "web_crawler", "python_execute"],
+                "selected_skills": ["planning-with-files"],
+            }
+        
+        # 显示API配置摘要（隐藏敏感信息）
+        safe_api_config = api_config.copy()
+        if "auth_token" in safe_api_config:
+            token = safe_api_config["auth_token"]
+            if len(token) > 8:
+                safe_api_config["auth_token"] = token[:4] + "..." + token[-4:]
+        
+        print(f"🔧 API配置: {json.dumps(safe_api_config, indent=2, ensure_ascii=False)}")
+        
+        # Get subtasks
+        subtasks = config.get("subtasks", [])
+        if not subtasks:
+            print("ℹ 没有需要启动的子任务")
+            return True
+        
+        # Filter only pending tasks
+        pending_tasks = [t for t in subtasks if t.get("status") in ["pending", None]]
+        if not pending_tasks:
+            print("ℹ 没有待处理的子任务")
+            return True
+        
+        print(f"📋 找到 {len(pending_tasks)} 个待处理子任务")
+        
+        # 检查是否有错误的任务
+        error_tasks = [t for t in subtasks if t.get("status") == "error"]
+        if error_tasks:
+            print(f"⚠ 有 {len(error_tasks)} 个任务处于错误状态:")
+            for task in error_tasks:
+                print(f"   • {task['name']}: {task.get('last_error', '未知错误')}")
+            print("💡 建议: 可以尝试重新启动这些任务")
+        
+        # Sort tasks by dependencies
+        sorted_tasks = topological_sort(pending_tasks)
+        
+        print("📊 依赖执行顺序:")
+        for i, task in enumerate(sorted_tasks, 1):
+            deps = task.get("dependencies", [])
+            deps_str = f" (依赖: {', '.join(deps)})" if deps else ""
+            status = task.get("status", "pending")
+            status_icon = "🔄" if status == "running" else "⏳" if status == "pending" else "❌" if status == "error" else "✅"
+            print(f"  {i}. {status_icon} {task['name']}{deps_str}")
+        
+        # Start tasks one by one
+        success_count = 0
+        total_tasks = len(sorted_tasks)
+        errors = []
+        
+        for i, task in enumerate(sorted_tasks, 1):
+            print(f"
+--- [{i}/{total_tasks}] 处理子任务 ---")
+            
+            # Check if dependencies are completed (if we're checking)
+            if wait_for_completion:
+                deps = task.get("dependencies", [])
+                if deps:
+                    # Check if all dependencies are completed
+                    all_deps_completed = True
+                    for dep_name in deps:
+                        dep_task = next((t for t in subtasks if t["name"] == dep_name), None)
+                        if dep_task:
+                            workspace_path = os.path.join(task_dir, "sub_tasks", dep_task.get("directory", dep_name.replace(" ", "_").replace("/", "_")))
+                            if not check_task_status(workspace_path):
+                                all_deps_completed = False
+                                print(f"   ⏳ 等待依赖任务完成: {dep_name}")
+                                break
+                    
+                    if not all_deps_completed:
+                        print(f"   ⏳ 等待依赖任务完成...")
+                        checks = 0
+                        while checks < max_checks and not all_deps_completed:
+                            time.sleep(check_interval)
+                            checks += 1
+                            
+                            # Re-check
+                            all_deps_completed = True
+                            for dep_name in deps:
+                                dep_task = next((t for t in subtasks if t["name"] == dep_name), None)
+                                if dep_task:
+                                    workspace_path = os.path.join(task_dir, "sub_tasks", dep_task.get("directory", dep_name.replace(" ", "_").replace("/", "_")))
+                                    if not check_task_status(workspace_path):
+                                        all_deps_completed = False
+                                        break
+                            
+                            if not all_deps_completed and checks % 10 == 0:
+                                print(f"   ⏳ 仍在等待依赖任务完成... ({checks * check_interval} 秒)")
+                        
+                        if not all_deps_completed:
+                            print(f"   ⚠ 超时: 依赖任务未在预期时间内完成")
+            
+            # Start the task
+            success, error_msg = start_subtask(task_dir, task, api_config, max_retries=3, initial_delay=2)
+            
+            if success:
+                success_count += 1
+                
+                if wait_for_completion and i < total_tasks:
+                    print(f"   ⏳ 等待任务完成...")
+                    checks = 0
+                    workspace_path = os.path.join(task_dir, "sub_tasks", task.get("directory", task["name"].replace(" ", "_").replace("/", "_")))
+                    
+                    while checks < max_checks and not check_task_status(workspace_path):
+                        time.sleep(check_interval)
+                        checks += 1
+                        
+                        if checks % 10 == 0:
+                            print(f"   ⏳ 仍在等待任务完成... ({checks * check_interval} 秒)")
+                    
+                    if check_task_status(workspace_path):
+                        print(f"   ✅ 任务完成")
+                        task["status"] = "completed"
+                        task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        print(f"   ⚠ 超时: 任务未在预期时间内完成")
+            else:
+                errors.append((task["name"], error_msg))
+            
+            # Save updated config after each task
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            
+            # Small delay between API calls
+            if i < total_tasks:
+                time.sleep(2)
+        
+        # Final status
+        print(f"
+{'='*50}")
+        print("📈 启动完成统计:")
+        print(f"   ✅ 成功启动: {success_count}/{total_tasks}")
+        
+        if errors:
+            print(f"   ❌ 失败: {len(errors)}")
+            print("
+📋 失败详情:")
+            for task_name, error_msg in errors:
+                print(f"   • {task_name}: {error_msg}")
+            
+            print("
+💡 修复建议:")
+            print("   1. 检查错误报告获取详细诊断")
+            print("   2. 验证API配置和网络连接")
+            print("   3. 可以尝试重新启动失败的任务")
+            print("   4. 检查API服务和网络配置，然后重试")
+        
+        # Calculate overall progress
+        completed_tasks = len([t for t in subtasks if t.get("status") == "completed"])
+        running_tasks = len([t for t in subtasks if t.get("status") == "running"])
+        total = len(subtasks)
+        
+        if total > 0:
+            config["overall_progress"] = (completed_tasks + running_tasks * 0.5) / total * 100
+            config["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        
+        return len(errors) == 0
+        
+    except json.JSONDecodeError as e:
+        print(f"❌ 错误: 配置文件JSON格式错误")
+        print(f"   文件: {config_path}")
+        print(f"   错误: {e}")
+        print("💡 建议: 检查配置文件格式，或重新初始化任务")
+        return False
+        
+    except Exception as e:
+        print(f"❌ 未预期的错误: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def start_subtasks_with_dependencies(task_dir, specific_tasks=None, auth_token=None):
+    """启动子任务（兼容旧接口）"""
+    print("📢 注意: 此功能已更新为顺序启动模式")
+    print("🔧 子任务将按依赖关系顺序启动，一次只启动一个")
+    
+    # For backward compatibility, we'll use sequential mode without waiting
+    return start_subtasks_sequential(task_dir, wait_for_completion=False)
+
+if __name__ == "__main__":
+    print("🚀 多任务深度研究 - 子任务启动器 (增强版)")
+    print("🔧 改进的错误处理和诊断功能")
+    print("=" * 60)
+    
+    if len(sys.argv) > 1:
+        task_dir = sys.argv[1]
+        
+        # 初始化变量
+        mode = "sequential"  # 默认模式
+        specific_tasks = []
+        auth_token = None
+        
+        # 解析参数
+        i = 2
+        while i < len(sys.argv):
+            arg = sys.argv[i]
+            
+            if arg == "--wait":
+                mode = "wait"
+            elif arg == "--sequential":
+                mode = "sequential"
+            elif arg == "--specific":
+                mode = "specific"
+                # 收集特定任务名称
+                i += 1
+                while i < len(sys.argv) and not sys.argv[i].startswith("--"):
+                    specific_tasks.append(sys.argv[i])
+                    i += 1
+                continue
+            elif arg in ["--auth-token", "-t"]:
+                if i + 1 < len(sys.argv):
+                    auth_token = sys.argv[i + 1]
+                    i += 1  # 跳过token值
+                else:
+                    print(f"错误: {arg} 需要参数值")
+                    sys.exit(1)
+            elif arg in ["--help", "-h"]:
+                print_help()
+                sys.exit(0)
+            else:
+                print(f"⚠ 未知参数: {arg}")
+                print("🔧 使用默认顺序启动模式")
+            
+            i += 1
+        
+        print(f"任务目录: {task_dir}")
+        print(f"模式: {mode}")
+        if specific_tasks:
+            print(f"特定任务: {', '.join(specific_tasks)}")
+        
+        # 如果没有提供token，尝试从环境变量获取
+        if not auth_token:
+            auth_token = os.environ.get("TASK_AUTH_TOKEN")
+        
+        # 如果没有token，提示用户输入（如果是交互模式）
+        if not auth_token and sys.stdin.isatty():
+            auth_token = input("请提供task下发的鉴权token: ").strip()
+            if not auth_token:
+                print("错误: 鉴权token是必需的")
+                sys.exit(1)
+        
+        if not auth_token:
+            print("错误: 鉴权token是必需的。请通过--auth-token参数、TASK_AUTH_TOKEN环境变量提供，或交互式输入。")
+            sys.exit(1)
+        
+        print(f"鉴权token: {auth_token[:4]}...{auth_token[-4:] if len(auth_token) > 8 else '***'}")
+        
+        # 根据模式调用相应函数
+        if mode == "wait":
+            print("⏳ 使用顺序等待模式: 每个任务完成后才启动下一个")
+            success = start_subtasks_sequential(task_dir, wait_for_completion=True, auth_token=auth_token)
+        elif mode == "sequential":
+            print("⚡ 使用顺序启动模式: 按依赖顺序启动，但不等待完成")
+            success = start_subtasks_sequential(task_dir, wait_for_completion=False, auth_token=auth_token)
+        elif mode == "specific":
+            print(f"🎯 启动特定任务: {', '.join(specific_tasks)}")
+            print("⚠ 注意: 依赖关系可能不被完全遵守")
+            success = start_subtasks_with_dependencies(task_dir, specific_tasks, auth_token=auth_token)
+        else:
+            print(f"⚠ 未知模式: {mode}")
+            print("🔧 使用默认顺序启动模式")
+            success = start_subtasks_sequential(task_dir, wait_for_completion=False, auth_token=auth_token)
+        
+        print("\n" + "=" * 60)
+        if success:
+            print("🎉 所有子任务启动流程完成")
+        else:
+            print("⚠ 部分子任务启动失败，请查看上面的错误信息")
+            sys.exit(1)
+    else:
+        print_help()
+                print_help()
+                sys.exit(0)
+            else:
+                print(f"⚠ 未知参数: {sys.argv[2]}")
+                print("🔧 使用默认顺序启动模式")
+                success = start_subtasks_sequential(task_dir, wait_for_completion=False)
+        else:
+            # Default: sequential mode without waiting
+            print("🔧 使用默认顺序启动模式: 按依赖顺序启动，但不等待完成")
+            success = start_subtasks_sequential(task_dir, wait_for_completion=False)
+        
+        print("
+" + "=" * 60)
+        if success:
+            print("🎉 所有子任务启动流程完成")
+        else:
+            print("⚠ 部分子任务启动失败，请查看上面的错误信息")
+            sys.exit(1)
+    else:
+        print_help()

@@ -24,7 +24,9 @@
     <string name="settings_saved">设置已保存</string>
     <string name="delete">删除</string>
     <string name="delete_conversation_title">删除会话</string>
-    <string name="delete_conversation_confirm">确定要删除会话 \"%1$s\" 吗？</string>
+    <string name="delete_conversation_confirm">确定要删除会话 "%1$s" 吗？</string>
     <string name="running_conversations">运行中</string>
     <string name="history_conversations">历史会话</string>
+    <string name="channel_name">消息通知</string>
+    <string name="channel_description">用于实时接收 AI 输出的流式消息通知</string>
 </resources>

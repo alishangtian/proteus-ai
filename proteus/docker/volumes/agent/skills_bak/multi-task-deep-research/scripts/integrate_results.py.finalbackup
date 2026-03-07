@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""
+多任务深度研究整合脚本 - 增强版
+智能整合子任务研究发现，生成结构化综合报告
+"""
+
+import os
+import json
+import re
+from datetime import datetime
+
+def extract_key_findings(content, max_chars=2000):
+    """
+    从研究发现内容中提取关键发现
+    
+    Args:
+        content: 研究发现内容
+        max_chars: 最大字符数
+    
+    Returns:
+        str: 提取的关键发现
+    """
+    if not content or len(content.strip()) < 100:
+        return "无实质性发现或内容过短"
+    
+    # 尝试提取章节
+    sections = []
+    
+    # 查找所有## 标题（二级标题）
+    section_pattern = r'##\s+(.+?)\n(.*?)(?=\n##\s+|$)'
+    matches = re.findall(section_pattern, content, re.DOTALL)
+    
+    if matches:
+        for title, section_content in matches:
+            if len(section_content.strip()) > 100:  # 只包含有内容的章节
+                # 清理内容：将3个以上连续换行替换为2个
+                cleaned = re.sub(r'\n{3,}', '\n\n', section_content.strip())
+                # 限制长度
+                if len(cleaned) > 500:
+                    cleaned = cleaned[:500] + "..."
+                sections.append(f"### {title}\n{cleaned}\n")
+    
+    if sections:
+        return "\n".join(sections)
+    
+    # 如果没有找到章节，尝试提取要点
+    bullet_pattern = r'[-*•]\s+(.+?)(?=\n[-*•]|\n\n|$)'
+    bullets = re.findall(bullet_pattern, content, re.DOTALL)
+    
+    if bullets and len(bullets) > 2:
+        key_bullets = bullets[:5]  # 取前5个要点
+        bullet_text = "\n".join([f"- {bullet.strip()}" for bullet in key_bullets])
+        return f"### 关键要点\n{bullet_text}\n"
+    
+    # 如果都没有，返回摘要
+    summary = content.strip()
+    if len(summary) > max_chars:
+        summary = summary[:max_chars] + "..."
+    return summary
+def analyze_task_config(config_path):
+    """
+    分析任务配置，获取子任务结构和状态
+    
+    Args:
+        config_path: 任务配置文件路径
+    
+    Returns:
+        dict: 任务配置信息
+    """
+    if not os.path.exists(config_path):
+        return None
+    
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        return config
+    except Exception as e:
+        print(f"读取任务配置失败: {e}")
+        return None
+
+def categorize_subtasks(subtasks):
+    """
+    根据状态分类子任务
+    
+    Args:
+        subtasks: 子任务列表
+    
+    Returns:
+        dict: 分类后的子任务
+    """
+    categories = {
+        "completed": [],
+        "running": [],
+        "pending": [],
+        "error": []
+    }
+    
+    for subtask in subtasks:
+        status = subtask.get("status", "pending")
+        if status in categories:
+            categories[status].append(subtask)
+        else:
+            categories["pending"].append(subtask)
+    
+    return categories
+
+def integrate_results(task_dir):
+    """
+    智能整合子任务研究发现，生成结构化综合报告
+    
+    Args:
+        task_dir: 任务目录路径
+    """
+    
+    print(f"🔍 开始整合研究成果: {task_dir}")
+    
+    master_findings_path = os.path.join(task_dir, "master_findings.md")
+    config_path = os.path.join(task_dir, "task_config.json")
+    
+    # 读取任务配置
+    config = analyze_task_config(config_path)
+    if not config:
+        print("⚠ 警告: 无法读取任务配置，使用简单整合模式")
+        # 回退到简单模式
+        return simple_integrate(task_dir)
+    
+    task_name = config.get("task_name", "未知任务")
+    subtasks = config.get("subtasks", [])
+    
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 开始构建报告
+    content = f"""# 综合研究报告: {task_name}
+
+**整合时间:** {current_time}
+**任务状态:** {config.get('status', '未知')}
+**总体进度:** {config.get('overall_progress', 0):.1f}%
+
+## 执行摘要
+
+本次研究整合了{len(subtasks)}个子任务的研究发现。"""
+
+    # 分类子任务
+    categorized = categorize_subtasks(subtasks)
+    completed_count = len(categorized["completed"])
+    running_count = len(categorized["running"])
+    
+    content += f"
+**完成情况:** {completed_count}个已完成，{running_count}个进行中
+
+"
+    
+    # 收集所有子任务的发现
+    all_findings = []
+    subtasks_dir = os.path.join(task_dir, "sub_tasks")
+    
+    for subtask in subtasks:
+        subtask_name = subtask.get("name", "未知子任务")
+        subtask_dir_name = subtask.get("directory", subtask_name.replace(" ", "_").replace("/", "_"))
+        status = subtask.get("status", "pending")
+        progress = subtask.get("progress", 0.0)
+        
+        subtask_path = os.path.join(subtasks_dir, subtask_dir_name)
+        findings_file = os.path.join(subtask_path, "findings.md")
+        
+        findings_content = ""
+        if os.path.exists(findings_file):
+            try:
+                with open(findings_file, 'r', encoding='utf-8') as f:
+                    findings_text = f.read()
+                
+                # 提取关键发现
+                key_findings = extract_key_findings(findings_text)
+                findings_content = key_findings
+                
+            except Exception as e:
+                findings_content = f"*读取研究发现失败: {e}*"
+        else:
+            findings_content = "*未找到研究发现文件*"
+        
+        all_findings.append({
+            "name": subtask_name,
+            "status": status,
+            "progress": progress,
+            "content": findings_content,
+            "dependencies": subtask.get("dependencies", [])
+        })
+    
+    # 按状态组织发现
+    content += "
+## 子任务研究发现
+
+"
+    
+    # 先展示已完成的任务
+    completed_findings = [f for f in all_findings if f["status"] == "completed"]
+    if completed_findings:
+        content += "### 已完成任务
+
+"
+        for finding in completed_findings:
+            content += f"#### {finding['name']}
+"
+            content += f"**状态:** 已完成 | **进度:** {finding['progress']:.1f}%
+
+"
+            content += f"{finding['content']}
+
+"
+    
+    # 然后展示进行中的任务
+    running_findings = [f for f in all_findings if f["status"] == "running"]
+    if running_findings:
+        content += "### 进行中任务
+
+"
+        for finding in running_findings:
+            content += f"#### {finding['name']}
+"
+            content += f"**状态:** 进行中 | **进度:** {finding['progress']:.1f}%
+
+"
+            content += f"{finding['content']}
+
+"
+    
+    # 最后展示未开始或错误的任务
+    other_findings = [f for f in all_findings if f["status"] not in ["completed", "running"]]
+    if other_findings:
+        content += "### 其他任务
+
+"
+        for finding in other_findings:
+            content += f"#### {finding['name']}
+"
+            content += f"**状态:** {finding['status']} | **进度:** {finding['progress']:.1f}%
+
+"
+            content += f"{finding['content']}
+
+"
+    
+    # 添加依赖关系分析
+    content += "
+## 任务依赖关系
+
+"
+    
+    has_dependencies = False
+    for finding in all_findings:
+        if finding["dependencies"]:
+            has_dependencies = True
+            content += f"- **{finding['name']}** 依赖: {', '.join(finding['dependencies'])}
+"
+    
+    if not has_dependencies:
+        content += "所有子任务均为独立任务，无依赖关系。
+"
+    
+    # 添加总结
+    content += f"""
+## 综合结论与建议
+
+### 主要发现总结
+1. 本次研究共收集了{len(completed_findings)}个已完成任务的研究发现
+2. 尚有{running_count}个任务正在进行中
+3. 研究整体进度为{config.get('overall_progress', 0):.1f}%
+
+### 下一步建议
+1. 继续监控进行中任务的进度
+2. 根据已完成任务的发现调整后续研究方向
+3. 定期更新整合报告以反映最新进展
+
+### 质量评估
+- **完整性:** {len(completed_findings)}/{len(subtasks)} 个任务已完成
+- **及时性:** 报告基于{current_time}的最新数据
+- **可追溯性:** 所有发现均关联到具体子任务
+
+---
+*报告生成时间: {current_time}*
+*使用技能: multi-task-deep-research v1.4.0*
+*整合模式: 智能整合*
+"""
+    
+    # 写入文件
+    with open(master_findings_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    print(f"✅ 整合完成，综合报告已更新: {master_findings_path}")
+    print(f"   整合了 {len(all_findings)} 个子任务的发现")
+    print(f"   报告长度: {len(content)} 字符")
+
+def simple_integrate(task_dir):
+    """
+    简单整合模式（向后兼容）
+    """
+    print("使用简单整合模式...")
+    
+    master_findings_path = os.path.join(task_dir, "master_findings.md")
+    
+    # Start with header
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    content = f"# 综合研究报告
+
+**整合时间:** {current_time}
+
+"
+    
+    # Gather findings from subtasks
+    subtasks_dir = os.path.join(task_dir, "sub_tasks")
+    if os.path.exists(subtasks_dir):
+        subtasks = os.listdir(subtasks_dir)
+        
+        for subtask in subtasks:
+            subtask_path = os.path.join(subtasks_dir, subtask)
+            findings_file = os.path.join(subtask_path, "findings.md")
+            
+            if os.path.exists(findings_file):
+                try:
+                    with open(findings_file, 'r', encoding='utf-8') as f:
+                        findings = f.read()
+                    
+                    # Extract key findings (simplified)
+                    content += f"## {subtask}
+
+"
+                    content += f"*来自子任务: {subtask}*
+
+"
+                    
+                    # Take first 500 characters as summary
+                    summary = findings[:500] + "..." if len(findings) > 500 else findings
+                    content += f"{summary}
+
+"
+                    
+                except Exception as e:
+                    content += f"## {subtask}
+
+*读取失败: {e}*
+
+"
+    
+    with open(master_findings_path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    
+    print(f"整合完成，主研究发现已更新: {master_findings_path}")
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1:
+        integrate_results(sys.argv[1])
+    else:
+        print("用法: python integrate_results.py <任务目录>")
+        print("
+示例:")
+        print("  python integrate_results.py /app/data/tasks/我的任务")
+        print("
+功能:")
+        print("  - 智能整合子任务研究发现")
+        print("  - 生成结构化综合报告")
+        print("  - 按任务状态组织内容")
+        print("  - 分析依赖关系和进展")
