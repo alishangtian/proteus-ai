@@ -157,11 +157,14 @@
         .conv-toggle.collapsed { transform: rotate(-90deg); }
 
         /* Agent table inside conv group */
-        .conv-agents { overflow: hidden; }
+        .conv-agents { overflow-x: auto; }
 
         .agent-table {
             width: 100%;
             border-collapse: collapse;
+            /* Fixed layout so every table in every conv-group uses identical column widths */
+            table-layout: fixed;
+            min-width: 900px;
         }
 
         .agent-table thead th {
@@ -175,6 +178,8 @@
             border-bottom: 1px solid rgba(0,0,0,0.06);
             background: rgba(0,0,0,0.01);
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .agent-table tbody td {
@@ -183,6 +188,10 @@
             color: #444;
             border-bottom: 1px solid rgba(0,0,0,0.04);
             vertical-align: middle;
+            /* Prevent any cell from blowing out its column */
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         .agent-table tbody tr:hover { background: rgba(79,70,229,0.02); }
@@ -213,18 +222,20 @@
         }
 
         .task-text {
-            max-width: 280px;
-            white-space: nowrap;
+            display: block;
             overflow: hidden;
+            white-space: nowrap;
             text-overflow: ellipsis;
         }
         .mono-text { font-family: monospace; font-size: 13px; color: #666; }
 
         /* Progress bar */
-        .iter-wrap { display: flex; align-items: center; gap: 8px; }
-        .iter-bar { flex: 1; height: 5px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; min-width: 50px; }
+        .iter-wrap { display: flex; align-items: center; gap: 6px; width: 100%; }
+        .iter-bar { flex: 1; height: 5px; background: rgba(0,0,0,0.06); border-radius: 3px; overflow: hidden; min-width: 40px; }
         .iter-fill { height: 100%; background: linear-gradient(90deg,#4f46e5,#7c3aed); border-radius: 3px; transition: width 0.3s ease; }
-        .iter-text { font-size: 12px; color: #666; white-space: nowrap; }
+        .iter-text { font-size: 12px; color: #666; white-space: nowrap; flex-shrink: 0; }
+        /* Allow the progress column to clip cleanly */
+        td.iter-td { overflow: visible; }
 
         /* Action buttons */
         .action-btn {
@@ -263,8 +274,6 @@
         @media (max-width: 768px) {
             .monitor-container { padding: 14px; }
             .summary-row { grid-template-columns: repeat(2, 1fr); }
-            .agent-table { min-width: 700px; }
-            .conv-agents { overflow-x: auto; }
         }
         @media (max-width: 480px) {
             .summary-row { grid-template-columns: 1fr; }
@@ -432,7 +441,19 @@
 
                 const table = document.createElement('table');
                 table.className = 'agent-table';
+                // Fixed column widths — same for every group so columns align across groups
                 table.innerHTML = `
+                    <colgroup>
+                        <col style="width:8%">   <!-- 状态 -->
+                        <col style="width:12%">  <!-- 模型 -->
+                        <col style="width:20%">  <!-- 任务内容 -->
+                        <col style="width:8%">   <!-- 运行时间 -->
+                        <col style="width:15%">  <!-- 迭代进度 -->
+                        <col style="width:9%">   <!-- 输入 Tokens -->
+                        <col style="width:9%">   <!-- 输出 Tokens -->
+                        <col style="width:12%">  <!-- Agent ID -->
+                        <col style="width:7%">   <!-- 操作 -->
+                    </colgroup>
                     <thead><tr>
                         <th>状态</th><th>模型</th><th>任务内容</th><th>运行时间</th>
                         <th>迭代进度</th><th>输入 Tokens</th><th>输出 Tokens</th>
@@ -471,6 +492,7 @@
 
                     // Iteration
                     const iterTd = document.createElement('td');
+                    iterTd.className = 'iter-td';
                     iterTd.innerHTML = `
                         <div class="iter-wrap">
                             <div class="iter-bar"><div class="iter-fill" style="width:${iterPct}%"></div></div>
