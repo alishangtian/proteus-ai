@@ -5,7 +5,14 @@ PythonExecuteNode:
   type: "python_execute"
   class: "src.nodes.python_execute.PythonExecuteNode"
   name: "Python/Shell代码执行"
-  description: "Python/Shell代码执行组件，支持 Python3 代码和 Shell 脚本执行。执行结果必须通过 print 输出才能被接收。支持使用 Python 代码进行文件操作，文件的通用目录是 /app/data（此目录文件可通过网络请求访问，访问地址 http://host:port/app/data/{file_name}），技能目录是 /app/.proteus/skills（技能根目录）。支持变量传递、任何网络访问，适用于系统处理、demo 演示、金融数据爬取等场景。当缺少依赖时，请先使用 Python 代码安装依赖。"
+  description: >-
+    Python/Shell代码执行组件，支持 Python3 代码和 Shell 脚本执行。执行结果必须通过 print 输出才能被接收。
+    文件目录说明：通用数据目录为 /app/data（该目录下的文件可通过 HTTP 访问，地址为 http://host:port/app/data/{file_name}），技能目录为 /app/.proteus/skills（技能根目录）。
+    【文件读取】使用 Python 读取文件：读取文本文件：with open('/app/data/file.txt', 'r', encoding='utf-8') as f: content = f.read()；读取逐行列表：with open(path) as f: lines = f.readlines()；读取 JSON 文件：with open(path, 'r', encoding='utf-8') as f: import json; data = json.load(f)；读取 CSV 文件：with open(path, 'r', encoding='utf-8') as f: import csv; reader = csv.DictReader(f); rows = list(reader) 或 import pandas as pd; df = pd.read_csv('/app/data/file.csv')。
+    【文件写入】覆盖写入：with open('/app/data/file.txt', 'w', encoding='utf-8') as f: f.write(content)；追加写入：open(path, 'a', encoding='utf-8')；写入 JSON：json.dump(data, f, ensure_ascii=False, indent=2)；写入 CSV：writer = csv.writer(f); writer.writerows(rows)；写入二进制文件：open(path, 'wb')。
+    【文件编辑】先读取后修改再写回：with open(path, 'r', encoding='utf-8') as f: content = f.read()；字符串替换：content = content.replace(old_str, new_str)；正则替换：import re; content = re.sub(pattern, replacement, content)；然后 with open(path, 'w', encoding='utf-8') as f: f.write(content)。修改 JSON 文件：读取后更新 dict 再写回；修改 CSV 文件：用 pandas 读取、修改后 df.to_csv(path, index=False) 写回。
+    【内容查找】在单个文件中查找：with open(path, 'r', encoding='utf-8') as f: content = f.read(); matches = [line for line in content.splitlines() if keyword in line]；正则查找：import re; results = re.findall(pattern, content)；跨目录查找：import os; for root, dirs, files in os.walk('/app/data'): for name in files: if name.endswith('.txt'): fp = os.path.join(root, name); lines = [l for l in open(fp, encoding='utf-8') if keyword in l]; print(fp, lines)；Shell grep：使用 language=shell 并执行 grep -r 'keyword' /app/data/ 进行高效内容搜索。
+    支持变量传递（variables 参数）和任何网络访问，适用于数据处理、文件操作、系统脚本、demo 演示、金融数据爬取等场景。当缺少依赖库时，请先用 Python 代码执行 pip install 安装。
   output:
     result: "执行结果（标准输出）"
     stdout: "标准输出内容"
@@ -15,12 +22,12 @@ PythonExecuteNode:
     code:
       type: "str"
       required: true
-      description: "要执行的代码，支持Python函数定义或Shell脚本"
+      description: "要执行的代码，支持 Python3 代码或 Shell 脚本。文件读取示例：with open('/app/data/file.txt','r',encoding='utf-8') as f: print(f.read())。文件写入示例：with open('/app/data/out.txt','w',encoding='utf-8') as f: f.write('hello')。文件编辑示例：先 read() 再 replace() 再 write()。内容查找示例：with open(path) as f: print([l for l in f if 'key' in l])。所有输出结果必须使用 print() 打印。"
     language:
       type: "str"
       required: true
       default: "python"
-      description: "代码语言类型：python 或 shell"
+      description: "代码语言类型：python（Python3）或 shell（Shell脚本）。使用 shell 时可利用 grep、sed、awk、find 等命令进行高效的文件查找和内容搜索"
     enable_network:
       type: "bool"
       required: true
@@ -30,7 +37,7 @@ PythonExecuteNode:
       type: "dict"
       required: false
       default: {}
-      description: "传递给代码的变量字典（仅Python3有效）"
+      description: "传递给代码的变量字典（仅 Python3 有效），变量会在代码执行前注入为全局变量"
 
 SerperSearchNode:
   type: "serper_search"
