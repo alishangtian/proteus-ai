@@ -13,7 +13,7 @@
     <string name="send">发送</string>
     <string name="input_hint">输入消息…</string>
     <string name="token_saved">Token 已保存</string>
-    <string name="token_required">请先在右上角设置 Token</string>
+    <string name="token_required">请先在设置中配置 Token</string>
     <string name="settings">设置</string>
     <string name="logout">退出登录</string>
     <string name="new_conversation">新建会话</string>
@@ -29,4 +29,22 @@
     <string name="history_conversations">历史会话</string>
     <string name="channel_name">消息通知</string>
     <string name="channel_description">用于实时接收 AI 输出的流式消息通知</string>
+    <string name="no_preview">暂无预览</string>
+    <!-- Bottom Navigation -->
+    <string name="nav_chat">Chat</string>
+    <string name="nav_conversations">对话</string>
+    <string name="nav_knowledge_base">知识库</string>
+    <string name="nav_agent_monitor">智能体</string>
+    <string name="nav_profile">我的</string>
+    <!-- Knowledge Base -->
+    <string name="kb_empty">知识库为空</string>
+    <string name="kb_add">添加条目</string>
+    <string name="kb_save">保存</string>
+    <string name="kb_delete_confirm">确定要删除此条目吗？</string>
+    <!-- Agent Monitor -->
+    <string name="agent_empty">暂无 Agent 记录</string>
+    <string name="agent_status_running">运行中</string>
+    <string name="agent_status_complete">已完成</string>
+    <string name="agent_status_stopped">已停止</string>
+    <string name="agent_status_error">错误</string>
 </resources>
