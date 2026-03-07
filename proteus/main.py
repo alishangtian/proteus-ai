@@ -583,12 +583,12 @@ async def get_all_agents_status():
     """查询所有正在运行的 agent 的实时状态
 
     返回每个 agent 的运行时间、任务信息、迭代轮次和 token 消耗等信息。
+
+    性能优化：此接口使用预缓存的状态快照，避免在查询时阻塞正在运行的agent。
+    状态快照在agent执行过程中异步更新，确保数据实时性的同时不影响agent性能。
     """
-    all_agents = ChatAgent.get_all_agents()
-    agents_info = []
-    for chat_id, agents in all_agents.items():
-        for agent in agents:
-            agents_info.append(agent.get_status_info())
+    # 使用优化后的快照方法，避免锁竞争和阻塞
+    agents_info = ChatAgent.get_all_agents_status_snapshot()
     return ApiResponse(
         event="agents_status",
         success=True,

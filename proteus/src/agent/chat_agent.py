@@ -77,6 +77,8 @@ class ChatAgent:
 
     _agent_cache: Dict[str, List["ChatAgent"]] = {}
     _cache_lock = threading.Lock()
+    # 缓存的状态快照，避免在查询时访问正在运行的agent实例
+    _status_snapshot_cache: Dict[str, Dict[str, Any]] = {}
 
     @classmethod
     def get_agents(cls, chat_id: str) -> List["ChatAgent"]:
@@ -88,9 +90,10 @@ class ChatAgent:
         返回:
             该chat_id下的agent列表副本(浅拷贝)
         """
-        agents = cls._agent_cache.get(chat_id, [])
-        logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
-        return list(agents)
+        with cls._cache_lock:
+            agents = cls._agent_cache.get(chat_id, [])
+            logger.info(f"Getting {len(agents)} agents for chat {chat_id}")
+            return list(agents)
 
     @classmethod
     def set_agents(cls, chat_id: str, agents: List["ChatAgent"]) -> None:
@@ -109,9 +112,47 @@ class ChatAgent:
 
         返回:
             Dict[str, List[ChatAgent]]: chat_id → agent 列表 的映射副本
+
+        注意: 此方法仅用于维护操作，性能敏感的查询应使用 get_all_agents_status_snapshot()
         """
         with cls._cache_lock:
             return {k: list(v) for k, v in cls._agent_cache.items()}
+
+    @classmethod
+    def get_all_agents_status_snapshot(cls) -> List[Dict[str, Any]]:
+        """获取所有agent的状态快照（性能优化版本）
+
+        此方法通过读取预先缓存的状态快照来避免在查询时阻塞正在运行的agent。
+        快照在agent更新状态时异步更新，因此此方法不会造成锁竞争。
+
+        返回:
+            List[Dict[str, Any]]: 所有agent的状态信息列表
+        """
+        with cls._cache_lock:
+            # 快速复制快照字典，最小化锁持有时间
+            snapshot = dict(cls._status_snapshot_cache)
+        return list(snapshot.values())
+
+    @classmethod
+    def _update_status_snapshot(cls, agent_id: str, status_info: Dict[str, Any]) -> None:
+        """更新agent的状态快照（内部方法）
+
+        Args:
+            agent_id: agent唯一标识
+            status_info: 状态信息字典
+        """
+        with cls._cache_lock:
+            cls._status_snapshot_cache[agent_id] = status_info.copy()
+
+    @classmethod
+    def _remove_status_snapshot(cls, agent_id: str) -> None:
+        """移除agent的状态快照（内部方法）
+
+        Args:
+            agent_id: agent唯一标识
+        """
+        with cls._cache_lock:
+            cls._status_snapshot_cache.pop(agent_id, None)
 
     def get_status_info(self) -> Dict[str, Any]:
         """获取当前 agent 的实时运行状态信息
@@ -120,7 +161,7 @@ class ChatAgent:
             Dict[str, Any]: 包含运行时间、任务信息、迭代轮次和 token 消耗等
         """
         elapsed = round(time.time() - self.start_time, 2) if self.start_time else 0
-        return {
+        status_info = {
             "agent_id": self.agentid,
             "chat_id": self.chat_id,
             "status": self.status,
@@ -134,6 +175,9 @@ class ChatAgent:
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "conversation_id": self.conversation_id,
         }
+        # 更新状态快照（使用统一的内部方法）
+        ChatAgent._update_status_snapshot(self.agentid, status_info)
+        return status_info
 
     def _remove_from_cache(self) -> None:
         """从缓存中移除当前 agent（线程安全），防止内存泄漏"""
@@ -146,6 +190,8 @@ class ChatAgent:
                 ]
                 if not ChatAgent._agent_cache[self.chat_id]:
                     del ChatAgent._agent_cache[self.chat_id]
+            # 同时移除状态快照
+            ChatAgent._remove_status_snapshot(self.agentid)
 
     def stop(self) -> None:
         """停止 agent：设置停止标志并从缓存中移除自身，防止内存泄漏"""
@@ -191,7 +237,7 @@ class ChatAgent:
         return False
 
     def _set_status(self, status: str) -> None:
-        """将智能体状态写入 Redis（chat 级别），并更新内存属性"""
+        """将智能体状态写入 Redis（chat 级别），并更新内存属性和状态快照"""
         self.status = status
         try:
             if self.chat_id:
@@ -200,8 +246,29 @@ class ChatAgent:
                     f"chat:{self.chat_id}:status", status, ex=AGENT_STATUS_TTL
                 )
             logger.info(f"Agent {self.agentid} 状态更新为: {status}")
+            # 状态变更时立即更新快照
+            self._update_snapshot()
         except Exception as e:
             logger.error(f"Agent {self.agentid} 设置状态失败: {e}")
+
+    def _update_snapshot(self) -> None:
+        """更新当前agent的状态快照（内部方法，减少重复代码）"""
+        elapsed = round(time.time() - self.start_time, 2) if self.start_time else 0
+        status_info = {
+            "agent_id": self.agentid,
+            "chat_id": self.chat_id,
+            "status": self.status,
+            "model_name": self.model_name,
+            "elapsed_time": elapsed,
+            "task_text": self.task_text,
+            "current_iteration": self.current_iteration,
+            "max_iterations": self.max_tool_iterations,
+            "total_input_tokens": self.total_input_tokens,
+            "total_output_tokens": self.total_output_tokens,
+            "total_tokens": self.total_input_tokens + self.total_output_tokens,
+            "conversation_id": self.conversation_id,
+        }
+        ChatAgent._update_status_snapshot(self.agentid, status_info)
 
     async def _register_agent(self, chat_id: str) -> None:
         """注册当前agent到缓存"""
@@ -479,6 +546,8 @@ class ChatAgent:
                     # 累计 token 消耗
                     self.total_input_tokens += accumulated_usage.get("prompt_tokens", 0)
                     self.total_output_tokens += accumulated_usage.get("completion_tokens", 0)
+                    # token更新后立即更新快照
+                    self._update_snapshot()
 
                     if self._check_and_handle_stopped(chat_id):
                         break
@@ -590,6 +659,8 @@ class ChatAgent:
                     # 增加迭代计数
                     tool_iteration += 1
                     self.current_iteration = tool_iteration
+                    # 迭代更新后立即更新快照
+                    self._update_snapshot()
                     logger.info(
                         f"[{chat_id}] 完成第 {tool_iteration} 次工具调用，继续下一轮推理"
                     )
