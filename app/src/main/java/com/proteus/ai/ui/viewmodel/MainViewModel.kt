@@ -157,19 +157,22 @@ class MainViewModel(
         if (_selectedConversationId.value == cid && _messages.value.isNotEmpty()) return
         
         streamingJob?.cancel()
+        _isStreaming.value = false
+        _currentChatId.value = null
         _selectedConversationId.value = cid
         _messages.value = emptyList()
-        loadConversationHistory(token, cid)
+        loadConversationHistory(token, cid, conversation.isRunning)
     }
 
     fun newConversation() {
         streamingJob?.cancel()
+        _isStreaming.value = false
         _selectedConversationId.value = null
         _messages.value = emptyList()
         _currentChatId.value = null
     }
 
-    private fun loadConversationHistory(token: String, conversationId: String) {
+    private fun loadConversationHistory(token: String, conversationId: String, isRunning: Boolean = false) {
         streamingJob = viewModelScope.launch {
             _loading.value = true
             try {
@@ -177,21 +180,45 @@ class MainViewModel(
                 val chatIds = detail?.chatIds ?: emptyList()
                 _loading.value = false
                 
-                chatIds.forEach { chatId ->
+                chatIds.forEachIndexed { index, chatId ->
                     val msgId = "replay_$chatId"
+                    val isLastChat = index == chatIds.lastIndex
                     try {
-                        chatRepository.replayStream(token, chatId).collect { event ->
-                            updateMessageWithEvent(msgId, event)
+                        if (isLastChat && isRunning) {
+                            // 最后一个 chat 处于运行中，使用 blocking stream 获取实时事件
+                            _isStreaming.value = true
+                            _currentChatId.value = chatId
+                            try {
+                                chatRepository.streamChatBlocking(token, chatId).collect { event ->
+                                    updateMessageWithEvent(msgId, event)
+                                }
+                            } finally {
+                                _isStreaming.value = false
+                                _currentChatId.value = null
+                                launch {
+                                    try { _conversations.value = conversationRepository.getConversations(token) } catch(e: Exception){}
+                                }
+                            }
+                        } else {
+                            chatRepository.replayStream(token, chatId).collect { event ->
+                                updateMessageWithEvent(msgId, event)
+                            }
                         }
                     } catch (e: Exception) {
                         if (e is kotlinx.coroutines.CancellationException) throw e
                         Timber.e(e, "Replay failed for chatId: $chatId, continuing with next")
+                        if (isLastChat && isRunning) {
+                            _isStreaming.value = false
+                            _currentChatId.value = null
+                        }
                     }
                 }
                 _uiState.value = UiState.Success
             } catch (e: Exception) {
                 Timber.e(e, "History load failed")
                 _uiState.value = UiState.Error("加载历史记录失败: ${e.message}")
+                _isStreaming.value = false
+                _currentChatId.value = null
             } finally {
                 _loading.value = false
             }
