@@ -403,6 +403,98 @@
             justify-content: space-between;
         }
 
+        /* Sub-menu list */
+        .sub-list {
+            display: none;
+            flex-direction: column;
+            padding: 0 0 4px 0;
+        }
+        .sub-list.open { display: flex; }
+
+        .sub-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 20px 4px;
+        }
+
+        .sub-new-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px 5px 16px;
+            margin: 2px 10px;
+            font-size: 13px;
+            color: #4f46e5;
+            cursor: pointer;
+            border-radius: 6px;
+            border: 1px dashed rgba(79,70,229,0.4);
+            background: rgba(79,70,229,0.04);
+            transition: all 0.15s ease;
+            text-align: left;
+            width: calc(100% - 20px);
+        }
+        .sub-new-btn:hover { background: rgba(79,70,229,0.1); border-color: #4f46e5; }
+
+        .sub-item {
+            display: flex;
+            align-items: center;
+            padding: 7px 20px 7px 40px;
+            font-size: 13px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            border: none;
+            background: none;
+            text-align: left;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: relative;
+        }
+        .sub-item:hover { background: #f5f5f8; color: #333; }
+        .sub-item.active {
+            color: #4f46e5;
+            background: rgba(79,70,229,0.06);
+            font-weight: 500;
+        }
+        .sub-item-dot {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: #ccc; flex-shrink: 0; margin-right: 8px;
+        }
+        .sub-item.active .sub-item-dot { background: #4f46e5; }
+        .sub-item-running .sub-item-dot {
+            background: #22c55e;
+            animation: pulse-green 2s infinite;
+        }
+        .sub-item-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sub-loading {
+            padding: 8px 20px 8px 40px;
+            font-size: 12px;
+            color: #bbb;
+        }
+
+        /* Nav item with expand arrow */
+        .nav-item-expandable {
+            justify-content: space-between;
+        }
+        .nav-item-expandable .nav-item-left {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .nav-expand-arrow {
+            font-size: 10px;
+            color: #bbb;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+        .nav-expand-arrow.open { transform: rotate(90deg); }
+
         /* Mobile */
         @media (max-width: 768px) {
             .sidebar { display: none; }
@@ -425,9 +517,15 @@
 
         <div class="nav-section">
             <div class="nav-section-title">菜单</div>
-            <button class="nav-item" data-page="chat" data-url="/chat/index">
-                <span class="nav-icon">💬</span> 聊天
+            <button class="nav-item nav-item-expandable" id="navChat" data-expand="chat">
+                <div class="nav-item-left"><span class="nav-icon">💬</span> 聊天</div>
+                <span class="nav-expand-arrow" id="chatArrow">▶</span>
             </button>
+            <!-- Chat sub-list -->
+            <div class="sub-list" id="subListChat">
+                <button class="sub-new-btn" id="newChatBtn">＋ 新建聊天</button>
+                <div id="convItems"><div class="sub-loading">加载中...</div></div>
+            </div>
         </div>
 
         <div class="nav-section">
@@ -438,9 +536,15 @@
             <button class="nav-item" data-page="monitor" data-url="/monitor">
                 <span class="nav-icon">🤖</span> Agent 监控
             </button>
-            <button class="nav-item" data-page="knowledge" data-url="/knowledge/index">
-                <span class="nav-icon">📚</span> 知识库
+            <button class="nav-item nav-item-expandable" id="navKnowledge" data-expand="knowledge">
+                <div class="nav-item-left"><span class="nav-icon">📚</span> 知识库</div>
+                <span class="nav-expand-arrow" id="knowledgeArrow">▶</span>
             </button>
+            <!-- Knowledge sub-list -->
+            <div class="sub-list" id="subListKnowledge">
+                <button class="sub-new-btn" id="newKbBtn" data-page="knowledge" data-url="/knowledge/index">📋 进入知识库</button>
+                <div id="kbItems"><div class="sub-loading">加载中...</div></div>
+            </div>
         </div>
 
         <div class="nav-section">
@@ -590,15 +694,26 @@
         };
 
         let currentPage = 'overview';
+        let currentSubItem = null;
 
-        function navigate(page, url) {
+        function navigate(page, url, subItemId) {
             const cfg = PAGE_CONFIG[page];
             if (!cfg) return;
 
-            // Update active nav item
-            document.querySelectorAll('.nav-item').forEach(el => {
+            // Update active nav item (only top-level nav-item buttons with data-page)
+            document.querySelectorAll('.nav-item[data-page]').forEach(el => {
                 el.classList.toggle('active', el.dataset.page === page);
             });
+
+            // Update sub-item highlight
+            document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
+            if (subItemId) {
+                const activeSubItem = document.querySelector(`.sub-item[data-id="${CSS.escape(subItemId)}"]`);
+                if (activeSubItem) activeSubItem.classList.add('active');
+                currentSubItem = subItemId;
+            } else {
+                currentSubItem = null;
+            }
 
             // Update topbar title
             document.getElementById('topbarTitle').textContent = cfg.title;
@@ -624,25 +739,125 @@
             }
 
             currentPage = page;
-            // Update URL hash for browser history
-            history.pushState({ page, url }, cfg.title, '#' + page);
+            history.pushState({ page, url, subItemId }, cfg.title, '#' + page);
         }
 
-        // Attach click handlers to all nav items and feature cards
+        // ===== Expandable sub-menus =====
+        let chatExpanded = false;
+        let knowledgeExpanded = false;
+
+        function toggleChatMenu() {
+            chatExpanded = !chatExpanded;
+            document.getElementById('subListChat').classList.toggle('open', chatExpanded);
+            document.getElementById('chatArrow').classList.toggle('open', chatExpanded);
+            if (chatExpanded) loadConversations();
+        }
+
+        function toggleKnowledgeMenu() {
+            knowledgeExpanded = !knowledgeExpanded;
+            document.getElementById('subListKnowledge').classList.toggle('open', knowledgeExpanded);
+            document.getElementById('knowledgeArrow').classList.toggle('open', knowledgeExpanded);
+            if (knowledgeExpanded) loadKnowledgeItems();
+        }
+
+        async function loadConversations() {
+            const container = document.getElementById('convItems');
+            container.innerHTML = '<div class="sub-loading">加载中...</div>';
+            try {
+                const res = await fetch('/conversations');
+                const data = await res.json();
+                if (data.success && Array.isArray(data.conversations) && data.conversations.length > 0) {
+                    container.innerHTML = '';
+                    for (const conv of data.conversations) {
+                        const convId = conv.conversation_id || conv.id || '';
+                        const title = conv.title || '未命名会话';
+                        const isRunning = conv.is_running;
+                        const btn = document.createElement('button');
+                        btn.className = 'sub-item' + (isRunning ? ' sub-item-running' : '');
+                        btn.dataset.id = convId;
+                        btn.title = title;
+                        const dot = document.createElement('span');
+                        dot.className = 'sub-item-dot';
+                        const text = document.createElement('span');
+                        text.className = 'sub-item-text';
+                        text.textContent = title;
+                        btn.appendChild(dot);
+                        btn.appendChild(text);
+                        btn.addEventListener('click', () => {
+                            navigate('chat', '/chat/index?conversation_id=' + encodeURIComponent(convId), convId);
+                        });
+                        container.appendChild(btn);
+                    }
+                } else {
+                    container.innerHTML = '<div class="sub-loading">暂无会话</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="sub-loading">加载失败</div>';
+            }
+        }
+
+        async function loadKnowledgeItems() {
+            const container = document.getElementById('kbItems');
+            container.innerHTML = '<div class="sub-loading">加载中...</div>';
+            try {
+                const res = await fetch('/knowledge_base/list');
+                const data = await res.json();
+                const items = data.success ? (data.knowledge_base_items || []) : [];
+                if (items.length > 0) {
+                    container.innerHTML = '';
+                    for (const item of items) {
+                        const itemId = item.id || '';
+                        const title = item.title || '无标题';
+                        const btn = document.createElement('button');
+                        btn.className = 'sub-item';
+                        btn.dataset.id = itemId;
+                        btn.title = title;
+                        const dot = document.createElement('span');
+                        dot.className = 'sub-item-dot';
+                        const text = document.createElement('span');
+                        text.className = 'sub-item-text';
+                        text.textContent = title;
+                        btn.appendChild(dot);
+                        btn.appendChild(text);
+                        btn.addEventListener('click', () => {
+                            navigate('knowledge', '/knowledge/index?id=' + encodeURIComponent(itemId), itemId);
+                        });
+                        container.appendChild(btn);
+                    }
+                } else {
+                    container.innerHTML = '<div class="sub-loading">暂无内容</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="sub-loading">加载失败</div>';
+            }
+        }
+
+        // ===== Event delegation for nav items and feature cards =====
         document.addEventListener('click', function(e) {
+            // Expand toggle buttons
+            if (e.target.closest('#navChat')) { toggleChatMenu(); return; }
+            if (e.target.closest('#navKnowledge')) { toggleKnowledgeMenu(); return; }
+
+            // New chat button
+            if (e.target.closest('#newChatBtn')) {
+                // Open chat sub-menu if not open
+                if (!chatExpanded) toggleChatMenu();
+                navigate('chat', '/chat/index');
+                return;
+            }
+
+            // Standard data-page buttons (but not expand buttons)
             const btn = e.target.closest('[data-page]');
-            if (!btn) return;
+            if (!btn || btn.dataset.expand) return;
             e.preventDefault();
-            const page = btn.dataset.page;
-            const url = btn.dataset.url || null;
-            navigate(page, url);
+            navigate(btn.dataset.page, btn.dataset.url || null);
         });
 
         // Handle browser back/forward
         window.addEventListener('popstate', function(e) {
             if (e.state && e.state.page) {
-                if (currentPage !== e.state.page) {
-                    navigate(e.state.page, e.state.url);
+                if (currentPage !== e.state.page || currentSubItem !== (e.state.subItemId || null)) {
+                    navigate(e.state.page, e.state.url, e.state.subItemId);
                 }
             } else {
                 navigate('overview', null);
@@ -726,16 +941,22 @@
 
         // ===== Initialise =====
         document.addEventListener('DOMContentLoaded', () => {
-            // Restore page from hash if present — validate against known pages first
             const rawHash = location.hash.replace('#', '');
             const safeHash = Object.prototype.hasOwnProperty.call(PAGE_CONFIG, rawHash) ? rawHash : '';
-            const navEl = safeHash && document.querySelector(`.nav-item[data-page="${safeHash}"]`);
-            if (navEl && safeHash !== 'overview') {
-                navigate(safeHash, navEl.dataset.url || null);
+            if (safeHash && safeHash !== 'overview') {
+                if (safeHash === 'chat') {
+                    toggleChatMenu();
+                    navigate('chat', '/chat/index');
+                } else if (safeHash === 'knowledge') {
+                    toggleKnowledgeMenu();
+                    navigate('knowledge', '/knowledge/index');
+                } else {
+                    const navEl = document.querySelector(`.nav-item[data-page="${safeHash}"]`);
+                    navigate(safeHash, navEl ? navEl.dataset.url : null);
+                }
             } else {
                 loadStats();
                 loadRecommendations();
-                // Set initial history state
                 history.replaceState({ page: 'overview', url: null }, '概览', '#overview');
             }
         });
