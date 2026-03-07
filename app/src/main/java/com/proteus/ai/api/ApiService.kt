@@ -38,4 +38,59 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Body request: StopTaskRequest
     ): StopTaskResponse
+
+    // ==================== 知识库 ====================
+
+    @GET("knowledge_base/list")
+    suspend fun getKnowledgeBaseList(
+        @Header("Authorization") authorization: String
+    ): KnowledgeBaseListResponse
+
+    @GET("knowledge_base/item/{item_id}")
+    suspend fun getKnowledgeBaseItem(
+        @Header("Authorization") authorization: String,
+        @Path("item_id") itemId: String
+    ): KnowledgeBaseItemResponse
+
+    @POST("knowledge_base/save")
+    suspend fun saveKnowledgeBaseItem(
+        @Header("Authorization") authorization: String,
+        @Body request: KnowledgeBaseSaveRequest
+    ): KnowledgeBaseSaveResponse
+
+    @PUT("knowledge_base/item/{item_id}")
+    suspend fun updateKnowledgeBaseItem(
+        @Header("Authorization") authorization: String,
+        @Path("item_id") itemId: String,
+        @Body request: KnowledgeBaseUpdateRequest
+    ): KnowledgeBaseSaveResponse
+
+    @DELETE("knowledge_base/item/{item_id}")
+    suspend fun deleteKnowledgeBaseItem(
+        @Header("Authorization") authorization: String,
+        @Path("item_id") itemId: String
+    ): SimpleResponse
+
+    // ==================== Agent 监控 ====================
+
+    @GET("agents/status")
+    suspend fun getAgentsStatus(
+        @Header("Authorization") authorization: String,
+        @Query("page") page: Int = 1,
+        @Query("page_size") pageSize: Int = 20,
+        @Query("status") status: String? = null
+    ): AgentStatusListResponse
+
+    @POST("agents/{agent_id}/stop")
+    suspend fun stopAgent(
+        @Header("Authorization") authorization: String,
+        @Path("agent_id") agentId: String
+    ): AgentActionResponse
+
+    @DELETE("agents/{agent_id}")
+    suspend fun deleteAgent(
+        @Header("Authorization") authorization: String,
+        @Path("agent_id") agentId: String
+    ): AgentActionResponse
 }
+

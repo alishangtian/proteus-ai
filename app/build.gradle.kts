@@ -114,6 +114,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     // Window Size Class
     implementation("androidx.compose.material3:material3-window-size-class")
+    // Material Icons Extended (for LibraryBooks, SmartToy, etc.)
+    implementation("androidx.compose.material:material-icons-extended")
 
     // ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")

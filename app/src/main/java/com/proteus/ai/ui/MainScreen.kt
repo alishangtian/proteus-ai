@@ -27,22 +27,83 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.proteus.ai.R
 import com.proteus.ai.ui.components.ConversationList
 import com.proteus.ai.ui.components.MessageList
 import com.proteus.ai.ui.components.TokenDialog
+import com.proteus.ai.ui.viewmodel.AgentMonitorViewModel
+import com.proteus.ai.ui.viewmodel.KnowledgeBaseViewModel
 import com.proteus.ai.ui.viewmodel.MainViewModel
 import com.proteus.ai.ui.viewmodel.UiState
 import kotlinx.coroutines.launch
 
+enum class BottomNavTab { CHAT, KNOWLEDGE_BASE, AGENT_MONITOR }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory)) {
+    var selectedTab by remember { mutableStateOf(BottomNavTab.CHAT) }
+
+    val tokenState by viewModel.tokenState.collectAsState()
+
+    if (viewModel.showTokenDialog.collectAsState().value) {
+        val serverUrlState by viewModel.serverUrlState.collectAsState()
+        TokenDialog(
+            onDismissRequest = { viewModel.hideTokenDialog() },
+            onConfirm = { token, serverUrl -> viewModel.saveSettings(token, serverUrl) },
+            initialToken = tokenState ?: "",
+            initialServerUrl = serverUrlState ?: ""
+        )
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == BottomNavTab.CHAT,
+                    onClick = { selectedTab = BottomNavTab.CHAT },
+                    icon = { Icon(Icons.Default.Chat, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_chat)) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == BottomNavTab.KNOWLEDGE_BASE,
+                    onClick = { selectedTab = BottomNavTab.KNOWLEDGE_BASE },
+                    icon = { Icon(Icons.Default.LibraryBooks, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_knowledge_base)) }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == BottomNavTab.AGENT_MONITOR,
+                    onClick = { selectedTab = BottomNavTab.AGENT_MONITOR },
+                    icon = { Icon(Icons.Default.SmartToy, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_agent_monitor)) }
+                )
+            }
+        }
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            when (selectedTab) {
+                BottomNavTab.CHAT -> ChatTab(viewModel = viewModel)
+                BottomNavTab.KNOWLEDGE_BASE -> KnowledgeBaseScreen(
+                    viewModel = viewModel(factory = KnowledgeBaseViewModel.Factory)
+                )
+                BottomNavTab.AGENT_MONITOR -> AgentMonitorScreen(
+                    viewModel = viewModel(factory = AgentMonitorViewModel.Factory)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatTab(viewModel: MainViewModel) {
     val tokenState by viewModel.tokenState.collectAsState()
     val serverUrlState by viewModel.serverUrlState.collectAsState()
-    val showTokenDialog by viewModel.showTokenDialog.collectAsState()
     val conversations by viewModel.conversations.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
@@ -51,18 +112,9 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
     val selectedConversationId by viewModel.selectedConversationId.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
-    
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-
-    if (showTokenDialog) {
-        TokenDialog(
-            onDismissRequest = { viewModel.hideTokenDialog() },
-            onConfirm = { token, serverUrl -> viewModel.saveSettings(token, serverUrl) },
-            initialToken = tokenState ?: "",
-            initialServerUrl = serverUrlState ?: ""
-        )
-    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -101,15 +153,15 @@ fun MainScreen(viewModel: MainViewModel = viewModel(factory = MainViewModel.Fact
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { 
+                    title = {
                         Text(
                             stringResource(R.string.app_name),
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        ) 
+                        )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { 
-                            scope.launch { drawerState.open() } 
+                        IconButton(onClick = {
+                            scope.launch { drawerState.open() }
                         }) {
                             Icon(Icons.Default.Menu, contentDescription = null)
                         }
@@ -190,12 +242,12 @@ private fun InputArea(
                 TextField(
                     value = inputText,
                     onValueChange = onInputTextChange,
-                    placeholder = { 
+                    placeholder = {
                         Text(
-                            stringResource(R.string.input_hint), 
+                            stringResource(R.string.input_hint),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        ) 
+                        )
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -339,3 +391,4 @@ private fun ErrorMessageBar(uiState: UiState, viewModel: MainViewModel) {
         }
     }
 }
+

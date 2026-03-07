@@ -657,3 +657,325 @@ async def stream_blocking_queue(websocket: WebSocket, chat_id: str):
             await websocket.close()
         except Exception:
             pass
+
+
+# ==================== 知识库相关端点 ====================
+
+# Agent 状态列表在 Redis 中的键名（与 proteus/main.py 中 AGENT_STATUS_LIST_KEY 保持一致）
+AGENT_STATUS_LIST_KEY = "agents:status:list"
+
+
+def _extract_kb_title(content: str) -> str:
+    """从内容中提取知识库条目标题（第一行 Markdown 标题或前 50 字符）"""
+    lines = content.strip().split("\n")
+    title = lines[0].lstrip("#").strip() if lines else ""
+    return title if title else content[:50].strip()
+
+
+class KnowledgeBaseContent(BaseModel):
+    content: str = Field(..., description="知识库内容（Markdown 格式）")
+
+
+class KnowledgeBaseUpdate(BaseModel):
+    content: str = Field(..., description="更新后的知识库内容（Markdown 格式）")
+    title: Optional[str] = Field(None, description="更新后的标题")
+
+
+@app.post("/knowledge_base/save")
+async def save_to_knowledge_base(
+    kb_content: KnowledgeBaseContent, user: dict = Depends(require_auth)
+):
+    """保存内容到知识库"""
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+
+        item_id = str(uuid.uuid4())
+        now = datetime.now().isoformat()
+        title = _extract_kb_title(kb_content.content)
+
+        queue_item = json.dumps(
+            {
+                "id": item_id,
+                "timestamp": now,
+                "updated_at": now,
+                "title": title,
+                "author": user_name,
+                "likes": 0,
+                "dislikes": 0,
+            },
+            ensure_ascii=False,
+        )
+        map_item = json.dumps(
+            {
+                "id": item_id,
+                "timestamp": now,
+                "updated_at": now,
+                "title": title,
+                "author": user_name,
+                "likes": 0,
+                "dislikes": 0,
+                "content": kb_content.content,
+            },
+            ensure_ascii=False,
+        )
+
+        queue_key = f"user:{user_name}:knowledge_base:queue"
+        map_key = f"user:{user_name}:knowledge_base:map"
+
+        pipe = redis_conn.pipeline()
+        pipe.lpush(queue_key, queue_item)
+        pipe.hset(map_key, item_id, map_item)
+        pipe.execute()
+
+        logger.info(f"用户 {user_name} 保存了知识库条目 {item_id}")
+        return {"success": True, "message": "保存成功", "item_id": item_id}
+    except Exception as e:
+        logger.error(f"保存知识库失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"保存知识库失败: {str(e)}")
+
+
+@app.get("/knowledge_base/list")
+async def get_knowledge_base_list(user: dict = Depends(require_auth)):
+    """获取当前用户的知识库列表"""
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+        queue_key = f"user:{user_name}:knowledge_base:queue"
+        raw_items = redis_conn.lrange(queue_key, 0, -1)
+
+        items = []
+        for raw in raw_items:
+            try:
+                item = json.loads(
+                    raw.decode("utf-8") if isinstance(raw, bytes) else raw
+                )
+                items.append(item)
+            except Exception:
+                continue
+
+        return {"success": True, "knowledge_base_items": items}
+    except Exception as e:
+        logger.error(f"获取知识库列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取知识库列表失败: {str(e)}")
+
+
+@app.get("/knowledge_base/item/{item_id}")
+async def get_knowledge_base_item(item_id: str, user: dict = Depends(require_auth)):
+    """获取指定知识库条目的完整内容"""
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+        map_key = f"user:{user_name}:knowledge_base:map"
+        raw = redis_conn.hget(map_key, item_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        item = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        return {"success": True, "knowledge_base_item": item}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取知识库条目失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取知识库条目失败: {str(e)}")
+
+
+@app.put("/knowledge_base/item/{item_id}")
+async def update_knowledge_base_item(
+    item_id: str,
+    kb_update: KnowledgeBaseUpdate,
+    user: dict = Depends(require_auth),
+):
+    """更新指定知识库条目"""
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+        map_key = f"user:{user_name}:knowledge_base:map"
+        queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        raw = redis_conn.hget(map_key, item_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        existing = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        now = datetime.now().isoformat()
+
+        new_title = kb_update.title if kb_update.title else _extract_kb_title(kb_update.content)
+
+        existing.update(
+            {
+                "content": kb_update.content,
+                "title": new_title,
+                "updated_at": now,
+            }
+        )
+
+        raw_queue = redis_conn.lrange(queue_key, 0, -1)
+        new_queue = []
+        for r in raw_queue:
+            try:
+                q_item = json.loads(r.decode("utf-8") if isinstance(r, bytes) else r)
+                if q_item.get("id") == item_id:
+                    q_item["title"] = new_title
+                    q_item["updated_at"] = now
+                new_queue.append(json.dumps(q_item, ensure_ascii=False))
+            except Exception:
+                # Skip malformed items rather than appending raw bytes
+                logger.warning(f"跳过格式错误的知识库队列条目")
+                continue
+
+        pipe = redis_conn.pipeline()
+        pipe.hset(map_key, item_id, json.dumps(existing, ensure_ascii=False))
+        pipe.delete(queue_key)
+        for q in new_queue:
+            pipe.rpush(queue_key, q)
+        pipe.execute()
+
+        logger.info(f"用户 {user_name} 更新了知识库条目 {item_id}")
+        return {"success": True, "message": "更新成功", "item_id": item_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新知识库条目失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"更新知识库条目失败: {str(e)}")
+
+
+@app.delete("/knowledge_base/item/{item_id}")
+async def delete_knowledge_base_item(item_id: str, user: dict = Depends(require_auth)):
+    """删除指定知识库条目"""
+    try:
+        user_name = user["user_name"]
+        redis_conn = get_redis_client()
+        map_key = f"user:{user_name}:knowledge_base:map"
+        queue_key = f"user:{user_name}:knowledge_base:queue"
+
+        raw = redis_conn.hget(map_key, item_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail="知识库条目不存在")
+
+        raw_queue = redis_conn.lrange(queue_key, 0, -1)
+        new_queue = []
+        for r in raw_queue:
+            try:
+                q_item = json.loads(r.decode("utf-8") if isinstance(r, bytes) else r)
+                if q_item.get("id") != item_id:
+                    new_queue.append(json.dumps(q_item, ensure_ascii=False))
+            except Exception:
+                pass
+
+        pipe = redis_conn.pipeline()
+        pipe.hdel(map_key, item_id)
+        pipe.delete(queue_key)
+        for q in new_queue:
+            pipe.rpush(queue_key, q)
+        pipe.execute()
+
+        logger.info(f"用户 {user_name} 删除了知识库条目 {item_id}")
+        return {"success": True, "message": "删除成功"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除知识库条目失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除知识库条目失败: {str(e)}")
+
+
+# ==================== Agent 监控相关端点 ====================
+
+
+@app.get("/agents/status")
+async def get_all_agents_status(
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[str] = None,
+    user: dict = Depends(require_auth),
+):
+    """获取所有 Agent 的运行状态（分页）
+
+    Args:
+        page: 页码，从 1 开始
+        page_size: 每页数量
+        status: 可选，按状态过滤（running/complete/stopped/error/init）
+    """
+    try:
+        redis_conn = get_redis_client()
+        raw_all = redis_conn.hgetall(AGENT_STATUS_LIST_KEY)
+
+        agents = []
+        for _, v in raw_all.items():
+            try:
+                info = json.loads(v.decode("utf-8") if isinstance(v, bytes) else v)
+                agents.append(info)
+            except Exception:
+                continue
+
+        if status:
+            agents = [a for a in agents if a.get("status") == status]
+
+        agents.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+
+        total = len(agents)
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_agents = agents[start:end]
+
+        return {
+            "success": True,
+            "data": page_agents,
+            "message": f"共 {total} 条记录，第 {page}/{total_pages} 页",
+        }
+    except Exception as e:
+        logger.error(f"获取 Agent 状态列表失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取 Agent 状态列表失败: {str(e)}")
+
+
+@app.post("/agents/{agent_id}/stop")
+async def stop_agent(agent_id: str, user: dict = Depends(require_auth)):
+    """停止指定 Agent"""
+    try:
+        redis_conn = get_redis_client()
+        raw = redis_conn.hget(AGENT_STATUS_LIST_KEY, agent_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail="Agent 不存在")
+
+        info = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        if info.get("status") != "running":
+            raise HTTPException(status_code=400, detail="Agent 未在运行中")
+
+        chat_id = info.get("chat_id", agent_id)
+        redis_conn.set(f"chat:{chat_id}:stopped", "1", ex=AGENT_STATUS_TTL)
+
+        info["status"] = "stopped"
+        info["updated_at"] = datetime.now().isoformat()
+        redis_conn.hset(AGENT_STATUS_LIST_KEY, agent_id, json.dumps(info, ensure_ascii=False))
+
+        logger.info(f"用户 {user['user_name']} 停止了 Agent {agent_id}")
+        return {"success": True, "message": "Agent 已停止"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"停止 Agent 失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"停止 Agent 失败: {str(e)}")
+
+
+@app.delete("/agents/{agent_id}")
+async def delete_agent(agent_id: str, user: dict = Depends(require_auth)):
+    """删除指定 Agent 记录"""
+    try:
+        redis_conn = get_redis_client()
+        raw = redis_conn.hget(AGENT_STATUS_LIST_KEY, agent_id)
+        if not raw:
+            raise HTTPException(status_code=404, detail="Agent 不存在")
+
+        info = json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+        if info.get("status") == "running":
+            raise HTTPException(status_code=400, detail="Agent 正在运行中，无法删除")
+
+        redis_conn.hdel(AGENT_STATUS_LIST_KEY, agent_id)
+        logger.info(f"用户 {user['user_name']} 删除了 Agent 记录 {agent_id}")
+        return {"success": True, "message": "Agent 记录已删除"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除 Agent 记录失败: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"删除 Agent 记录失败: {str(e)}")
