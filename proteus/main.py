@@ -678,9 +678,76 @@ async def get_agent_status(chat_id: str):
     )
 
 
+@app.get("/agents/by_conversation", response_model=ApiResponse)
+async def get_agents_by_conversation(status: Optional[str] = None):
+    """查询所有 agent 状态，按会话（conversation_id）分组返回
+
+    直接从 Redis 读取，不访问 ChatAgent 对象。
+
+    Args:
+        status: 状态过滤（可选）：running, complete, stopped, error, init
+
+    Returns:
+        ApiResponse: 会话分组的 agent 列表，格式为
+            [{"conversation_id": "...", "agents": [...], "has_running": bool}, ...]
+    """
+    try:
+        redis_conn = get_redis_connection()
+        from src.agent.chat_agent import AGENT_STATUS_LIST_KEY
+        all_agents_raw = redis_conn.hgetall(AGENT_STATUS_LIST_KEY)
+
+        # 按 conversation_id 分组
+        conv_map: dict = {}
+        for agent_id_key, agent_json in all_agents_raw.items():
+            try:
+                agent_data = json.loads(agent_json)
+                if status and agent_data.get("status") != status:
+                    continue
+                conv_id = agent_data.get("conversation_id") or "__no_conversation__"
+                if conv_id not in conv_map:
+                    conv_map[conv_id] = []
+                conv_map[conv_id].append(agent_data)
+            except json.JSONDecodeError:
+                continue
+
+        # 构建结果列表，每个会话按 agent 更新时间排序
+        result = []
+        for conv_id, agents in conv_map.items():
+            agents.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+            has_running = any(a.get("status") == "running" for a in agents)
+            result.append({
+                "conversation_id": conv_id,
+                "agents": agents,
+                "has_running": has_running,
+            })
+
+        # 按最新 agent 的更新时间排序（运行中的会话排最前）
+        result.sort(key=lambda x: (
+            0 if x["has_running"] else 1,
+            x["agents"][0].get("updated_at", "") if x["agents"] else ""
+        ), reverse=True)
+
+        return ApiResponse(
+            event="agents_by_conversation",
+            success=True,
+            data=result,
+            message=f"共 {len(result)} 个会话"
+        )
+    except Exception as e:
+        logger.error(f"获取按会话分组的 agent 状态失败: {e}")
+        return ApiResponse(
+            event="agents_by_conversation",
+            success=False,
+            data=[],
+            message=f"获取失败: {str(e)}"
+        )
+
+
 @app.post("/agents/{agent_id}/stop", response_model=ApiResponse)
 async def stop_agent(agent_id: str):
     """停止指定的运行中 agent
+
+    直接操作 Redis，设置 chat 级别的停止标志，避免访问运行中的 ChatAgent 对象造成阻塞。
 
     Args:
         agent_id: Agent 唯一标识
@@ -689,40 +756,52 @@ async def stop_agent(agent_id: str):
         ApiResponse: 操作结果
     """
     try:
-        # 从所有 chat_id 中查找该 agent
-        all_agents = ChatAgent.get_all_agents()
-        target_agent = None
+        redis_conn = get_redis_connection()
+        from src.agent.chat_agent import AGENT_STATUS_LIST_KEY
 
-        for chat_id, agents in all_agents.items():
-            for agent in agents:
-                if agent.agentid == agent_id:
-                    target_agent = agent
-                    break
-            if target_agent:
-                break
+        # 从 Redis 中获取 agent 信息（不访问 ChatAgent 对象）
+        agent_json = redis_conn.hget(AGENT_STATUS_LIST_KEY, agent_id)
 
-        if not target_agent:
+        if not agent_json:
             return ApiResponse(
                 event="stop_agent",
                 success=False,
                 message=f"Agent {agent_id} 不存在或已停止"
             )
 
+        agent_data = json.loads(agent_json)
+        agent_status = agent_data.get("status")
+
         # 检查状态是否为运行中
-        if target_agent.status != "running":
+        if agent_status != "running":
             return ApiResponse(
                 event="stop_agent",
                 success=False,
-                message=f"Agent {agent_id} 不在运行状态，当前状态：{target_agent.status}"
+                message=f"Agent {agent_id} 不在运行状态，当前状态：{agent_status}"
             )
 
-        # 停止 agent
-        target_agent.stop()
+        chat_id = agent_data.get("chat_id")
+        if not chat_id:
+            return ApiResponse(
+                event="stop_agent",
+                success=False,
+                message=f"Agent {agent_id} 无法获取 chat_id"
+            )
 
+        # 直接写入 Redis 停止标志，agent 将在下次迭代时自行退出
+        redis_conn.set(f"chat:{chat_id}:stopped", "1", ex=AGENT_STATUS_TTL)
+        stream_manager.close_stream(chat_id)
+
+        # 更新 Redis 中的 agent 状态为 stopped
+        agent_data["status"] = "stopped"
+        agent_data["updated_at"] = datetime.now().isoformat()
+        redis_conn.hset(AGENT_STATUS_LIST_KEY, agent_id, json.dumps(agent_data, ensure_ascii=False))
+
+        logger.info(f"[{chat_id}] Agent {agent_id} 已发送停止信号")
         return ApiResponse(
             event="stop_agent",
             success=True,
-            message=f"Agent {agent_id} 已停止"
+            message=f"Agent {agent_id} 已发送停止信号"
         )
     except Exception as e:
         logger.error(f"停止 agent {agent_id} 失败: {e}")
@@ -1470,18 +1549,54 @@ async def delete_conversation(conversation_id: str, request: Request):
         if conv_info.get("user_name") != user_name:
             raise HTTPException(status_code=403, detail="无权删除此会话")
 
+        # 获取该会话下的所有 chat_id
+        conv_chats_key = f"conversation:{conversation_id}:chats"
+        raw_chat_ids = redis_conn.lrange(conv_chats_key, 0, -1)
+        chat_ids = set(
+            c.decode("utf-8") if isinstance(c, bytes) else c for c in raw_chat_ids
+        )
+
         # 删除会话信息
         redis_conn.delete(conversation_key)
 
         # 删除会话的chat列表
-        conv_chats_key = f"conversation:{conversation_id}:chats"
         redis_conn.delete(conv_chats_key)
+
+        # 删除会话消息历史
+        redis_conn.delete(f"conversation:{conversation_id}")
+
+        # 删除各 chat 的状态键
+        for cid in chat_ids:
+            redis_conn.delete(f"chat:{cid}:status")
+            redis_conn.delete(f"chat:{cid}:stopped")
+            redis_conn.delete(f"chat:{cid}:conversation")
+
+        # 删除 agents:status:list 中属于该会话的所有 agent 记录
+        from src.agent.chat_agent import AGENT_STATUS_LIST_KEY
+        all_agents_raw = redis_conn.hgetall(AGENT_STATUS_LIST_KEY)
+        agents_to_delete = []
+        for agent_id_key, agent_json in all_agents_raw.items():
+            try:
+                agent_data = json.loads(agent_json)
+                agent_conv_id = agent_data.get("conversation_id")
+                agent_chat_id = agent_data.get("chat_id")
+                if agent_conv_id == conversation_id or agent_chat_id in chat_ids:
+                    agents_to_delete.append(
+                        agent_id_key.decode("utf-8") if isinstance(agent_id_key, bytes) else agent_id_key
+                    )
+            except Exception:
+                pass
+        if agents_to_delete:
+            redis_conn.hdel(AGENT_STATUS_LIST_KEY, *agents_to_delete)
+
+        # 从内存缓存中清除该会话的 agent
+        ChatAgent.clear_agents_by_conversation(conversation_id)
 
         # 从用户会话列表中移除
         user_conversations_key = f"user:{user_name}:conversations"
         redis_conn.zrem(user_conversations_key, conversation_id)
 
-        logger.info(f"用户 {user_name} 删除了会话 {conversation_id}")
+        logger.info(f"用户 {user_name} 删除了会话 {conversation_id}（含 {len(agents_to_delete)} 条 agent 记录）")
         return {"success": True, "message": "会话已删除"}
 
     except HTTPException:

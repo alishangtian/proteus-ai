@@ -68,7 +68,8 @@ class TestMonitorPageExists(unittest.TestCase):
             content = f.read()
 
         self.assertIn("Agent 运行监控", content)
-        self.assertIn("/agents/status", content)
+        # 使用新的按会话分组接口
+        self.assertIn("/agents/by_conversation", content)
         self.assertIn("autoRefresh", content)
         self.assertIn("totalCount", content)
         self.assertIn("runningCount", content)
