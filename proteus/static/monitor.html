@@ -503,7 +503,7 @@
 
                 html += `
                     <tr>
-                        <td><span class="status-badge ${escapeAttr(agent.status)}">${escapeHtml(agent.status)}</span></td>
+                        <td><span class="status-badge ${statusClass(agent.status)}">${escapeHtml(agent.status)}</span></td>
                         <td>${escapeHtml(agent.model_name || '-')}</td>
                         <td><span class="task-text" title="${escapeAttr(agent.task_text || '')}">${escapeHtml(agent.task_text || '-')}</span></td>
                         <td>${formatElapsed(agent.elapsed_time)}</td>
@@ -529,7 +529,7 @@
             if (!seconds && seconds !== 0) return '-';
             if (seconds < 60) return seconds.toFixed(1) + 's';
             const min = Math.floor(seconds / 60);
-            const sec = (seconds % 60).toFixed(0);
+            const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
             return min + 'm ' + sec + 's';
         }
 
@@ -556,6 +556,11 @@
             if (!text) return '';
             return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
                        .replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function statusClass(status) {
+            const allowed = ['init', 'running', 'complete', 'stopped', 'error'];
+            return allowed.includes(status) ? status : '';
         }
 
         // Auto-refresh logic
