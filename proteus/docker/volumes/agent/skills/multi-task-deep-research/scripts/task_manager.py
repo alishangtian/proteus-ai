@@ -508,23 +508,49 @@ class TaskManager:
 
     def dispatch_all_by_dependency(self, max_parallel: int = MAX_PARALLEL, **kwargs) -> None:
         """
-        按拓扑排序分层下发所有 pending 子任务。
-        同层任务并行下发（受 max_parallel 限制），已 completed/dispatched 的自动跳过。
+        下发当前就绪的第一批 pending 子任务（依赖均已 completed）。
+
+        ⚠️  本方法只下发依赖已全部满足的任务（第一批），后续批次必须通过
+        check_and_dispatch_next() 在每轮对话中逐步触发，以确保依赖按序完成。
+        禁止在单次调用中一次性下发所有层次的任务。
+
+        已 completed/dispatched 的任务自动跳过；受 max_parallel 限制。
         """
-        layers = _topo_layers(self.config["subtasks"])
-        print(f"[TaskManager] 共 {len(layers)} 个执行层")
-        for i, layer in enumerate(layers):
-            to_go = [s for s in layer if s["status"] not in ("completed", "dispatched")]
-            if not to_go:
-                print(f"[TaskManager] 第 {i+1} 层已全部完成，跳过")
+        completed_names = {
+            s["name"] for s in self.config["subtasks"] if s["status"] == "completed"
+        }
+        dispatched_count = sum(
+            1 for s in self.config["subtasks"] if s["status"] == "dispatched"
+        )
+        dispatched: List[str] = []
+
+        for s in self.config["subtasks"]:
+            if s["status"] != "pending":
                 continue
-            print(f"[TaskManager] 第 {i+1} 层下发: {[s['name'] for s in to_go]}")
-            for j in range(0, len(to_go), max_parallel):
-                for s in to_go[j: j + max_parallel]:
-                    try:
-                        self.dispatch_subtask(s["name"], **kwargs)
-                    except RuntimeError as e:
-                        print(f"[TaskManager] ❌ {s['name']} 下发失败: {e}")
+            if all(dep in completed_names for dep in s.get("depends_on", [])):
+                if dispatched_count >= max_parallel:
+                    print(f"[TaskManager] ⏸️  已达并行上限 ({max_parallel})，剩余任务等待后续触发")
+                    break
+                try:
+                    self.dispatch_subtask(s["name"], **kwargs)
+                    dispatched.append(s["name"])
+                    dispatched_count += 1
+                except RuntimeError as e:
+                    print(f"[TaskManager] ❌ {s['name']} 下发失败: {e}")
+
+        if dispatched:
+            pending_count = sum(
+                1 for s in self.config["subtasks"] if s["status"] == "pending"
+            )
+            print(f"[TaskManager] 🚀 已下发第一批就绪任务: {dispatched}")
+            if pending_count > 0:
+                print(
+                    f"[TaskManager] ⏳ 仍有 {pending_count} 个任务待后续轮次触发"
+                    + "（依赖未满足或超出并行限制）"
+                )
+            print("[TaskManager] → 本轮结束，请等待子任务执行后在新一轮调用 check_and_dispatch_next()")
+        else:
+            print("[TaskManager] ℹ️  当前无就绪任务可下发")
 
     # ── 进度分析（纯文件读取，无网络调用）───────────────────────────────────
 

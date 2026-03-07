@@ -174,10 +174,24 @@ market_research ──→ tech_analysis ──┐
 ### Step 3：下发第一批子任务
 
 ```python
-# 按依赖拓扑顺序下发所有 pending 子任务（已完成的自动跳过）
+# 仅下发依赖已全部满足的第一批任务（无依赖的任务）
+# 有依赖的任务会在后续监控轮次中由 check_and_dispatch_next() 自动触发
 tm.dispatch_all_by_dependency(max_parallel=3)
+```
 
-# 下发完成后，本轮对话结束，等待子任务执行
+> ⚠️ **重要**：`dispatch_all_by_dependency()` **只下发第一批就绪任务**（依赖已满足的），
+> 后续批次（有依赖的任务）必须通过 Step 4 的 `check_and_dispatch_next()` 逐步触发。
+> **下发完成后，必须立即告知用户等待，并结束本轮对话。**
+> **严禁在同一轮对话中直接调用 `collect_and_finalize()`。**
+
+**告知用户的标准输出格式**：
+```
+已下发第一批子任务：[任务名列表]
+任务 ID：task_20260307_143749_a1b2c3
+
+请等待约 X 分钟后，在新的对话中输入：
+"检查任务 task_20260307_143749_a1b2c3 的进度"
+（根据子任务复杂度，简单查询等 3~5 分钟，标准研究等 8~15 分钟，复杂研究等 15~30 分钟）
 ```
 
 **下发原理**（在 task_manager.py 内部实现，无需外部 curl）：
@@ -191,7 +205,8 @@ tm.dispatch_all_by_dependency(max_parallel=3)
 ### Step 4：非阻塞式监控（每轮对话独立调用）
 
 > ⚠️ **禁止** 在单次 `python_execute` 中使用 `while/sleep` 阻塞等待。
-> 正确模式：**下发 → 本轮结束 → 等待 → 新一轮调用 `check_and_dispatch_next()`**
+> ⚠️ **禁止** 在下发子任务的同一轮对话中直接进入 Step 5。
+> 正确模式：**下发 → 本轮结束告知用户等待 → 用户触发新一轮 → 调用 `check_and_dispatch_next()`**
 
 #### 标准监控模式（每轮对话执行）
 
@@ -212,12 +227,19 @@ print("未完成任务:", result["pending"])
 print("是否全部完成:", result["all_completed"])
 
 if result["all_completed"]:
-    # 进入 Step 5
+    # 仅当所有子任务均已 completed 时，才进入 Step 5
     report_path = tm.collect_and_finalize()
     print(f"最终报告: {report_path}")
 else:
-    print(f"请等待约 X 分钟后再次触发检查")
+    # 必须告知用户等待，绝对不能在本轮直接汇总报告
+    print("仍有未完成任务，请等待后在新一轮对话中再次触发检查")
+    # 告知用户建议等待时间和下一步操作
 ```
+
+> ⚠️ **关键约束**：
+> - 当 `result["all_completed"]` 为 `False` 时，**必须结束本轮对话，告知用户等待**
+> - **不得**在 `all_completed=False` 的情况下调用 `collect_and_finalize()`
+> - 新下发的任务（`newly_dispatched`）说明有依赖链上的后续任务刚被触发，仍需等待
 
 #### `check_and_dispatch_next()` 内部逻辑
 
@@ -347,7 +369,7 @@ import sys
 sys.path.insert(0, "/app/.proteus/skills/multi-task-deep-research/scripts")
 from task_manager import TaskManager
 
-# ── 第一轮对话：创建并下发 ──────────────────────────────────────────────────
+# ── 第一轮对话：创建并下发第一批 ────────────────────────────────────────────
 tm = TaskManager(token="YOUR_TOKEN_HERE")
 task_id = tm.create_task("大模型市场研究", "调研2024年国内大模型市场格局")
 
@@ -378,15 +400,28 @@ tm.split_subtasks([
     }
 ])
 
-# 下发第一批（无依赖）任务：market_size + player_analysis
+# 仅下发第一批（无依赖）任务：market_size + player_analysis
+# investment_trend 和 final_synthesis 依赖未满足，不会在此处下发
 tm.dispatch_all_by_dependency()
-print(f"任务ID: {task_id}，已下发第一批子任务，请等待 10~15 分钟后检查")
+# ⛔ 本轮对话到此结束！告知用户等待，严禁继续调用 collect_and_finalize()
+print(f"任务ID: {task_id}，已下发第一批子任务（market_size, player_analysis）")
+print("请等待 10~15 分钟后，在新的对话中发送：检查任务进度")
 
-# ── 后续轮次：检查 + 触发后续任务 ──────────────────────────────────────────
-# （每次等待后，在新一轮迭代中检查，并触发后续任务）
+# ── 第二轮及后续轮次：检查 + 触发后续任务 ───────────────────────────────────
+# 每次用户触发检查时，在新的一轮对话中执行：
 tm = TaskManager.load_task(task_id)
 result = tm.check_and_dispatch_next()
+# check_and_dispatch_next() 会：
+#   1. 检测 market_size/player_analysis 是否完成
+#   2. 若 market_size 完成 → 自动下发 investment_trend
+#   3. 若 player_analysis 和 investment_trend 均完成 → 自动下发 final_synthesis
 if result["all_completed"]:
+    # 只有 all_completed=True 时才能汇总报告
     report = tm.collect_and_finalize()
     print(f"研究完成！报告路径: {report}")
+else:
+    print(f"进行中: {result['status']}")
+    print(f"本轮新下发: {result['newly_dispatched']}")
+    print(f"未完成: {result['pending']}")
+    print("请继续等待，下次触发检查时将自动推进")
 ```
