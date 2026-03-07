@@ -11,7 +11,7 @@
         .monitor-container {
             min-height: 100vh;
             background: linear-gradient(135deg, #f8f9ff 0%, #eef2ff 100%);
-            padding: 20px 40px;
+            padding: 24px;
             animation: fadeIn 0.8s ease-out;
         }
 
@@ -112,7 +112,7 @@
         /* Summary cards */
         .summary-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -275,7 +275,7 @@
 
         /* Task text truncation */
         .task-text {
-            max-width: 250px;
+            max-width: 300px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -340,6 +340,12 @@
         }
 
         /* Responsive */
+        @media (max-width: 1200px) {
+            .task-text {
+                max-width: 200px;
+            }
+        }
+
         @media (max-width: 1024px) {
             .agent-table-wrapper {
                 overflow-x: auto;

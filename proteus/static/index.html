@@ -28,7 +28,7 @@
             flex-direction: column;
             gap: 60px;
             width: 100%;
-            /* max-width: 1600px; */
+            max-width: 100%;
             align-items: center;
             justify-content: space-between;
         }
@@ -39,6 +39,7 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
+            max-width: 1400px;
         }
 
         @media (min-width: 768px) {
@@ -143,11 +144,11 @@
 
         .nav-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 40px;
-            max-width: 800px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
             width: 100%;
-            justify-items: center;
+            max-width: 1200px;
+            justify-items: stretch;
         }
 
         .nav-card {
@@ -215,17 +216,24 @@
 
         /* 响应式设计 */
         @media (max-width: 768px) {
+            .home-container {
+                padding: 16px;
+            }
+
             .home-title {
                 font-size: 36px;
             }
 
             .nav-grid {
                 grid-template-columns: 1fr;
-                max-width: 400px;
             }
 
             .nav-card {
                 padding: 30px 20px;
+            }
+
+            .recommendation-grid {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -251,8 +259,7 @@
         .recommendation-section {
             margin-top: 60px;
             width: 100%;
-            /* max-width: 1200px; */
-            /* Match content-wrapper width */
+            max-width: 1400px;
             display: none;
             /* 默认隐藏，加载后显示 */
             animation: fadeIn 0.5s ease-out;
@@ -285,9 +292,8 @@
 
         .recommendation-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            /* Force 3 columns */
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
         }
 
         .rec-card {
