@@ -179,6 +179,10 @@
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         }
 
+        .nav-card.monitor:hover {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+
         .nav-card:hover .card-icon {
             transform: scale(1.1);
         }
@@ -413,6 +417,15 @@
                             管理您的 Bearer Token，用于 API 认证和程序化访问，支持生成、查看和撤销 Token。
                         </p>
                     </div>
+
+                    <!-- Agent 监控导航卡片 -->
+                    <div class="nav-card monitor" onclick="navigateToMonitor()">
+                        <div class="card-icon">📊</div>
+                        <h2 class="card-title">Agent 监控</h2>
+                        <p class="card-description">
+                            实时监控正在运行的 Agent 状态，查看运行时间、Token 消耗和迭代进度等信息。
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -441,6 +454,10 @@
             window.location.href = '/static/token_management.html';
         }
 
+        function navigateToMonitor() {
+            window.location.href = '/monitor';
+        }
+
         // 添加键盘快捷键支持
         document.addEventListener('keydown', function (event) {
             if (event.key === '1' || event.key === 'c') {
@@ -449,6 +466,8 @@
                 navigateToKnowledgeBase();
             } else if (event.key === '3' || event.key === 't') {
                 navigateToTokenManagement();
+            } else if (event.key === '4' || event.key === 'm') {
+                navigateToMonitor();
             }
         });
 

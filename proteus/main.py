@@ -377,6 +377,21 @@ async def get_index(request: Request):
     )
 
 
+@app.get("/monitor", response_class=HTMLResponse)
+async def get_monitor_page(request: Request):
+    """返回 Agent 运行监控页面"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "monitor.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
+        },
+    )
+
+
 @app.get("/agent-page", response_class=HTMLResponse)
 async def get_agent_page(request: Request):
     """返回agent交互页面"""
