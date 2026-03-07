@@ -10,6 +10,20 @@
     <script src="/static/marked.min.js"></script>
     <script src="/static/ws-events-global.js"></script>
     <style>
+        /* Reset body styles for standalone page */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: auto !important;
+            display: block !important;
+            height: auto !important;
+        }
+
+        html, body {
+            width: 100%;
+            box-sizing: border-box;
+        }
+
         /* 主页导航样式 */
         .home-container {
             min-height: 100vh;
@@ -28,7 +42,9 @@
             flex-direction: column;
             gap: 60px;
             width: 100%;
-            /* max-width: 1600px; */
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
             align-items: center;
             justify-content: space-between;
         }
@@ -39,6 +55,7 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
+            max-width: 1400px;
         }
 
         @media (min-width: 768px) {
@@ -143,11 +160,11 @@
 
         .nav-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 40px;
-            max-width: 800px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
             width: 100%;
-            justify-items: center;
+            max-width: 1200px;
+            justify-items: stretch;
         }
 
         .nav-card {
@@ -177,6 +194,10 @@
 
         .nav-card.token:hover {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .nav-card.monitor:hover {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
         }
 
         .nav-card:hover .card-icon {
@@ -211,17 +232,24 @@
 
         /* 响应式设计 */
         @media (max-width: 768px) {
+            .home-container {
+                padding: 16px;
+            }
+
             .home-title {
                 font-size: 36px;
             }
 
             .nav-grid {
                 grid-template-columns: 1fr;
-                max-width: 400px;
             }
 
             .nav-card {
                 padding: 30px 20px;
+            }
+
+            .recommendation-grid {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -247,8 +275,10 @@
         .recommendation-section {
             margin-top: 60px;
             width: 100%;
-            /* max-width: 1200px; */
-            /* Match content-wrapper width */
+            max-width: 1400px;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 0 24px;
             display: none;
             /* 默认隐藏，加载后显示 */
             animation: fadeIn 0.5s ease-out;
@@ -281,9 +311,8 @@
 
         .recommendation-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            /* Force 3 columns */
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
         }
 
         .rec-card {
@@ -413,6 +442,15 @@
                             管理您的 Bearer Token，用于 API 认证和程序化访问，支持生成、查看和撤销 Token。
                         </p>
                     </div>
+
+                    <!-- Agent 监控导航卡片 -->
+                    <div class="nav-card monitor" onclick="navigateToMonitor()">
+                        <div class="card-icon">📊</div>
+                        <h2 class="card-title">Agent 监控</h2>
+                        <p class="card-description">
+                            实时监控正在运行的 Agent 状态，查看运行时间、Token 消耗和迭代进度等信息。
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -441,6 +479,10 @@
             window.location.href = '/static/token_management.html';
         }
 
+        function navigateToMonitor() {
+            window.location.href = '/monitor';
+        }
+
         // 添加键盘快捷键支持
         document.addEventListener('keydown', function (event) {
             if (event.key === '1' || event.key === 'c') {
@@ -449,6 +491,8 @@
                 navigateToKnowledgeBase();
             } else if (event.key === '3' || event.key === 't') {
                 navigateToTokenManagement();
+            } else if (event.key === '4' || event.key === 'm') {
+                navigateToMonitor();
             }
         });
 

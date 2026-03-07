@@ -377,6 +377,21 @@ async def get_index(request: Request):
     )
 
 
+@app.get("/monitor", response_class=HTMLResponse)
+async def get_monitor_page(request: Request):
+    """返回 Agent 运行监控页面"""
+    user = await get_current_user(request)
+    return templates.TemplateResponse(
+        "monitor.html",
+        {
+            "request": request,
+            "logged_in": user is not None,
+            "user_name": user.user_name if user else "",
+            "nick_name": user.nick_name if user else "",
+        },
+    )
+
+
 @app.get("/agent-page", response_class=HTMLResponse)
 async def get_agent_page(request: Request):
     """返回agent交互页面"""
@@ -561,6 +576,214 @@ async def stop_chat(model: str, chat_id: str):
         logger.error(f"[{chat_id}] 写入 Redis 停止标志失败: {e}")
     stream_manager.close_stream(chat_id)
     return {"success": True, "chat_id": chat_id}
+
+
+@app.get("/agents/status", response_model=ApiResponse)
+async def get_all_agents_status(
+    page: int = 1,
+    page_size: int = 20,
+    status: Optional[str] = None
+):
+    """查询所有 agent 的状态（支持分页和状态过滤）
+
+    优先从 Redis 持久化存储中获取数据，Redis 不可用时回退到内存快照。
+
+    Args:
+        page: 页码，从1开始
+        page_size: 每页记录数，默认20
+        status: 状态过滤（可选）：running, complete, stopped, error, init
+
+    返回每个 agent 的运行时间、任务信息、迭代轮次和 token 消耗等信息。
+
+    性能优化：优先使用 Redis 持久化数据，确保历史记录可查询；
+    Redis 不可用时回退到内存快照，保证服务可用性。
+    """
+    try:
+        redis_conn = get_redis_connection()
+        # 从 Redis hash 中获取所有 agent 状态
+        from src.agent.chat_agent import AGENT_STATUS_LIST_KEY
+        all_agents_raw = redis_conn.hgetall(AGENT_STATUS_LIST_KEY)
+
+        agents_info = []
+        for agent_id, agent_json in all_agents_raw.items():
+            try:
+                agent_data = json.loads(agent_json)
+                # 状态过滤
+                if status and agent_data.get("status") != status:
+                    continue
+                agents_info.append(agent_data)
+            except json.JSONDecodeError as e:
+                logger.error(f"解析 agent {agent_id} 状态失败: {e}")
+                continue
+
+        # 按更新时间倒序排序
+        agents_info.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+
+        # 分页处理
+        total = len(agents_info)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_data = agents_info[start:end]
+
+        return ApiResponse(
+            event="agents_status",
+            success=True,
+            data=paginated_data,
+            message=f"共 {total} 条记录，第 {page}/{(total + page_size - 1) // page_size} 页"
+        )
+    except Exception as e:
+        logger.error(f"从 Redis 获取 agent 状态失败，回退到内存快照: {e}")
+        # Redis 不可用时回退到内存快照
+        agents_info = ChatAgent.get_all_agents_status_snapshot()
+
+        # 状态过滤
+        if status:
+            agents_info = [a for a in agents_info if a.get("status") == status]
+
+        # 分页处理
+        total = len(agents_info)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_data = agents_info[start:end]
+
+        return ApiResponse(
+            event="agents_status",
+            success=True,
+            data=paginated_data,
+            message=f"共 {total} 条记录，第 {page}/{(total + page_size - 1) // page_size} 页（内存快照）"
+        )
+
+
+@app.get("/agents/status/{chat_id}", response_model=ApiResponse)
+async def get_agent_status(chat_id: str):
+    """查询指定 chat_id 下 agent 的实时运行状态
+
+    返回 agent 的运行时间、任务信息、迭代轮次和 token 消耗等信息。
+
+    Args:
+        chat_id: 聊天会话 ID
+    """
+    agents = ChatAgent.get_agents(chat_id)
+    if not agents:
+        return ApiResponse(
+            event="agent_status",
+            success=True,
+            data=[],
+        )
+    agents_info = [agent.get_status_info() for agent in agents]
+    return ApiResponse(
+        event="agent_status",
+        success=True,
+        data=agents_info,
+    )
+
+
+@app.post("/agents/{agent_id}/stop", response_model=ApiResponse)
+async def stop_agent(agent_id: str):
+    """停止指定的运行中 agent
+
+    Args:
+        agent_id: Agent 唯一标识
+
+    Returns:
+        ApiResponse: 操作结果
+    """
+    try:
+        # 从所有 chat_id 中查找该 agent
+        all_agents = ChatAgent.get_all_agents()
+        target_agent = None
+
+        for chat_id, agents in all_agents.items():
+            for agent in agents:
+                if agent.agentid == agent_id:
+                    target_agent = agent
+                    break
+            if target_agent:
+                break
+
+        if not target_agent:
+            return ApiResponse(
+                event="stop_agent",
+                success=False,
+                message=f"Agent {agent_id} 不存在或已停止"
+            )
+
+        # 检查状态是否为运行中
+        if target_agent.status != "running":
+            return ApiResponse(
+                event="stop_agent",
+                success=False,
+                message=f"Agent {agent_id} 不在运行状态，当前状态：{target_agent.status}"
+            )
+
+        # 停止 agent
+        target_agent.stop()
+
+        return ApiResponse(
+            event="stop_agent",
+            success=True,
+            message=f"Agent {agent_id} 已停止"
+        )
+    except Exception as e:
+        logger.error(f"停止 agent {agent_id} 失败: {e}")
+        return ApiResponse(
+            event="stop_agent",
+            success=False,
+            message=f"停止 agent 失败: {str(e)}"
+        )
+
+
+@app.delete("/agents/{agent_id}", response_model=ApiResponse)
+async def delete_agent(agent_id: str):
+    """删除指定的非运行中 agent 记录
+
+    Args:
+        agent_id: Agent 唯一标识
+
+    Returns:
+        ApiResponse: 操作结果
+    """
+    try:
+        redis_conn = get_redis_connection()
+        from src.agent.chat_agent import AGENT_STATUS_LIST_KEY
+
+        # 从 Redis 中获取 agent 信息
+        agent_json = redis_conn.hget(AGENT_STATUS_LIST_KEY, agent_id)
+
+        if not agent_json:
+            return ApiResponse(
+                event="delete_agent",
+                success=False,
+                message=f"Agent {agent_id} 不存在"
+            )
+
+        # 解析 agent 状态
+        agent_data = json.loads(agent_json)
+        agent_status = agent_data.get("status")
+
+        # 检查状态是否为非运行中
+        if agent_status == "running":
+            return ApiResponse(
+                event="delete_agent",
+                success=False,
+                message=f"Agent {agent_id} 正在运行，请先停止后再删除"
+            )
+
+        # 从 Redis 中删除
+        redis_conn.hdel(AGENT_STATUS_LIST_KEY, agent_id)
+
+        return ApiResponse(
+            event="delete_agent",
+            success=True,
+            message=f"Agent {agent_id} 已删除"
+        )
+    except Exception as e:
+        logger.error(f"删除 agent {agent_id} 失败: {e}")
+        return ApiResponse(
+            event="delete_agent",
+            success=False,
+            message=f"删除 agent 失败: {str(e)}"
+        )
 
 
 @app.websocket("/ws/stream/{chat_id}")
