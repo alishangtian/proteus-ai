@@ -1270,6 +1270,13 @@ document.addEventListener('DOMContentLoaded', () => {
         newConversationBtn.addEventListener('click', createNewConversation);
     }
 
+    // 若 URL 中携带 conversation_id 参数，则自动加载该会话（等待会话列表渲染完成）
+    const urlParams = new URLSearchParams(window.location.search);
+    const initConvId = urlParams.get('conversation_id');
+    if (initConvId) {
+        loadConversationList().then(() => loadConversation(initConvId));
+    }
+
     // 选项面板显示/隐藏逻辑
     const optionsButton = document.getElementById('options-button');
     const optionsPanel = document.getElementById('options-panel');

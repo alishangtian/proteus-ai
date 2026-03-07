@@ -36,6 +36,7 @@
             gap: 10px;
             padding: 18px 20px 16px;
             border-bottom: 1px solid #f0f0f0;
+            flex-shrink: 0;
         }
 
         .logo-icon {
@@ -81,6 +82,10 @@
             transition: all 0.15s ease;
             text-decoration: none;
             position: relative;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
         }
 
         .nav-item:hover { background: #f5f5f8; color: #333; }
@@ -103,6 +108,51 @@
         }
 
         .nav-icon { font-size: 16px; width: 20px; text-align: center; flex-shrink: 0; }
+
+        /* Sidebar spacer pushes user info to bottom */
+        .sidebar-spacer { flex: 1; }
+
+        /* ===== USER INFO ===== */
+        .sidebar-user {
+            padding: 14px 16px;
+            border-top: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .user-info { min-width: 0; flex: 1; }
+        .user-name { font-size: 13px; font-weight: 600; color: #222; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-role { font-size: 11px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 6px;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+            text-decoration: none;
+        }
+        .logout-btn:hover { color: #ef4444; background: rgba(239,68,68,0.08); }
 
         /* ===== MAIN ===== */
         .main {
@@ -166,11 +216,33 @@
             border: 1px solid #e8eaed;
         }
 
-        /* Content area */
-        .content {
+        /* ===== PANELS ===== */
+        .panel {
+            display: none;
             flex: 1;
+            overflow: hidden;
+            flex-direction: column;
+        }
+
+        .panel.active { display: flex; }
+
+        /* Overview panel scrolls internally */
+        .panel-overview {
             overflow-y: auto;
             padding: 28px;
+        }
+
+        /* Iframe panel — iframe fills entire panel */
+        .panel-iframe {
+            position: relative;
+        }
+
+        .content-frame {
+            width: 100%;
+            flex: 1;
+            border: none;
+            display: block;
+            min-height: 0;
         }
 
         /* Page header */
@@ -244,6 +316,11 @@
             gap: 10px;
             text-decoration: none;
             color: inherit;
+            border: none;
+            background: #fff;
+            border: 1px solid #e8eaed;
+            text-align: left;
+            width: 100%;
         }
 
         .feature-card:hover {
@@ -326,11 +403,118 @@
             justify-content: space-between;
         }
 
+        /* Sub-menu list */
+        .sub-list {
+            display: none;
+            flex-direction: column;
+            padding: 0 0 4px 0;
+        }
+        .sub-list.open { display: flex; }
+
+        .sub-list-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 20px 4px;
+        }
+
+        .sub-new-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px 5px 16px;
+            margin: 2px 10px;
+            font-size: 13px;
+            color: #4f46e5;
+            cursor: pointer;
+            border-radius: 6px;
+            border: 1px dashed rgba(79,70,229,0.4);
+            background: rgba(79,70,229,0.04);
+            transition: all 0.15s ease;
+            text-align: left;
+            width: calc(100% - 20px);
+        }
+        .sub-new-btn:hover { background: rgba(79,70,229,0.1); border-color: #4f46e5; }
+
+        .sub-item {
+            display: flex;
+            align-items: center;
+            padding: 7px 20px 7px 40px;
+            font-size: 13px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.12s ease;
+            border: none;
+            background: none;
+            text-align: left;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: relative;
+        }
+        .sub-item:hover { background: #f5f5f8; color: #333; }
+        .sub-item.active {
+            color: #4f46e5;
+            background: rgba(79,70,229,0.06);
+            font-weight: 500;
+        }
+        .sub-item-dot {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: #ccc; flex-shrink: 0; margin-right: 8px;
+        }
+        .sub-item.active .sub-item-dot { background: #4f46e5; }
+        .sub-item-running .sub-item-dot {
+            background: #22c55e;
+            animation: pulse-green 2s infinite;
+        }
+        .sub-item-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sub-loading {
+            padding: 8px 20px 8px 40px;
+            font-size: 12px;
+            color: #bbb;
+        }
+
+        /* Items containers: max 10 items visible, scroll the rest */
+        #convItems, #kbItems {
+            max-height: 360px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(79,70,229,0.3) transparent;
+        }
+        #convItems::-webkit-scrollbar, #kbItems::-webkit-scrollbar {
+            width: 4px;
+        }
+        #convItems::-webkit-scrollbar-thumb, #kbItems::-webkit-scrollbar-thumb {
+            background: rgba(79,70,229,0.3);
+            border-radius: 2px;
+        }
+
+        /* Nav item with expand arrow */
+        .nav-item-expandable {
+            justify-content: space-between;
+        }
+        .nav-item-expandable .nav-item-left {
+            display: flex; align-items: center; gap: 10px;
+        }
+        .nav-expand-arrow {
+            font-size: 10px;
+            color: #bbb;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+        }
+        .nav-expand-arrow.open { transform: rotate(90deg); }
+
         /* Mobile */
         @media (max-width: 768px) {
             .sidebar { display: none; }
             .topbar { padding: 0 16px; }
-            .content { padding: 16px; }
+            .panel-overview { padding: 16px; }
         }
     </style>
 </head>
@@ -348,29 +532,53 @@
 
         <div class="nav-section">
             <div class="nav-section-title">菜单</div>
-            <a class="nav-item" href="/chat/index">
-                <span class="nav-icon">💬</span> 聊天
-            </a>
+            <button class="nav-item nav-item-expandable" id="navChat" data-expand="chat">
+                <div class="nav-item-left"><span class="nav-icon">💬</span> 聊天</div>
+                <span class="nav-expand-arrow" id="chatArrow">▶</span>
+            </button>
+            <!-- Chat sub-list -->
+            <div class="sub-list" id="subListChat">
+                <button class="sub-new-btn" id="newChatBtn">＋ 新建聊天</button>
+                <div id="convItems"><div class="sub-loading">加载中...</div></div>
+            </div>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">控制</div>
-            <a class="nav-item active" href="/">
+            <button class="nav-item active" data-page="overview">
                 <span class="nav-icon">📊</span> 概览
-            </a>
-            <a class="nav-item" href="/monitor">
+            </button>
+            <button class="nav-item" data-page="monitor" data-url="/monitor">
                 <span class="nav-icon">🤖</span> Agent 监控
-            </a>
-            <a class="nav-item" href="/knowledge/index">
-                <span class="nav-icon">📚</span> 知识库
-            </a>
+            </button>
+            <button class="nav-item nav-item-expandable" id="navKnowledge" data-expand="knowledge">
+                <div class="nav-item-left"><span class="nav-icon">📚</span> 知识库</div>
+                <span class="nav-expand-arrow" id="knowledgeArrow">▶</span>
+            </button>
+            <!-- Knowledge sub-list -->
+            <div class="sub-list" id="subListKnowledge">
+                <button class="sub-new-btn" id="newKbBtn" data-page="knowledge" data-url="/knowledge/index">📋 进入知识库</button>
+                <div id="kbItems"><div class="sub-loading">加载中...</div></div>
+            </div>
         </div>
 
         <div class="nav-section">
             <div class="nav-section-title">管理</div>
-            <a class="nav-item" href="/static/token_management.html">
+            <button class="nav-item" data-page="token" data-url="/static/token_management.html">
                 <span class="nav-icon">🔐</span> Token 管理
-            </a>
+            </button>
+        </div>
+
+        <div class="sidebar-spacer"></div>
+
+        <!-- Current user info -->
+        <div class="sidebar-user">
+            <div class="user-avatar" id="userAvatar">U</div>
+            <div class="user-info">
+                <div class="user-name" id="userDisplayName">{{ nick_name or user_name or '用户' }}</div>
+                <div class="user-role" id="userUsername">@{{ user_name or '' }}</div>
+            </div>
+            <button class="logout-btn" title="退出登录" onclick="handleLogout()">⏻</button>
         </div>
     </aside>
 
@@ -378,7 +586,7 @@
     <div class="main">
         <!-- Topbar -->
         <div class="topbar">
-            <span class="topbar-title">概览</span>
+            <span class="topbar-title" id="topbarTitle">概览</span>
             <div class="topbar-right">
                 <div class="topbar-status">
                     <div class="status-dot"></div>
@@ -389,8 +597,8 @@
             </div>
         </div>
 
-        <!-- Content -->
-        <div class="content">
+        <!-- Overview Panel -->
+        <div class="panel panel-overview active" id="panel-overview">
             <div class="page-header">
                 <div class="page-title">概览</div>
                 <div class="page-desc">系统状态、入口点和快速操作。</div>
@@ -420,7 +628,7 @@
                 <span class="section-heading">✨ 快捷入口</span>
             </div>
             <div class="cards-grid">
-                <a class="feature-card" href="/chat/index">
+                <button class="feature-card" data-page="chat" data-url="/chat/index">
                     <div class="feature-card-top">
                         <div class="feature-icon purple">💬</div>
                         <div>
@@ -429,9 +637,9 @@
                     </div>
                     <div class="feature-desc">与 AI 助手自然对话，支持工具调用、多种工作模式和文件分析。</div>
                     <div class="feature-arrow">进入对话 →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/knowledge/index">
+                <button class="feature-card" data-page="knowledge" data-url="/knowledge/index">
                     <div class="feature-card-top">
                         <div class="feature-icon orange">📚</div>
                         <div>
@@ -440,9 +648,9 @@
                     </div>
                     <div class="feature-desc">浏览和管理知识库内容，查找技术文档、操作指南、最佳实践等资源。</div>
                     <div class="feature-arrow">进入知识库 →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/static/token_management.html">
+                <button class="feature-card" data-page="token" data-url="/static/token_management.html">
                     <div class="feature-card-top">
                         <div class="feature-icon green">🔐</div>
                         <div>
@@ -451,9 +659,9 @@
                     </div>
                     <div class="feature-desc">管理 Bearer Token，用于 API 认证和程序化访问，支持生成和撤销。</div>
                     <div class="feature-arrow">管理 Token →</div>
-                </a>
+                </button>
 
-                <a class="feature-card" href="/monitor">
+                <button class="feature-card" data-page="monitor" data-url="/monitor">
                     <div class="feature-card-top">
                         <div class="feature-icon blue">🤖</div>
                         <div>
@@ -462,7 +670,7 @@
                     </div>
                     <div class="feature-desc">实时监控 Agent 状态，按会话分组展示运行时间、Token 消耗和迭代进度。</div>
                     <div class="feature-arrow">查看监控 →</div>
-                </a>
+                </button>
             </div>
 
             <!-- Recommendations -->
@@ -473,10 +681,215 @@
                 <div class="rec-grid" id="rec-grid"></div>
             </div>
         </div>
+
+        <!-- Iframe Panel (for embedded pages) -->
+        <div class="panel panel-iframe" id="panel-iframe">
+            <iframe class="content-frame" id="contentFrame" src="" title="内容面板"></iframe>
+        </div>
     </div>
 
     <script>
-        // Load runtime stats
+        // ===== Logout =====
+        async function handleLogout() {
+            try {
+                await fetch('/logout', { credentials: 'include' });
+            } catch (e) {
+                // ignore network errors
+            }
+            window.location.href = '/login';
+        }
+
+        // ===== Page navigation config =====
+        const PAGE_CONFIG = {
+            overview:  { title: '概览',        panel: 'overview' },
+            chat:      { title: '聊天',        panel: 'iframe' },
+            monitor:   { title: 'Agent 监控',  panel: 'iframe' },
+            knowledge: { title: '知识库',      panel: 'iframe' },
+            token:     { title: 'Token 管理',  panel: 'iframe' },
+        };
+
+        let currentPage = 'overview';
+        let currentSubItem = null;
+
+        function navigate(page, url, subItemId) {
+            const cfg = PAGE_CONFIG[page];
+            if (!cfg) return;
+
+            // Update active nav item (only top-level nav-item buttons with data-page)
+            document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+                el.classList.toggle('active', el.dataset.page === page);
+            });
+
+            // Update sub-item highlight
+            document.querySelectorAll('.sub-item').forEach(el => el.classList.remove('active'));
+            if (subItemId) {
+                const activeSubItem = document.querySelector(`.sub-item[data-id="${CSS.escape(subItemId)}"]`);
+                if (activeSubItem) activeSubItem.classList.add('active');
+                currentSubItem = subItemId;
+            } else {
+                currentSubItem = null;
+            }
+
+            // Update topbar title
+            document.getElementById('topbarTitle').textContent = cfg.title;
+
+            // Switch panel
+            document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+            const targetPanel = document.getElementById('panel-' + cfg.panel);
+            if (targetPanel) targetPanel.classList.add('active');
+
+            // Load URL in iframe if needed
+            if (cfg.panel === 'iframe' && url) {
+                const frame = document.getElementById('contentFrame');
+                if (frame.dataset.loadedUrl !== url) {
+                    frame.src = url;
+                    frame.dataset.loadedUrl = url;
+                }
+            }
+
+            // Reload stats when returning to overview
+            if (page === 'overview') {
+                loadStats();
+                loadRecommendations();
+            }
+
+            currentPage = page;
+            history.pushState({ page, url, subItemId }, cfg.title, '#' + page);
+        }
+
+        // ===== Expandable sub-menus =====
+        let chatExpanded = false;
+        let knowledgeExpanded = false;
+
+        function toggleChatMenu() {
+            chatExpanded = !chatExpanded;
+            document.getElementById('subListChat').classList.toggle('open', chatExpanded);
+            document.getElementById('chatArrow').classList.toggle('open', chatExpanded);
+            if (chatExpanded) loadConversations();
+        }
+
+        function toggleKnowledgeMenu() {
+            knowledgeExpanded = !knowledgeExpanded;
+            document.getElementById('subListKnowledge').classList.toggle('open', knowledgeExpanded);
+            document.getElementById('knowledgeArrow').classList.toggle('open', knowledgeExpanded);
+            if (knowledgeExpanded) loadKnowledgeItems();
+        }
+
+        async function loadConversations() {
+            const container = document.getElementById('convItems');
+            container.innerHTML = '<div class="sub-loading">加载中...</div>';
+            try {
+                const res = await fetch('/conversations');
+                const data = await res.json();
+                if (data.success && Array.isArray(data.conversations) && data.conversations.length > 0) {
+                    container.innerHTML = '';
+                    for (const conv of data.conversations) {
+                        const convId = conv.conversation_id || conv.id || '';
+                        const title = conv.title || '未命名会话';
+                        const isRunning = conv.is_running;
+                        const btn = document.createElement('button');
+                        btn.className = 'sub-item' + (isRunning ? ' sub-item-running' : '');
+                        btn.dataset.id = convId;
+                        btn.title = title;
+                        const dot = document.createElement('span');
+                        dot.className = 'sub-item-dot';
+                        const text = document.createElement('span');
+                        text.className = 'sub-item-text';
+                        text.textContent = title;
+                        btn.appendChild(dot);
+                        btn.appendChild(text);
+                        btn.addEventListener('click', () => {
+                            navigate('chat', '/chat/index?conversation_id=' + encodeURIComponent(convId), convId);
+                        });
+                        container.appendChild(btn);
+                    }
+                } else {
+                    container.innerHTML = '<div class="sub-loading">暂无会话</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="sub-loading">加载失败</div>';
+            }
+        }
+
+        async function loadKnowledgeItems() {
+            const container = document.getElementById('kbItems');
+            container.innerHTML = '<div class="sub-loading">加载中...</div>';
+            try {
+                const res = await fetch('/knowledge_base/list');
+                const data = await res.json();
+                const items = data.success ? (data.knowledge_base_items || []) : [];
+                if (items.length > 0) {
+                    container.innerHTML = '';
+                    for (const item of items) {
+                        const itemId = item.id || '';
+                        const title = item.title || '无标题';
+                        const btn = document.createElement('button');
+                        btn.className = 'sub-item';
+                        btn.dataset.id = itemId;
+                        btn.title = title;
+                        const dot = document.createElement('span');
+                        dot.className = 'sub-item-dot';
+                        const text = document.createElement('span');
+                        text.className = 'sub-item-text';
+                        text.textContent = title;
+                        btn.appendChild(dot);
+                        btn.appendChild(text);
+                        btn.addEventListener('click', () => {
+                            navigate('knowledge', '/knowledge/index?id=' + encodeURIComponent(itemId), itemId);
+                        });
+                        container.appendChild(btn);
+                    }
+                } else {
+                    container.innerHTML = '<div class="sub-loading">暂无内容</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="sub-loading">加载失败</div>';
+            }
+        }
+
+        // ===== Event delegation for nav items and feature cards =====
+        document.addEventListener('click', function(e) {
+            // Expand toggle buttons
+            if (e.target.closest('#navChat')) { toggleChatMenu(); return; }
+            if (e.target.closest('#navKnowledge')) { toggleKnowledgeMenu(); return; }
+
+            // New chat button
+            if (e.target.closest('#newChatBtn')) {
+                // Open chat sub-menu if not open
+                if (!chatExpanded) toggleChatMenu();
+                navigate('chat', '/chat/index');
+                return;
+            }
+
+            // Standard data-page buttons (but not expand buttons)
+            const btn = e.target.closest('[data-page]');
+            if (!btn || btn.dataset.expand) return;
+            e.preventDefault();
+            navigate(btn.dataset.page, btn.dataset.url || null);
+        });
+
+        // Handle browser back/forward
+        window.addEventListener('popstate', function(e) {
+            if (e.state && e.state.page) {
+                if (currentPage !== e.state.page || currentSubItem !== (e.state.subItemId || null)) {
+                    navigate(e.state.page, e.state.url, e.state.subItemId);
+                }
+            } else {
+                navigate('overview', null);
+            }
+        });
+
+        // ===== User avatar initial =====
+        (function initUserAvatar() {
+            const nameEl = document.getElementById('userDisplayName');
+            const avatarEl = document.getElementById('userAvatar');
+            if (nameEl && avatarEl) {
+                const name = nameEl.textContent.trim();
+                avatarEl.textContent = name ? name.charAt(0).toUpperCase() : 'U';
+            }
+        })();
+
+        // ===== Stats and recommendations =====
         async function loadStats() {
             try {
                 const res = await fetch('/agents/by_conversation');
@@ -509,7 +922,7 @@
                     const selected = items.length <= 4 ? items : getRandomItems(items, 4);
                     const grid = document.getElementById('rec-grid');
                     grid.innerHTML = selected.map(item => `
-                        <div class="rec-card" onclick="window.location.href='/knowledge/index?id=${item.id}'">
+                        <div class="rec-card" data-page="knowledge" data-url="/knowledge/index?id=${encodeURIComponent(item.id)}">
                             <div class="rec-title">${escapeHtml(item.title || '无标题')}</div>
                             <div class="rec-meta">
                                 <span>👤 ${escapeHtml(item.author || '匿名')}</span>
@@ -541,9 +954,26 @@
             return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
         }
 
+        // ===== Initialise =====
         document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            loadRecommendations();
+            const rawHash = location.hash.replace('#', '');
+            const safeHash = Object.prototype.hasOwnProperty.call(PAGE_CONFIG, rawHash) ? rawHash : '';
+            if (safeHash && safeHash !== 'overview') {
+                if (safeHash === 'chat') {
+                    toggleChatMenu();
+                    navigate('chat', '/chat/index');
+                } else if (safeHash === 'knowledge') {
+                    toggleKnowledgeMenu();
+                    navigate('knowledge', '/knowledge/index');
+                } else {
+                    const navEl = document.querySelector(`.nav-item[data-page="${safeHash}"]`);
+                    navigate(safeHash, navEl ? navEl.dataset.url : null);
+                }
+            } else {
+                loadStats();
+                loadRecommendations();
+                history.replaceState({ page: 'overview', url: null }, '概览', '#overview');
+            }
         });
     </script>
 </body>

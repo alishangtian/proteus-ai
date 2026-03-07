@@ -711,12 +711,28 @@ async def get_agents_by_conversation(status: Optional[str] = None):
                 continue
 
         # 构建结果列表，每个会话按 agent 更新时间排序
+        # 收集所有需要查询标题的 conversation_id
+        conv_ids = [c for c in conv_map.keys() if c != "__no_conversation__"]
+        title_map: dict = {}
+        if conv_ids:
+            try:
+                pipe = redis_conn.pipeline()
+                for cid in conv_ids:
+                    pipe.hget(f"conversation:{cid}:info", "title")
+                title_results = pipe.execute()
+                for cid, raw in zip(conv_ids, title_results):
+                    if raw:
+                        title_map[cid] = raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            except Exception as te:
+                logger.warning(f"获取会话标题失败: {te}")
+
         result = []
         for conv_id, agents in conv_map.items():
             agents.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
             has_running = any(a.get("status") == "running" for a in agents)
             result.append({
                 "conversation_id": conv_id,
+                "title": title_map.get(conv_id, ""),
                 "agents": agents,
                 "has_running": has_running,
             })
